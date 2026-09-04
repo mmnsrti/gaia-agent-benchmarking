@@ -1,5 +1,5 @@
 ---
-title: Template Final Assignment
+title: gaia-agent-benchmarking
 emoji: 🕵🏻‍♂️
 colorFrom: indigo
 colorTo: indigo
