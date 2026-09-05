@@ -81,3 +81,6 @@ outputs/
 cache/
 tmp/
 .temp/
+experiments/**/runs.jsonl
+experiments/**/dev_runs.jsonl
+
