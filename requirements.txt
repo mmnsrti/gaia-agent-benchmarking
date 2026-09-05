@@ -1,2 +1,6 @@
 gradio[oauth]
 requests
+python-dotenv
+pandas
+google-genai>=2.3.0
+openpyxl 
