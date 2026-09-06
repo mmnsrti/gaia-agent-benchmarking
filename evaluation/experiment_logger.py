@@ -101,12 +101,26 @@ def get_git_metadata(cached: bool = True) -> Dict[str, Optional[Any]]:
     try:
         status = subprocess.check_output(
             ["git", "--no-optional-locks", "status", "--porcelain"],
+        diff_code = subprocess.run(
+            ["git", "--no-optional-locks", "diff-index", "--quiet", "HEAD", "--"],
             stderr=subprocess.DEVNULL,
             env=env,
             cwd=repo_root,
             timeout=5,
         ).decode().strip()
         metadata["git_dirty"] = bool(status)
+        ).returncode
+        if diff_code != 0:
+            metadata["git_dirty"] = True
+        else:
+            untracked = subprocess.check_output(
+                ["git", "--no-optional-locks", "ls-files", "--others", "--exclude-standard"],
+                stderr=subprocess.DEVNULL,
+                env=env,
+                cwd=repo_root,
+                timeout=5,
+            ).decode().strip()
+            metadata["git_dirty"] = bool(untracked)
     except Exception:
         pass
 

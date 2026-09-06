@@ -1,8 +1,8 @@
 {
   "project_version": "v0",
-  "git_commit": "6270037f3db21893f1fcc98e40129d431dae0c10",
+  "git_commit": "7ab2af1a2fe7b6abb3247c691a0c5e658f6ab921",
   "git_branch": "v0-LLM-only",
-  "git_dirty": true,
+  "git_dirty": false,
   "dataset_name": "GAIA",
   "dataset_version": "2023",
   "dataset_split": "validation",

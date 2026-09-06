@@ -74,6 +74,7 @@ class LLMClient:
         """Builds GenerateContentConfig omitting temperature when None."""
         config_kwargs: dict[str, Any] = {
             "max_output_tokens": self.max_output_tokens,
+            "automatic_function_calling": types.AutomaticFunctionCallingConfig(disable=True),
         }
 
         if self.temperature is not None:
