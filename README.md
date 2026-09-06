@@ -56,6 +56,25 @@ Final Answer
 
 Tasks requiring attachments or external documents will have attachments detected and logged, but files will not be processed by agent tools in v0.
 
+### V0 Canonical Results (Level 1 Baseline)
+
+Local research evaluation on the complete GAIA 2023 Validation set (Level 1) scored using the official GAIA scoring implementation:
+
+| Metric | Result |
+| :--- | :--- |
+| **Benchmark Split** | GAIA 2023 Validation — Level 1 |
+| **Model** | `gemini-3.5-flash-lite` |
+| **Prompt Version** | `baseline-v1` |
+| **Evaluated Tasks** | 53 / 53 (100% complete) |
+| **Overall Accuracy** | **26.42%** (14 / 53) |
+| **Completion Rate** | 92.45% (49 / 53) |
+| **Median Latency** | 4.49s |
+| **Average Tokens / Task** | 1,349.4 |
+| **Attachment Accuracy** | 27.27% (3 / 11) |
+| **Non-Attachment Accuracy** | 26.19% (11 / 42) |
+
+> **Baseline Definition**: V0 uses no external tools, web search, file parsing, Python execution, planning, reflection, or verification. This serves as the frozen baseline against which subsequent tool-augmented versions (e.g., V1 Web Search) will be measured.
+
 ---
 
 ## Getting Started
