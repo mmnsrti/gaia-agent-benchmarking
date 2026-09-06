@@ -121,17 +121,6 @@ def _parse_task_dict(data: Dict[str, Any], require_ground_truth: bool = False) -
 
 def resolve_gaia_data_path(data_path: Optional[str] = None) -> str:
     """Resolves local GAIA dataset path, searching standard candidate locations if none provided."""
-    if data_path and os.path.isfile(data_path):
-        return os.path.abspath(data_path)
-
-    search_dirs = []
-    if data_path and os.path.isdir(data_path):
-        search_dirs.append(os.path.abspath(data_path))
-    else:
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        search_dirs.append(os.path.join(repo_root, "data", "gaia"))
-        search_dirs.append(os.path.join(repo_root, "data"))
-
     candidate_rel_paths = [
         os.path.join("2023", "validation", "metadata.parquet"),
         os.path.join("validation", "metadata.parquet"),
@@ -142,6 +131,31 @@ def resolve_gaia_data_path(data_path: Optional[str] = None) -> str:
         "val.jsonl",
         "tasks.jsonl",
         "tasks.json",
+    ]
+
+    if data_path:
+        if os.path.isfile(data_path):
+            return os.path.abspath(data_path)
+        if os.path.isdir(data_path):
+            for rel_path in candidate_rel_paths:
+                full_path = os.path.join(data_path, rel_path)
+                if os.path.isfile(full_path):
+                    return os.path.abspath(full_path)
+            raise FileNotFoundError(
+                f"Local GAIA dataset not found in directory '{data_path}'.\n"
+                "Please ensure local benchmark data is placed in this directory (e.g. under 'data/gaia/')."
+            )
+        # data_path was specified as a file that does not exist
+        raise FileNotFoundError(
+            f"Local GAIA dataset not found at '{data_path}'.\n"
+            "Please ensure local benchmark data is placed under 'data/gaia/'."
+        )
+
+    # Search standard repository locations if data_path is None
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    search_dirs = [
+        os.path.join(repo_root, "data", "gaia"),
+        os.path.join(repo_root, "data"),
     ]
 
     for base_dir in search_dirs:
@@ -157,6 +171,7 @@ def resolve_gaia_data_path(data_path: Optional[str] = None) -> str:
         f"Searched locations include:\n{searched_desc}\n"
         "Note: Benchmark files are gitignored and must never be committed to the repository."
     )
+
 
 
 def load_gaia_tasks(

@@ -8,13 +8,13 @@ import argparse
 import os
 import sys
 import json
+import time
 from typing import Optional
 
 # Add repository root to python search path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from agent import GAIAAgent, LLMClient
-from evaluation.dataset import load_gaia_tasks
 from evaluation.dataset import load_gaia_tasks, EXPECTED_VALIDATION_COUNTS
 from evaluation.runner import execute_task
 from evaluation.experiment_logger import ExperimentLogger
@@ -30,6 +30,7 @@ def run_level(
     resume: bool = True,
     auto_eval: bool = True,
     enforce_task_count: bool = False,
+    delay: float = 0.0,
 ) -> str:
     """Runs the tool-free v0 baseline on all tasks for a specified GAIA level.
 
@@ -52,12 +53,12 @@ def run_level(
     run_tag = f"PARTIAL RUN (--limit {limit})" if limit else ("PARTIAL RUN" if is_partial else "COMPLETE BENCHMARK RUN")
 
     print("=" * 80)
-    print(f"GAIA BENCHMARK RUN — Level {level}")
-    print(f"Total tasks selected: {total_tasks}")
     print(f"GAIA BENCHMARK RUN — Level {level} [{run_tag}]")
     print(f"Total tasks selected: {total_tasks} (expected for complete split: {expected_tasks})")
     print(f"Agent version:        v0 (LLM-only baseline)")
     print(f"Resume existing:      {resume}")
+    if delay > 0:
+        print(f"Inter-task delay:     {delay}s")
     print("=" * 80)
 
     # Determine output predictions file
@@ -65,22 +66,39 @@ def run_level(
         experiments_v0 = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "experiments", "v0"))
         output_file = os.path.join(experiments_v0, f"predictions_level_{level}.jsonl")
 
+    if not resume and os.path.exists(output_file):
+        os.remove(output_file)
+
     # If resuming, check already completed task_ids
     completed_task_ids = set()
+    valid_records = []
     if resume and os.path.exists(output_file):
-        with open(output_file, "r", encoding="utf-8") as f:
+        with open(output_file, "r", encoding="utf-8-sig") as f:
             for line in f:
                 line = line.strip()
                 if line:
                     try:
                         record = json.loads(line)
                         t_id = record.get("task_id")
-                        if t_id:
+                        req_success = record.get("request_success")
+                        # Only count as completed if it did not fail due to a request error
+                        if t_id and req_success is not False:
                             completed_task_ids.add(t_id)
+                            valid_records.append(record)
                     except Exception:
                         pass
+
+        # If there were failed request records, prune them so retrying doesn't cause duplicates
+        with open(output_file, "r", encoding="utf-8-sig") as f:
+            total_file_lines = sum(1 for line in f if line.strip())
+        if len(valid_records) < total_file_lines:
+            print(f"Pruned {total_file_lines - len(valid_records)} failed request record(s) from {output_file} to allow clean retry.")
+            with open(output_file, "w", encoding="utf-8") as f:
+                for r in valid_records:
+                    f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
         if completed_task_ids:
-            print(f"Resuming run: found {len(completed_task_ids)} already completed task(s) in {output_file}.")
+            print(f"Resuming run: found {len(completed_task_ids)} completed task(s) in {output_file}.")
 
     # Initialize client & agent once
     llm = LLMClient()
@@ -108,10 +126,27 @@ def run_level(
             llm=llm,
         )
 
-        logger.append(record)
-
         status_str = "SUCCESS" if record["completion_success"] else ("FAIL (request)" if not record["request_success"] else "INCOMPLETE")
         print(f"--> Status: {status_str} | Latency: {record['latency_seconds']}s | Answer: {record['final_answer'][:60] if record['final_answer'] else '<None>'}")
+
+        # Check for rate limit / quota exhaustion (HTTP 429)
+        if not record["request_success"]:
+            err_msg = str(record.get("error_message") or "")
+            is_429 = "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg or "Quota exceeded" in err_msg
+            if is_429:
+                print("\n" + "!" * 80)
+                print(f"[RATE LIMIT / QUOTA EXHAUSTED] Task {task.task_id} failed with HTTP 429:")
+                print(f"  {err_msg}")
+                print("\nHalting run to preserve quota and avoid false failure logging.")
+                print("You can resume later with:")
+                print(f"  python -m evaluation.run_level --level {level}")
+                print("!" * 80 + "\n")
+                break
+
+        logger.append(record)
+
+        if delay > 0 and idx < total_tasks:
+            time.sleep(delay)
 
     print("\n" + "=" * 80)
     print(f"Completed run for Level {level}. Predictions saved to:\n  {output_file}")
@@ -132,7 +167,6 @@ def run_level(
             )
         except Exception as e:
             print(f"Auto-evaluation warning: {e}")
-            print(f"Auto-evaluation notice: {e}")
 
     return output_file
 
@@ -144,6 +178,7 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=int, default=None, help="Limit number of tasks to execute")
     parser.add_argument("--task-id", type=str, default=None, help="Run single specific task ID")
     parser.add_argument("--output", type=str, default=None, help="Custom output JSONL file for predictions")
+    parser.add_argument("--delay", type=float, default=1.0, help="Delay in seconds between tasks to prevent rate limiting (default: 1.0s)")
     parser.add_argument("--no-resume", action="store_true", help="Do not resume; re-run already executed tasks")
     parser.add_argument("--no-eval", action="store_true", help="Skip automatic local evaluation after level run")
     parser.add_argument("--enforce-task-count", action="store_true", help="Enforce exact expected task count during evaluation")
@@ -158,4 +193,5 @@ if __name__ == "__main__":
         resume=not args.no_resume,
         auto_eval=not args.no_eval,
         enforce_task_count=args.enforce_task_count,
+        delay=args.delay,
     )

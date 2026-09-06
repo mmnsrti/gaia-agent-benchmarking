@@ -258,7 +258,6 @@ def evaluate_predictions(
     dataset_version: str = "2023",
     dataset_split: str = "validation",
 ) -> Dict[str, Any]:
-    """Loads prediction records, matches with local ground truth, evaluates, and writes outputs."""
     """Loads prediction records, matches with local ground truth, evaluates, and writes outputs.
 
     Raises:
@@ -269,7 +268,7 @@ def evaluate_predictions(
         raise FileNotFoundError(f"Predictions file not found at '{predictions_path}'.")
 
     predictions: List[Dict[str, Any]] = []
-    with open(predictions_path, "r", encoding="utf-8") as f:
+    with open(predictions_path, "r", encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
             if line:
@@ -281,21 +280,11 @@ def evaluate_predictions(
     if not predictions:
         print(f"No predictions found for level {level} in {predictions_path}.")
         return {}
-        raise ValueError(f"No predictions found matching level {level} in '{predictions_path}'.")
 
-    # Load local ground truth dataset
-    try:
-        tasks = load_gaia_tasks(data_path=data_path, level=level)
-        tasks_by_id = {t.task_id: t for t in tasks}
-    except FileNotFoundError as e:
-        print(f"Warning: {e}")
-        print("Proceeding using embedded ground truth if available in predictions...")
-        tasks_by_id = {}
     # Load local ground truth dataset strictly requiring ground truth
     tasks = load_gaia_tasks(data_path=data_path, level=level, require_ground_truth=True)
     tasks_by_id = {t.task_id: t for t in tasks}
 
-    eval_result = calculate_metrics(predictions, tasks_by_id, level=level)
     eval_result = calculate_metrics(
         predictions=predictions,
         tasks_by_id=tasks_by_id,
@@ -307,10 +296,6 @@ def evaluate_predictions(
     summary = eval_result["summary"]
     detailed = eval_result["detailed"]
 
-    print("\n" + "=" * 60)
-    print(f"EVALUATION SUMMARY — Level {level if level is not None else 'All'}")
-    print("=" * 60)
-    print(f"Total Tasks:         {summary['total_tasks']}")
     if enforce_task_count and not summary["is_complete_benchmark"]:
         raise ValueError(
             f"Benchmark task count integrity check failed: expected {summary['expected_task_count']} tasks "
@@ -334,10 +319,8 @@ def evaluate_predictions(
     if summary['attachment_task_count'] > 0:
         print(f"Attachment Acc:      {summary['attachment_accuracy'] * 100 if summary['attachment_accuracy'] is not None else 0.0:.2f}% ({summary['attachment_task_count']} tasks)")
         print(f"Non-Attachment Acc:  {summary['non_attachment_accuracy'] * 100 if summary['non_attachment_accuracy'] is not None else 0.0:.2f}% ({summary['non_attachment_task_count']} tasks)")
-    print("=" * 60 + "\n")
     print("=" * 65 + "\n")
 
-    # Write summary if requested
     # Write safe summary if requested
     if summary_output:
         os.makedirs(os.path.dirname(os.path.abspath(summary_output)), exist_ok=True)

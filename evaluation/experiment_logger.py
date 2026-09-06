@@ -4,18 +4,28 @@ import subprocess
 from typing import Dict, Any, Optional
 
 
-def get_git_metadata() -> Dict[str, Optional[Any]]:
-    """Captures git commit, branch, and dirty status without raising exceptions."""
+_CACHED_GIT_METADATA: Optional[Dict[str, Optional[Any]]] = None
+
+
+def get_git_metadata(cached: bool = True) -> Dict[str, Optional[Any]]:
+    """Captures git commit, branch, and dirty status safely without lock contention."""
+    global _CACHED_GIT_METADATA
+    if cached and _CACHED_GIT_METADATA is not None:
+        return dict(_CACHED_GIT_METADATA)
+
     metadata = {
         "git_commit": None,
         "git_branch": None,
         "git_dirty": None,
     }
 
+    env = dict(os.environ, GIT_OPTIONAL_LOCKS="0")
+
     try:
         commit = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"],
-            stderr=subprocess.DEVNULL
+            ["git", "--no-optional-locks", "rev-parse", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            env=env,
         ).decode().strip()
         metadata["git_commit"] = commit or None
     except Exception:
@@ -23,8 +33,9 @@ def get_git_metadata() -> Dict[str, Optional[Any]]:
 
     try:
         branch = subprocess.check_output(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            stderr=subprocess.DEVNULL
+            ["git", "--no-optional-locks", "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            env=env,
         ).decode().strip()
         metadata["git_branch"] = branch or None
     except Exception:
@@ -32,12 +43,16 @@ def get_git_metadata() -> Dict[str, Optional[Any]]:
 
     try:
         status = subprocess.check_output(
-            ["git", "status", "--porcelain"],
-            stderr=subprocess.DEVNULL
+            ["git", "--no-optional-locks", "status", "--porcelain"],
+            stderr=subprocess.DEVNULL,
+            env=env,
         ).decode().strip()
         metadata["git_dirty"] = bool(status)
     except Exception:
         pass
+
+    if cached:
+        _CACHED_GIT_METADATA = dict(metadata)
 
     return metadata
 

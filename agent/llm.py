@@ -1,4 +1,5 @@
-﻿import os
+import os
+import time
 from dataclasses import dataclass
 from typing import Optional, Any
 from dotenv import load_dotenv
@@ -96,54 +97,65 @@ class LLMClient:
                 total_tokens=None,
             )
 
-        try:
-            config = self._build_config()
-            response = self._client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=config,
-            )
+        config = self._build_config()
+        max_retries = 3
+        response = None
+        for attempt in range(max_retries):
+            try:
+                response = self._client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=config,
+                )
+                break
+            except Exception as e:
+                err_str = str(e)
+                is_transient = "503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str
+                is_daily_cap = "GenerateRequestsPerDay" in err_str
+                if is_transient and not is_daily_cap and attempt < max_retries - 1:
+                    sleep_time = 2.0 * (attempt + 1)
+                    time.sleep(sleep_time)
+                    continue
+                raise RuntimeError(f"LLM generation failed on model '{self.model}': {e}") from e
 
-            raw_text = response.text or ""
-            text = raw_text.strip()
+        raw_text = response.text or ""
+        text = raw_text.strip()
 
-            finish_reason = None
-            if response.candidates:
-                raw_reason = getattr(response.candidates[0], "finish_reason", None)
-                if raw_reason is not None:
-                    finish_reason = raw_reason.value if hasattr(raw_reason, "value") else str(raw_reason)
+        finish_reason = None
+        if response.candidates:
+            raw_reason = getattr(response.candidates[0], "finish_reason", None)
+            if raw_reason is not None:
+                finish_reason = raw_reason.value if hasattr(raw_reason, "value") else str(raw_reason)
 
-            input_tokens = None
-            output_tokens = None
-            thinking_tokens = None
-            total_tokens = None
+        input_tokens = None
+        output_tokens = None
+        thinking_tokens = None
+        total_tokens = None
 
-            usage = getattr(response, "usage_metadata", None)
-            if usage is not None:
-                input_tokens = getattr(usage, "prompt_token_count", None)
-                output_tokens = getattr(usage, "candidates_token_count", None)
-                thinking_tokens = getattr(usage, "thoughts_token_count", None)
-                total_tokens = getattr(usage, "total_token_count", None)
+        usage = getattr(response, "usage_metadata", None)
+        if usage is not None:
+            input_tokens = getattr(usage, "prompt_token_count", None)
+            output_tokens = getattr(usage, "candidates_token_count", None)
+            thinking_tokens = getattr(usage, "thoughts_token_count", None)
+            total_tokens = getattr(usage, "total_token_count", None)
 
-            # Fallback for output_tokens if usage_metadata.candidates_token_count is unavailable
-            if output_tokens is None and response.candidates:
-                candidate_token_count = getattr(response.candidates[0], "token_count", None)
-                if candidate_token_count is not None:
-                    output_tokens = candidate_token_count
+        # Fallback for output_tokens if usage_metadata.candidates_token_count is unavailable
+        if output_tokens is None and response.candidates:
+            candidate_token_count = getattr(response.candidates[0], "token_count", None)
+            if candidate_token_count is not None:
+                output_tokens = candidate_token_count
 
-            response_id = getattr(response, "response_id", None)
-            model_version = getattr(response, "model_version", None)
+        response_id = getattr(response, "response_id", None)
+        model_version = getattr(response, "model_version", None)
 
-            return LLMResponse(
-                text=text,
-                raw_text=raw_text,
-                finish_reason=finish_reason,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                thinking_tokens=thinking_tokens,
-                total_tokens=total_tokens,
-                response_id=response_id,
-                model_version=model_version,
-            )
-        except Exception as e:
-            raise RuntimeError(f"LLM generation failed on model '{self.model}': {e}") from e
+        return LLMResponse(
+            text=text,
+            raw_text=raw_text,
+            finish_reason=finish_reason,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            thinking_tokens=thinking_tokens,
+            total_tokens=total_tokens,
+            response_id=response_id,
+            model_version=model_version,
+        )

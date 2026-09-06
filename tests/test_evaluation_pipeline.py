@@ -484,6 +484,78 @@ class TestEvaluationPipeline(unittest.TestCase):
             lines = [json.loads(line) for line in f if line.strip()]
         self.assertEqual(len(lines), 2)
 
+    @patch("agent.llm.LLMClient.generate")
+    @patch("evaluation.runner.get_git_metadata")
+    def test_run_level_prunes_failed_request_and_retries(self, mock_git, mock_generate):
+        mock_git.return_value = {"git_commit": "abc", "git_branch": "v0", "git_dirty": False}
+        output_predictions = os.path.join(self.test_dir, "failed_resume_predictions.jsonl")
+
+        # Pre-seed with task-l1-001 successful and task-l1-002 failed
+        good_record = {
+            "task_id": "task-l1-001",
+            "level": 1,
+            "final_answer": "Rome",
+            "request_success": True,
+            "completion_success": True,
+        }
+        failed_record = {
+            "task_id": "task-l1-002",
+            "level": 1,
+            "final_answer": None,
+            "request_success": False,
+            "completion_success": False,
+            "error_type": "ConnectionError",
+            "error_message": "Timeout",
+        }
+        with open(output_predictions, "w", encoding="utf-8") as f:
+            f.write(json.dumps(good_record) + "\n")
+            f.write(json.dumps(failed_record) + "\n")
+
+        # Mock generator called for task-l1-002 retry
+        mock_generate.return_value = LLMResponse(text="1500", finish_reason="STOP")
+
+        run_level(
+            level=1,
+            data_path=self.sample_dataset_path,
+            output_file=output_predictions,
+            resume=True,
+            auto_eval=False,
+        )
+
+        self.assertEqual(mock_generate.call_count, 1)
+        with open(output_predictions, "r", encoding="utf-8") as f:
+            lines = [json.loads(line) for line in f if line.strip()]
+        # Failed record must be replaced by new successful record without duplicates
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0]["task_id"], "task-l1-001")
+        self.assertEqual(lines[1]["task_id"], "task-l1-002")
+        self.assertTrue(lines[1]["request_success"])
+
+    @patch("agent.llm.LLMClient.generate")
+    @patch("evaluation.runner.get_git_metadata")
+    def test_run_level_halts_on_429_quota_exhausted(self, mock_git, mock_generate):
+        mock_git.return_value = {"git_commit": "abc", "git_branch": "v0", "git_dirty": False}
+        output_predictions = os.path.join(self.test_dir, "quota_halt_predictions.jsonl")
+
+        # Mock generate raising a 429 ClientError on the very first task
+        mock_generate.side_effect = RuntimeError("429 RESOURCE_EXHAUSTED: Quota exceeded")
+
+        run_level(
+            level=1,
+            data_path=self.sample_dataset_path,
+            output_file=output_predictions,
+            resume=False,
+            auto_eval=False,
+        )
+
+        # Should halt after task 1 and NOT attempt task 2
+        self.assertEqual(mock_generate.call_count, 1)
+        # 429 failure should NOT be logged to output file
+        if os.path.exists(output_predictions):
+            with open(output_predictions, "r", encoding="utf-8") as f:
+                lines = [json.loads(line) for line in f if line.strip()]
+            self.assertEqual(len(lines), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
