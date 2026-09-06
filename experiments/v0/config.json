@@ -1,0 +1,10 @@
+{
+  "project_version": "v0",
+  "description": "Tool-free Gemini baseline",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "baseline-v1",
+  "temperature": null,
+  "thinking_level": "medium",
+  "max_output_tokens": 2048,
+  "tools": []
+}
