@@ -56,24 +56,31 @@ Final Answer
 
 Tasks requiring attachments or external documents will have attachments detected and logged, but files will not be processed by agent tools in v0.
 
-### V0 Canonical Results (Level 1 Baseline)
+### V0 Canonical Results (GAIA 2023 Validation Baseline)
 
-Local research evaluation on the complete GAIA 2023 Validation set (Level 1) scored using the official GAIA scoring implementation:
+Local research evaluation on the complete GAIA 2023 Validation set (Levels 1, 2, and 3) scored using the official GAIA scoring implementation:
 
-| Metric | Result |
-| :--- | :--- |
-| **Benchmark Split** | GAIA 2023 Validation — Level 1 |
-| **Model** | `gemini-3.5-flash-lite` |
-| **Prompt Version** | `baseline-v1` |
-| **Evaluated Tasks** | 53 / 53 (100% complete) |
-| **Overall Accuracy** | **26.42%** (14 / 53) |
-| **Completion Rate** | 92.45% (49 / 53) |
-| **Median Latency** | 4.49s |
-| **Average Tokens / Task** | 1,349.4 |
-| **Attachment Accuracy** | 27.27% (3 / 11) |
-| **Non-Attachment Accuracy** | 26.19% (11 / 42) |
+| Benchmark Level | Evaluated Tasks | Completion Rate | Accuracy (Score) | Attachment Acc | Non-Attachment Acc |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Level 1** | 53 / 53 (100%) | 92.45% (49 / 53) | **26.42%** (14 / 53) | 27.27% (3 / 11) | 26.19% (11 / 42) |
+| **Level 2** | 86 / 86 (100%) | 96.51% (83 / 86) | **18.60%** (16 / 86) | 10.00% (2 / 20) | 21.21% (14 / 66) |
+| **Level 3** | 26 / 26 (100%) | 92.31% (24 / 26) | **11.54%** (3 / 26) | 0.00% (0 / 7) | 15.79% (3 / 19) |
+| **Overall** | **165 / 165 (100%)** | **94.55% (156 / 165)** | **20.00% (33 / 165)** | **13.16% (5 / 38)** | **22.05% (28 / 127)** |
 
-> **Baseline Definition**: V0 uses no external tools, web search, file parsing, Python execution, planning, reflection, or verification. This serves as the frozen baseline against which subsequent tool-augmented versions (e.g., V1 Web Search) will be measured.
+> **Baseline Definition**: V0 is a tool-free LLM-only baseline using `gemini-3.5-flash-lite` (prompt `baseline-v1`). It intentionally uses no external tools, web search, file parsing, Python execution, planning, reflection, or verification. This serves as the frozen reference baseline against which subsequent tool-augmented versions (e.g., V1 Web Search) will be measured.
+
+### V0 Failure Taxonomy Summary (Levels 1–3)
+
+Aggregate failure analysis across all incorrect or failed tasks (\(n=132\)) on the GAIA 2023 Validation set:
+
+| Failure Category | Level 1 (n=39) | Level 2 (n=70) | Level 3 (n=23) | Overall (n=132) | Description |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `requires_web` | 12 (30.8%) | 29 (41.4%) | 7 (30.4%) | **48 (36.4%)** | Requires external web browsing, search, or URL inspection |
+| `requires_attachment` | 8 (20.5%) | 18 (25.7%) | 7 (30.4%) | **33 (25.0%)** | Requires unparsed file attachments (PDF, XLSX, CSV, images) |
+| `knowledge_failure` | 8 (20.5%) | 14 (20.0%) | 4 (17.4%) | **26 (19.7%)** | Factual errors or domain knowledge absent from model weights |
+| `reasoning_failure` | 6 (15.4%) | 5 (7.1%) | 3 (13.0%) | **14 (10.6%)** | Complex multi-step deduction or calculation errors |
+| `incomplete_generation` | 4 (10.3%) | 3 (4.3%) | 2 (8.7%) | **9 (6.8%)** | Response budget exhaustion (`MAX_TOKENS`) or empty output |
+| `formatting_failure` | 1 (2.6%) | 1 (1.4%) | 0 (0.0%) | **2 (1.5%)** | Correct answer found in reasoning but missed strict normalization |
 
 ---
 

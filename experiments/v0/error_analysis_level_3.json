@@ -1,0 +1,20 @@
+{
+  "level": 3,
+  "total_tasks": 26,
+  "correct_tasks": 3,
+  "incorrect_or_failed_tasks": 23,
+  "failure_categories": {
+    "requires_attachment": 7,
+    "requires_web": 7,
+    "incomplete_generation": 2,
+    "reasoning_failure": 3,
+    "knowledge_failure": 4
+  },
+  "failure_percentages": {
+    "requires_attachment": 30.43,
+    "requires_web": 30.43,
+    "incomplete_generation": 8.7,
+    "reasoning_failure": 13.04,
+    "knowledge_failure": 17.39
+  }
+}
