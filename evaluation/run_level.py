@@ -14,6 +14,28 @@ from typing import Optional
 # Add repository root to python search path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+# Ensure Unicode output compatibility on Windows consoles
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+    except Exception:
+        pass
+
+
+def _safe_str(val: Optional[str], max_len: int = 80) -> str:
+    """Safely formats a string preview without UnicodeEncodeError on Windows."""
+    if not val:
+        return ""
+    snippet = str(val)[:max_len].replace("\n", " ")
+    enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        snippet.encode(enc)
+        return snippet
+    except UnicodeEncodeError:
+        return snippet.encode("ascii", errors="backslashreplace").decode("ascii")
+
+
 from agent import GAIAAgent, LLMClient
 from evaluation.dataset import load_gaia_tasks, EXPECTED_VALIDATION_COUNTS
 from evaluation.runner import execute_task
@@ -114,7 +136,7 @@ def run_level(
             continue
 
         print(f"\n[{idx}/{total_tasks}] Running Task ID: {task.task_id}")
-        print(f"Question (preview): {task.question[:80]}...")
+        print(f"Question (preview): {_safe_str(task.question, 80)}...")
         print(f"Attachment: {'yes (' + task.file_name + ')' if task.has_attachment else 'no'}")
 
         record = execute_task(
@@ -127,7 +149,7 @@ def run_level(
         )
 
         status_str = "SUCCESS" if record["completion_success"] else ("FAIL (request)" if not record["request_success"] else "INCOMPLETE")
-        print(f"--> Status: {status_str} | Latency: {record['latency_seconds']}s | Answer: {record['final_answer'][:60] if record['final_answer'] else '<None>'}")
+        print(f"--> Status: {status_str} | Latency: {record['latency_seconds']}s | Answer: {_safe_str(record['final_answer'], 60) if record['final_answer'] else '<None>'}")
 
         # Check for rate limit / quota exhaustion (HTTP 429)
         if not record["request_success"]:
