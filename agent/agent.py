@@ -7,9 +7,10 @@ from .llm import LLMResponse
 
 @dataclass
 class AgentResult:
-    """Encapsulates the raw model response and cleaned final answer."""
-    raw_response: str
-    final_answer: str
+    """Encapsulates untouched model output, normalized text, and cleaned final answer."""
+    raw_response: str           # Untouched model text directly from provider
+    final_answer: str           # Cleaned final answer (whitespace + prefix stripped)
+    normalized_response: str = "" # Moderately normalized model text (.strip())
     llm_response: Optional[LLMResponse] = None
     prompt: Optional[str] = None
     prompt_version: str = PROMPT_VERSION
@@ -50,11 +51,18 @@ class GAIAAgent:
         prompt = self.build_prompt(question)
         llm_resp = self.llm.generate(prompt)
 
-        raw_text = llm_resp.text if isinstance(llm_resp, LLMResponse) else str(llm_resp)
+        if isinstance(llm_resp, LLMResponse):
+            raw_text = llm_resp.raw_text if llm_resp.raw_text else llm_resp.text
+            norm_text = llm_resp.text
+        else:
+            raw_text = str(llm_resp)
+            norm_text = raw_text.strip()
+
         final_answer = self.clean_answer(raw_text)
 
         return AgentResult(
             raw_response=raw_text,
+            normalized_response=norm_text,
             final_answer=final_answer,
             llm_response=llm_resp if isinstance(llm_resp, LLMResponse) else None,
             prompt=prompt,

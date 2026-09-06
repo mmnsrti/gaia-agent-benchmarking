@@ -1,5 +1,5 @@
 ﻿import requests
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 DEFAULT_API_URL = "https://agents-course-unit4-scoring.hf.space"
 

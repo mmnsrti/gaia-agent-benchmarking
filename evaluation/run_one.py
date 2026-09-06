@@ -1,17 +1,13 @@
-import argparse
+﻿import argparse
 import os
 import sys
-import time
-import uuid
-from datetime import datetime, timezone
 
 # Add repository root to python search path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from agent import GAIAAgent, LLMClient
-from prompts.baseline import PROMPT_VERSION
 from evaluation.gaia_client import GAIAClient
-from evaluation.experiment_logger import ExperimentLogger, get_git_metadata
+from evaluation.experiment_logger import ExperimentLogger
+from evaluation.runner import execute_task
 
 
 def run_one(index: int = 0, task_id: str = None, log: bool = True) -> dict:
@@ -41,12 +37,17 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True) -> dict:
     q_task_id = target.get("task_id", "")
     question = target.get("question", "")
     file_name = target.get("file_name") or None
-    if file_name and not file_name.strip():
-        file_name = None
-    has_attachment = bool(file_name)
+    raw_level = target.get("Level") or target.get("level") or 1
+    try:
+        level = int(raw_level)
+    except (ValueError, TypeError):
+        level = 1
+
+    has_attachment = bool(file_name and str(file_name).strip())
 
     print("=" * 80)
     print(f"Task ID: {q_task_id}")
+    print(f"Level: {level}")
     print(f"Question: {question}")
     print(f"Attachment: {'yes' if has_attachment else 'no'}")
     if has_attachment:
@@ -54,123 +55,31 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True) -> dict:
         print("Note: v0 baseline intentionally does NOT process file attachments.")
     print("-" * 80)
 
-    run_id = str(uuid.uuid4())
-    git_meta = get_git_metadata()
+    record = execute_task(
+        task_id=q_task_id,
+        question=question,
+        level=level,
+        file_name=file_name,
+    )
 
-    llm = LLMClient()
-    agent = GAIAAgent(llm_client=llm)
-
-    start_time = time.time()
-    raw_response = None
-    final_answer = None
-    finish_reason = None
-    input_tokens = None
-    output_tokens = None
-    thinking_tokens = None
-    total_tokens = None
-    response_id = None
-    model_version = None
-
-    request_success = False
-    completion_success = False
-    error_type = None
-    error_message = None
-
-    prompt = agent.build_prompt(question)
-
-    try:
-        result = agent.run(question)
-        request_success = True
-        raw_response = result.raw_response
-        final_answer = result.final_answer
-
-        if result.llm_response:
-            llm_resp = result.llm_response
-            finish_reason = llm_resp.finish_reason
-            input_tokens = llm_resp.input_tokens
-            output_tokens = llm_resp.output_tokens
-            thinking_tokens = llm_resp.thinking_tokens
-            total_tokens = llm_resp.total_tokens
-            response_id = llm_resp.response_id
-            model_version = llm_resp.model_version
-
-            # Completion is only successful if model finished normally (STOP) and produced a non-empty response
-            if finish_reason == "STOP" and raw_response is not None and raw_response.strip() != "":
-                completion_success = True
-            else:
-                completion_success = False
-        else:
-            completion_success = False
-
-    except Exception as e:
-        error_type = type(e).__name__
-        error_message = str(e)
-        request_success = False
-        completion_success = False
-        print(f"Inference error ({error_type}): {error_message}")
-
-    latency = round(time.time() - start_time, 2)
-
-    print(f"Run ID: {run_id}")
-    print(f"Project Version: v0")
-    print(f"Model: {llm.model}")
-    print(f"Temperature: {llm.temperature}")
-    print(f"Max Output Tokens: {llm.max_output_tokens}")
-    print(f"Thinking Level: {llm.thinking_level}")
-    print(f"Prompt Version: {PROMPT_VERSION}")
-    print(f"Request Success: {request_success}")
-    print(f"Completion Success: {completion_success}")
-    print(f"Finish Reason: {finish_reason}")
-    if request_success:
-        print(f"Raw Response: {raw_response}")
-        print(f"Final Answer: {final_answer}")
-        print(f"Tokens: input={input_tokens}, thinking={thinking_tokens}, output={output_tokens}, total={total_tokens}")
+    print(f"Run ID: {record['run_id']}")
+    print(f"Project Version: {record['project_version']}")
+    print(f"Model: {record['model']}")
+    print(f"Temperature: {record['temperature']}")
+    print(f"Max Output Tokens: {record['max_output_tokens']}")
+    print(f"Thinking Level: {record['thinking_level']}")
+    print(f"Prompt Version: {record['prompt_version']}")
+    print(f"Request Success: {record['request_success']}")
+    print(f"Completion Success: {record['completion_success']}")
+    print(f"Finish Reason: {record['finish_reason']}")
+    if record["request_success"]:
+        print(f"Raw Response: {record['raw_response']}")
+        print(f"Final Answer: {record['final_answer']}")
+        print(f"Tokens: input={record['input_tokens']}, thinking={record['thinking_tokens']}, output={record['output_tokens']}, total={record['total_tokens']}")
     else:
-        print(f"Error: [{error_type}] {error_message}")
-    print(f"Latency: {latency} seconds")
+        print(f"Error: [{record['error_type']}] {record['error_message']}")
+    print(f"Latency: {record['latency_seconds']} seconds")
     print("=" * 80)
-
-    record = {
-        "schema_version": 2,
-        "run_id": run_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-
-        "project_version": "v0",
-        "git_commit": git_meta.get("git_commit"),
-        "git_branch": git_meta.get("git_branch"),
-        "git_dirty": git_meta.get("git_dirty"),
-
-        "task_id": q_task_id,
-        "question": question,
-        "attachment_required": has_attachment,
-        "file_name": file_name,
-
-        "model": llm.model,
-        "temperature": llm.temperature,
-        "max_output_tokens": llm.max_output_tokens,
-        "thinking_level": llm.thinking_level,
-
-        "prompt_version": PROMPT_VERSION,
-        "prompt": prompt,
-
-        "raw_response": raw_response,
-        "final_answer": final_answer,
-
-        "finish_reason": finish_reason,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "thinking_tokens": thinking_tokens,
-        "total_tokens": total_tokens,
-        "response_id": response_id,
-        "model_version": model_version,
-
-        "latency_seconds": latency,
-
-        "request_success": request_success,
-        "completion_success": completion_success,
-        "error_type": error_type,
-        "error_message": error_message,
-    }
 
     if log:
         logger = ExperimentLogger(version="v0")

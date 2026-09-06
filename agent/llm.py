@@ -11,7 +11,8 @@ load_dotenv()
 @dataclass
 class LLMResponse:
     """Structured response from LLM inference containing generated text, token metadata, and finish status."""
-    text: str
+    text: str  # Stripped/normalized model text
+    raw_text: str = ""  # Completely untouched model text directly from provider
     finish_reason: Optional[str] = None
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
@@ -103,7 +104,8 @@ class LLMClient:
                 config=config,
             )
 
-            text = response.text.strip() if response.text else ""
+            raw_text = response.text or ""
+            text = raw_text.strip()
 
             finish_reason = None
             if response.candidates:
@@ -134,6 +136,7 @@ class LLMClient:
 
             return LLMResponse(
                 text=text,
+                raw_text=raw_text,
                 finish_reason=finish_reason,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,

@@ -15,7 +15,8 @@ gaia-agent-benchmarking/
 │
 ├── agent/
 │   ├── __init__.py
-│   └── agent.py
+│   ├── agent.py
+│   └── llm.py
 │
 ├── tools/
 │   ├── __init__.py
@@ -23,10 +24,38 @@ gaia-agent-benchmarking/
 │
 ├── evaluation/
 │   ├── __init__.py
-│   └── gaia_client.py
+│   ├── gaia_client.py
+│   ├── dataset.py
+│   ├── runner.py
+│   ├── run_one.py
+│   ├── run_level.py
+│   ├── evaluate.py
+│   ├── metrics.py
+│   └── experiment_logger.py
+│
+├── experiments/
+│   └── v0/
+│       ├── .gitkeep
+│       ├── config.json
+│       ├── summary_level_1.json
+│       ├── runs.jsonl             (gitignored)
+│       └── predictions_*.jsonl    (gitignored)
+│
+├── data/
+│   └── gaia/                      (gitignored benchmark data)
+│       └── metadata.jsonl
 │
 ├── prompts/
-│   └── system_prompt.py
+│   ├── __init__.py
+│   └── baseline.py
+│
+├── tests/
+│   ├── __init__.py
+│   ├── test_agent.py
+│   ├── test_llm.py
+│   ├── test_run_one.py
+│   ├── test_experiment_logger.py
+│   └── test_evaluation_pipeline.py
 │
 ├── requirements.txt
 ├── README.md
@@ -690,16 +719,14 @@ The long-term architecture may look like:
 
 ---
 
-# Current Next Step
+# Current Status & Next Steps
 
-The immediate next step is:
+### Current Status: V0 — LLM-Only Baseline (Completed)
+- Clean, tool-free Gemini baseline agent (`GAIAAgent` in `agent/agent.py`).
+- Reproducible inference tracking with schema version 2 (`experiments/v0/runs.jsonl`, git metadata, thinking tokens, completion-aware success flags).
+- Research evaluation pipeline (`evaluation/run_level.py`, `evaluation/evaluate.py`, `evaluation/metrics.py`, `evaluation/dataset.py`) supporting local Level 1/2/3 benchmarking against ground truth without calling Hugging Face `/submit`.
 
-```text
-Move BasicAgent
-from app.py
-to agent/agent.py
-```
-
-Then add a development flow that can run a single GAIA question without submitting the full benchmark.
-
-Only after that should the first real LLM baseline be implemented.
+### Next Step: V1 — Web-Enabled Agent
+- Add search tool (`tools/web_search.py`) and webpage reader (`tools/browser.py`).
+- Benchmark V1 against exactly the same Level 1/2/3 tasks using the evaluation pipeline.
+- Generate comparative summaries (`experiments/v1/summary_level_*.json`) against V0.

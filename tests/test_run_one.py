@@ -1,4 +1,4 @@
-﻿import os
+import os
 import unittest
 from unittest.mock import patch, MagicMock
 from evaluation.run_one import run_one
@@ -16,7 +16,7 @@ class TestRunOneCompletion(unittest.TestCase):
 
     @patch.object(GAIAClient, "get_questions")
     @patch("agent.llm.LLMClient.generate")
-    @patch("evaluation.run_one.get_git_metadata")
+    @patch("evaluation.runner.get_git_metadata")
     def test_stop_with_non_empty_response_is_completion_success(self, mock_git, mock_generate, mock_get_questions):
         mock_get_questions.return_value = [self.sample_question]
         mock_git.return_value = {"git_commit": "abc", "git_branch": "main", "git_dirty": False}
@@ -32,7 +32,7 @@ class TestRunOneCompletion(unittest.TestCase):
 
     @patch.object(GAIAClient, "get_questions")
     @patch("agent.llm.LLMClient.generate")
-    @patch("evaluation.run_one.get_git_metadata")
+    @patch("evaluation.runner.get_git_metadata")
     def test_none_finish_reason_is_not_completion_success(self, mock_git, mock_generate, mock_get_questions):
         mock_get_questions.return_value = [self.sample_question]
         mock_git.return_value = {"git_commit": "abc", "git_branch": "main", "git_dirty": False}
@@ -46,7 +46,7 @@ class TestRunOneCompletion(unittest.TestCase):
 
     @patch.object(GAIAClient, "get_questions")
     @patch("agent.llm.LLMClient.generate")
-    @patch("evaluation.run_one.get_git_metadata")
+    @patch("evaluation.runner.get_git_metadata")
     def test_stop_with_empty_response_is_not_completion_success(self, mock_git, mock_generate, mock_get_questions):
         mock_get_questions.return_value = [self.sample_question]
         mock_git.return_value = {"git_commit": "abc", "git_branch": "main", "git_dirty": False}
@@ -60,7 +60,7 @@ class TestRunOneCompletion(unittest.TestCase):
 
     @patch.object(GAIAClient, "get_questions")
     @patch("agent.llm.LLMClient.generate")
-    @patch("evaluation.run_one.get_git_metadata")
+    @patch("evaluation.runner.get_git_metadata")
     def test_max_tokens_is_not_completion_success(self, mock_git, mock_generate, mock_get_questions):
         mock_get_questions.return_value = [self.sample_question]
         mock_git.return_value = {"git_commit": "abc", "git_branch": "main", "git_dirty": False}
@@ -74,7 +74,7 @@ class TestRunOneCompletion(unittest.TestCase):
 
     @patch.object(GAIAClient, "get_questions")
     @patch("agent.llm.LLMClient.generate")
-    @patch("evaluation.run_one.get_git_metadata")
+    @patch("evaluation.runner.get_git_metadata")
     def test_api_exception_produces_request_and_completion_failure(self, mock_git, mock_generate, mock_get_questions):
         mock_get_questions.return_value = [self.sample_question]
         mock_git.return_value = {"git_commit": "abc", "git_branch": "main", "git_dirty": False}
