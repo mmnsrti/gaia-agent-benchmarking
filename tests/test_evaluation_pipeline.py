@@ -373,11 +373,13 @@ class TestEvaluationPipeline(unittest.TestCase):
         with open(summary_file, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # Public summary MUST NOT leak any question or answer text
+        # Public summary MUST NOT leak any question or answer text or keys
         self.assertNotIn("Confidential question", content)
         self.assertNotIn("Classified answer", content)
         self.assertNotIn("Raw classified answer", content)
         self.assertNotIn("secret.pdf", content)
+        for forbidden_key in ["question", "ground_truth", "final_answer", "raw_response", "predictions"]:
+            self.assertNotIn(forbidden_key, res["summary"])
 
         # But it MUST contain reproducibility metadata
         self.assertIn("dataset_name", content)
