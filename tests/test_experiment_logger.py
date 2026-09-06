@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import shutil
 import tempfile
@@ -92,6 +92,20 @@ class TestExperimentLogger(unittest.TestCase):
         self.assertIn('"final_answer": null', content)
         self.assertNotIn("API_KEY", content)
         self.assertNotIn("fake-key", content)
+
+    def test_ensure_healthy_git_index_repairs_corrupt_index(self):
+        from evaluation.experiment_logger import ensure_healthy_git_index
+        # Create a mock .git directory with a 0-byte index
+        git_dir = os.path.join(self.test_dir, ".git")
+        os.makedirs(git_dir, exist_ok=True)
+        index_path = os.path.join(git_dir, "index")
+        with open(index_path, "w") as f:
+            f.write("")  # 0 bytes
+
+        self.assertEqual(os.path.getsize(index_path), 0)
+        # Should detect < 12 bytes and remove the corrupted index
+        ensure_healthy_git_index(self.test_dir)
+        self.assertFalse(os.path.exists(index_path))
 
 
 if __name__ == "__main__":
