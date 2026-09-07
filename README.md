@@ -142,17 +142,17 @@ Local research evaluation on the complete GAIA 2023 Validation set (Levels 1, 2,
 
 | Benchmark Level | V0 Frozen Historical | V0 Matched-Control | V1 Canonical (Web Search) | Controlled Delta | Historical Delta |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Level 1** | 26.42% (14 / 53) | 28.30% (15 / 53) | **52.83%** (28 / 53) | **+24.53%** | +26.41% |
-| **Level 2** | 18.60% (16 / 86) | 19.77% (17 / 86) | **27.91%** (24 / 86) | **+8.14%** | +9.31% |
-| **Level 3** | 11.54% (3 / 26) | 7.69% (2 / 26) | **11.54%** (3 / 26) | **+3.85%** | +0.00% |
-| **Overall** | **20.00%** (33 / 165) | **20.61%** (34 / 165) | **33.33%** (55 / 165) | **+12.72%** | **+13.33%** |
+| **Level 1** | 26.42% (14 / 53) | 28.30% (15 / 53) | **52.83%** (28 / 53) | **+24.53 pp** | +26.41 pp |
+| **Level 2** | 18.60% (16 / 86) | 19.77% (17 / 86) | **27.91%** (24 / 86) | **+8.14 pp** | +9.31 pp |
+| **Level 3** | 11.54% (3 / 26) | 7.69% (2 / 26) | **11.54%** (3 / 26) | **+3.85 pp** | +0.00 pp |
+| **Overall** | **20.00%** (33 / 165) | **20.61%** (34 / 165) | **33.33%** (55 / 165) | **+12.72 pp** | **+13.33 pp** |
 
 #### Task Type Breakdown (V1 Overall)
 
 | Task Type | Total Tasks | V0 Matched-Control Correct (Acc) | V1 Canonical Correct (Acc) | Delta (pp) |
 | :--- | :--- | :--- | :--- | :--- |
-| **Non-Attachment** | 127 | 29 (22.83%) | **52 (40.94%)** | **+18.11%** |
-| **Attachment-Required** | 38 | 5 (13.16%) | **3 (7.89%)** | **-5.27%** |
+| **Non-Attachment** | 127 | 29 (22.83%) | **52 (40.94%)** | **+18.11 pp** |
+| **Attachment-Required** | 38 | 5 (13.16%) | **3 (7.89%)** | **-5.27 pp** |
 
 > **Ablation Comparison & Baseline Differentiation**:
 > - **V0 frozen historical**: **20.00%** (33 / 165 correct) — Frozen reference baseline established on the `v0-LLM-only` branch.
