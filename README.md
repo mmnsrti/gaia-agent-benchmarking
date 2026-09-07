@@ -206,6 +206,7 @@ Final Answer
    - **Python Source (`.py`)**: Source text extraction only. Code is **strictly prohibited from execution** (`exec`, `eval`, and `subprocess` are completely absent).
    - **Word Documents (`.docx`)**: Paragraph headings, body text, and table cells parsed via `python-docx`.
    - **Spreadsheets (`.xlsx`, `.xls`)**: Sheet structure, merged cell coordinates, and formatted cell coordinates/values via `openpyxl`.
+   - **Spreadsheets (`.xlsx`)**: Sheet structure, merged cell coordinates, and formatted cell coordinates/values via `openpyxl`. Legacy binary `.xls` files are unsupported and deterministically trigger fallback.
    - **Presentations (`.pptx`)**: Slide headings, text frames, bullet points, and tables via `python-pptx`.
    - **Native Multimodal Media (`.png`, `.jpg`, `.jpeg`, `.mp3`)**: Binary dispatch to Gemini multimodal parts (`types.Part.from_bytes`) alongside the structured prompt.
    - **PDFs (`.pdf`)**: Native document processing via Gemini multimodal API with `pypdf` text extraction fallback.

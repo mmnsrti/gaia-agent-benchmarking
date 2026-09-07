@@ -225,6 +225,25 @@ answer = 42
         self.assertIn("A1 | value=Metric", result.text_content)
         self.assertIn("B2 | value=1000000", result.text_content)
 
+    @patch("openpyxl.load_workbook")
+    def test_xls_rejected_as_unsupported_without_calling_openpyxl(self, mock_load_workbook):
+        """Verify legacy binary .xls is rejected deterministically and openpyxl is never invoked."""
+        xls_path = os.path.join(self.temp_dir.name, "legacy.xls")
+        with open(xls_path, "wb") as f:
+            f.write(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
+
+        result = self.tool.process_file(xls_path)
+
+        # 1. Rejected deterministically
+        self.assertFalse(result.success)
+        self.assertEqual(result.error_type, "UnsupportedFileTypeError")
+        self.assertEqual(result.file_extension, ".xls")
+        self.assertIn("not supported in V2", result.error_message)
+        self.assertIsNone(result.processor)
+
+        # 2. openpyxl loader must never be called
+        mock_load_workbook.assert_not_called()
+
     def test_pptx_processing(self):
         pptx_path = os.path.join(self.temp_dir.name, "presentation.pptx")
         prs = Presentation()
@@ -389,6 +408,35 @@ class TestGAIAFileAgent(unittest.TestCase):
         self.assertIsNotNone(self.llm.last_attachment_parts)
         self.assertEqual(len(self.llm.last_attachment_parts), 1)
 
+    @patch("openpyxl.load_workbook")
+    def test_xls_attachment_triggers_file_fallback(self, mock_load_workbook):
+        """When a .xls file is encountered, agent triggers file fallback without invoking openpyxl."""
+        xls_path = os.path.join(self.temp_dir.name, "data.xls")
+        with open(xls_path, "wb") as f:
+            f.write(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
+
+        question = "What is the sum in data.xls?"
+        result = self.agent.run(question, file_path=xls_path)
+
+        # 1. Search must be called once
+        self.assertEqual(self.search_tool.call_count, 1)
+
+        # 2. openpyxl loader must never be called
+        mock_load_workbook.assert_not_called()
+
+        # 3. File result rejected as UnsupportedFileTypeError
+        self.assertIsNotNone(result.file_result)
+        self.assertFalse(result.file_result.success)
+        self.assertEqual(result.file_result.error_type, "UnsupportedFileTypeError")
+        self.assertTrue(result.file_fallback)
+
+        # 4. Falls back to web-search-v1 prompt
+        self.assertEqual(result.prompt_version, WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(result.primary_prompt_version, FILE_SEARCH_PROMPT_VERSION)
+        self.assertEqual(result.fallback_prompt_version, WEB_SEARCH_PROMPT_VERSION)
+        self.assertIn("Web Search Evidence:", self.llm.last_prompt)
+        self.assertNotIn("ATTACHMENT EVIDENCE", self.llm.last_prompt)
+
 
 class TestV2RunnerAndEvaluationPipeline(unittest.TestCase):
     """Tests for runner.py and evaluate.py V2 metric calculations."""
@@ -442,6 +490,44 @@ class TestV2RunnerAndEvaluationPipeline(unittest.TestCase):
         self.assertFalse(record["file_fallback"])
         self.assertTrue(record["search_enabled"])
         self.assertEqual(record["search_call_count"], 1)
+
+    def test_runner_v2_records_xls_unsupported_and_fallback(self):
+        xls_path = os.path.join(self.temp_dir.name, "old.xls")
+        with open(xls_path, "wb") as f:
+            f.write(b"\xd0\xcf\x11\xe0")
+
+        task = GAIATask(
+            task_id="test-task-v2-xls",
+            question="Analyze this old spreadsheet",
+            level=1,
+            final_answer="answer",
+            file_name="old.xls",
+            file_path=xls_path,
+        )
+
+        llm = MockLLMClient(response_text="answer")
+        search = MockSearchTool(success=True)
+        file_tool = FileTool()
+        agent = GAIAFileAgent(llm_client=llm, search_tool=search, file_tool=file_tool)
+
+        record = execute_task(
+            task_id=task.task_id,
+            question=task.question,
+            level=task.level,
+            file_name=task.file_name,
+            file_path=xls_path,
+            agent=agent,
+            llm=llm,
+            project_version="v2",
+        )
+
+        self.assertTrue(record["file_enabled"])
+        self.assertTrue(record["file_present"])
+        self.assertEqual(record["file_extension"], ".xls")
+        self.assertTrue(record["file_processing_attempted"])
+        self.assertFalse(record["file_processing_success"])
+        self.assertEqual(record["file_error_type"], "UnsupportedFileTypeError")
+        self.assertTrue(record["file_fallback"])
 
     def test_calculate_metrics_aggregates_v2_file_statistics(self):
         mock_tasks = {

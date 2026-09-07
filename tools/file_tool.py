@@ -62,7 +62,7 @@ class FileTool:
     TEXT_EXTENSIONS = {".txt", ".md", ".csv", ".json"}
     PYTHON_EXTENSIONS = {".py"}
     DOCX_EXTENSIONS = {".docx"}
-    XLSX_EXTENSIONS = {".xlsx", ".xls"}
+    XLSX_EXTENSIONS = {".xlsx"}
     PPTX_EXTENSIONS = {".pptx"}
     IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
     AUDIO_EXTENSIONS = {".mp3"}
