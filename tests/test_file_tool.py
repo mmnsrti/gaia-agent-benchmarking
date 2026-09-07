@@ -4,6 +4,7 @@ All tests use local files or mocks to ensure no external network or API calls ar
 """
 
 import os
+import json
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
@@ -165,6 +166,7 @@ class TestFileToolProcessing(unittest.TestCase):
         # Malicious code that writes a file if executed via exec(), eval(), or subprocess
         malicious_code = f"""
 import os
+import json
 with open(r'{marker_file}', 'w') as f:
     f.write('EXPLOIT_EXECUTED')
 answer = 42
@@ -864,6 +866,329 @@ class TestV2RunnerAndEvaluationPipeline(unittest.TestCase):
         self.assertEqual(ext_breakdown[".txt"]["correct"], 1)
         self.assertEqual(ext_breakdown[".xlsx"]["total"], 1)
         self.assertEqual(ext_breakdown[".xlsx"]["correct"], 0)
+
+
+
+
+class TestV2PromptProvenance(unittest.TestCase):
+    """Rigorous verification of prompt provenance tracking across tasks and aggregate reporting."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_scenario1_v2_non_attachment_prompt_provenance(self):
+        """Test 1: V2 non-attachment + search success -> actual web-search-v1, primary web-search-v1, fallback baseline-v1."""
+        llm = MockLLMClient(response_text="42")
+        search = MockSearchTool(success=True)
+        file_tool = FileTool()
+        agent = GAIAFileAgent(llm_client=llm, search_tool=search, file_tool=file_tool)
+
+        # Direct agent call
+        result = agent.run("What is 6 * 7?", file_path=None)
+        self.assertEqual(result.prompt_version, WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(result.primary_prompt_version, WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(result.fallback_prompt_version, "baseline-v1")
+        self.assertFalse(result.file_fallback)
+        self.assertIsNone(result.file_result)
+
+        # Runner execution
+        record = execute_task(
+            task_id="test-non-att-task",
+            question="What is 6 * 7?",
+            level=1,
+            file_name=None,
+            file_path=None,
+            agent=agent,
+            llm=llm,
+            project_version="v2",
+        )
+        self.assertFalse(record["attachment_required"])
+        self.assertEqual(record["prompt_version"], WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(record["primary_prompt_version"], WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(record["fallback_prompt_version"], "baseline-v1")
+        self.assertFalse(record["file_fallback"])
+        self.assertFalse(record["file_processing_attempted"])
+
+    def test_scenario2_v2_attachment_file_success_prompt_provenance(self):
+        """Test 2: V2 attachment + file success -> prompt file-search-v1, primary file-search-v1, fallback web-search-v1."""
+        sample_path = os.path.join(self.temp_dir.name, "sample.txt")
+        with open(sample_path, "w", encoding="utf-8") as f:
+            f.write("GAIA attachment content")
+
+        llm = MockLLMClient(response_text="extracted answer")
+        search = MockSearchTool(success=True)
+        file_tool = FileTool()
+        agent = GAIAFileAgent(llm_client=llm, search_tool=search, file_tool=file_tool)
+
+        # Direct agent call
+        result = agent.run("What is in the file?", file_path=sample_path)
+        self.assertEqual(result.prompt_version, FILE_SEARCH_PROMPT_VERSION)
+        self.assertEqual(result.primary_prompt_version, FILE_SEARCH_PROMPT_VERSION)
+        self.assertEqual(result.fallback_prompt_version, WEB_SEARCH_PROMPT_VERSION)
+        self.assertFalse(result.file_fallback)
+        self.assertIsNotNone(result.file_result)
+        self.assertTrue(result.file_result.success)
+
+        # Runner execution
+        record = execute_task(
+            task_id="test-att-task",
+            question="What is in the file?",
+            level=1,
+            file_name="sample.txt",
+            file_path=sample_path,
+            agent=agent,
+            llm=llm,
+            project_version="v2",
+        )
+        self.assertTrue(record["attachment_required"])
+        self.assertEqual(record["prompt_version"], FILE_SEARCH_PROMPT_VERSION)
+        self.assertEqual(record["primary_prompt_version"], FILE_SEARCH_PROMPT_VERSION)
+        self.assertEqual(record["fallback_prompt_version"], WEB_SEARCH_PROMPT_VERSION)
+        self.assertFalse(record["file_fallback"])
+        self.assertTrue(record["file_processing_success"])
+
+    def test_scenario3_v2_attachment_file_failure_web_fallback_prompt_provenance(self):
+        """Test 3: V2 attachment file failure + web fallback -> prompt web-search-v1, primary file-search-v1, fallback web-search-v1."""
+        missing_path = os.path.join(self.temp_dir.name, "nonexistent.pdf")
+
+        llm = MockLLMClient(response_text="fallback answer")
+        search = MockSearchTool(success=True)
+        file_tool = FileTool()
+        agent = GAIAFileAgent(llm_client=llm, search_tool=search, file_tool=file_tool)
+
+        # Direct agent call with nonexistent file
+        result = agent.run("Find information from attachment", file_path=missing_path)
+        self.assertEqual(result.prompt_version, WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(result.primary_prompt_version, FILE_SEARCH_PROMPT_VERSION)
+        self.assertEqual(result.fallback_prompt_version, WEB_SEARCH_PROMPT_VERSION)
+        self.assertTrue(result.file_fallback)
+        self.assertIsNotNone(result.file_result)
+        self.assertFalse(result.file_result.success)
+
+        # Runner execution with missing file
+        record = execute_task(
+            task_id="test-att-fail-task",
+            question="Find information from attachment",
+            level=1,
+            file_name="nonexistent.pdf",
+            file_path=missing_path,
+            agent=agent,
+            llm=llm,
+            project_version="v2",
+        )
+        self.assertTrue(record["attachment_required"])
+        self.assertEqual(record["prompt_version"], WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(record["primary_prompt_version"], FILE_SEARCH_PROMPT_VERSION)
+        self.assertEqual(record["fallback_prompt_version"], WEB_SEARCH_PROMPT_VERSION)
+        self.assertTrue(record["file_fallback"])
+        self.assertFalse(record["file_processing_success"])
+
+    def test_scenario4_single_task_non_attachment_v2_summary(self):
+        """Test 4: Single-task non-attachment V2 summary does not claim file-search-v1."""
+        mock_tasks = {
+            "task-non-att": GAIATask("task-non-att", "What is 2+2?", 1, "4"),
+        }
+        predictions = [
+            {
+                "task_id": "task-non-att",
+                "level": 1,
+                "project_version": "v2",
+                "request_success": True,
+                "completion_success": True,
+                "final_answer": "4",
+                "attachment_required": False,
+                "prompt_version": "web-search-v1",
+                "primary_prompt_version": "web-search-v1",
+                "fallback_prompt_version": "baseline-v1",
+                "search_enabled": True,
+                "search_success": True,
+                "search_call_count": 1,
+                "file_enabled": True,
+                "file_present": False,
+                "file_processing_attempted": False,
+                "file_processing_success": False,
+                "file_fallback": False,
+            }
+        ]
+        eval_result = calculate_metrics(
+            predictions=predictions,
+            tasks_by_id=mock_tasks,
+            level=1,
+            project_version="v2",
+        )
+        summary = eval_result["summary"]
+        self.assertEqual(summary["prompt_version"], "web-search-v1")
+        self.assertEqual(summary["primary_prompt_version"], "web-search-v1")
+        self.assertEqual(summary["fallback_prompt_version"], "baseline-v1")
+        self.assertEqual(summary["prompt_version_counts"], {"web-search-v1": 1})
+        self.assertNotIn("file-search-v1", summary["prompt_version"])
+
+    def test_scenario5_mixed_v2_predictions_prompt_version_counts(self):
+        """Test 5: Mixed V2 predictions produce accurate prompt_version_counts and combined provenance."""
+        mock_tasks = {
+            "task-att-1": GAIATask("task-att-1", "Q1", 1, "A1", file_name="f1.txt"),
+            "task-att-2": GAIATask("task-att-2", "Q2", 1, "A2", file_name="f2.txt"),
+            "task-att-fail": GAIATask("task-att-fail", "Q3", 1, "A3", file_name="f3.pdf"),
+            "task-no-att": GAIATask("task-no-att", "Q4", 1, "A4"),
+        }
+        predictions = [
+            {
+                "task_id": "task-att-1",
+                "level": 1,
+                "project_version": "v2",
+                "final_answer": "A1",
+                "prompt_version": "file-search-v1",
+                "primary_prompt_version": "file-search-v1",
+                "fallback_prompt_version": "web-search-v1",
+                "attachment_required": True,
+                "file_enabled": True,
+                "file_present": True,
+                "file_processing_attempted": True,
+                "file_processing_success": True,
+                "file_fallback": False,
+            },
+            {
+                "task_id": "task-att-2",
+                "level": 1,
+                "project_version": "v2",
+                "final_answer": "A2",
+                "prompt_version": "file-search-v1",
+                "primary_prompt_version": "file-search-v1",
+                "fallback_prompt_version": "web-search-v1",
+                "attachment_required": True,
+                "file_enabled": True,
+                "file_present": True,
+                "file_processing_attempted": True,
+                "file_processing_success": True,
+                "file_fallback": False,
+            },
+            {
+                "task_id": "task-att-fail",
+                "level": 1,
+                "project_version": "v2",
+                "final_answer": "A3",
+                "prompt_version": "web-search-v1",
+                "primary_prompt_version": "file-search-v1",
+                "fallback_prompt_version": "web-search-v1",
+                "attachment_required": True,
+                "file_enabled": True,
+                "file_present": False,
+                "file_processing_attempted": True,
+                "file_processing_success": False,
+                "file_fallback": True,
+            },
+            {
+                "task_id": "task-no-att",
+                "level": 1,
+                "project_version": "v2",
+                "final_answer": "A4",
+                "prompt_version": "web-search-v1",
+                "primary_prompt_version": "web-search-v1",
+                "fallback_prompt_version": "baseline-v1",
+                "attachment_required": False,
+                "file_enabled": True,
+                "file_present": False,
+                "file_processing_attempted": False,
+                "file_processing_success": False,
+                "file_fallback": False,
+            },
+        ]
+        eval_result = calculate_metrics(
+            predictions=predictions,
+            tasks_by_id=mock_tasks,
+            level=1,
+            project_version="v2",
+        )
+        summary = eval_result["summary"]
+        self.assertEqual(summary["prompt_version_counts"], {"file-search-v1": 2, "web-search-v1": 2})
+        self.assertEqual(summary["primary_prompt_version"], "file-search-v1 / web-search-v1")
+        self.assertEqual(summary["fallback_prompt_version"], "web-search-v1 / baseline-v1")
+
+    def test_scenario6_summary_dictionary_no_duplicate_keys(self):
+        """Test 6: Verify summary dictionary has no duplicate key issues and serializes cleanly."""
+        mock_tasks = {
+            "task-1": GAIATask("task-1", "Q", 1, "A"),
+        }
+        predictions = [
+            {
+                "task_id": "task-1",
+                "level": 1,
+                "project_version": "v2",
+                "final_answer": "A",
+                "prompt_version": "web-search-v1",
+                "primary_prompt_version": "web-search-v1",
+                "fallback_prompt_version": "baseline-v1",
+                "attachment_required": False,
+                "file_enabled": True,
+            }
+        ]
+        eval_result = calculate_metrics(
+            predictions=predictions,
+            tasks_by_id=mock_tasks,
+            level=1,
+            project_version="v2",
+        )
+        summary = eval_result["summary"]
+        self.assertIn("prompt_version", summary)
+        self.assertIn("primary_prompt_version", summary)
+        self.assertIn("fallback_prompt_version", summary)
+        self.assertIn("prompt_version_counts", summary)
+
+        # Test JSON round-trip serialization
+        dumped = json.dumps(summary)
+        loaded = json.loads(dumped)
+        self.assertEqual(loaded["prompt_version"], "web-search-v1")
+        self.assertEqual(loaded["primary_prompt_version"], "web-search-v1")
+        self.assertEqual(loaded["fallback_prompt_version"], "baseline-v1")
+        self.assertEqual(loaded["prompt_version_counts"], {"web-search-v1": 1})
+
+    def test_scenario7_v0_and_v1_provenance_unchanged(self):
+        """Test 7: Verify V0 and V1 provenance remains completely unchanged."""
+        mock_tasks = {
+            "task-0": GAIATask("task-0", "Q0", 1, "A0"),
+            "task-1": GAIATask("task-1", "Q1", 1, "A1"),
+        }
+        # V0 evaluation
+        v0_predictions = [
+            {
+                "task_id": "task-0",
+                "level": 1,
+                "project_version": "v0",
+                "final_answer": "A0",
+                "prompt_version": "baseline-v1",
+                "attachment_required": False,
+            }
+        ]
+        v0_eval = calculate_metrics(v0_predictions, mock_tasks, level=1, project_version="v0")
+        v0_sum = v0_eval["summary"]
+        self.assertEqual(v0_sum["prompt_version"], "baseline-v1")
+        self.assertEqual(v0_sum["primary_prompt_version"], "baseline-v1")
+        self.assertIsNone(v0_sum["fallback_prompt_version"])
+        self.assertEqual(v0_sum["prompt_version_counts"], {"baseline-v1": 1})
+
+        # V1 evaluation
+        v1_predictions = [
+            {
+                "task_id": "task-1",
+                "level": 1,
+                "project_version": "v1",
+                "final_answer": "A1",
+                "prompt_version": "web-search-v1",
+                "primary_prompt_version": "web-search-v1",
+                "fallback_prompt_version": "baseline-v1",
+                "attachment_required": False,
+                "search_enabled": True,
+            }
+        ]
+        v1_eval = calculate_metrics(v1_predictions, mock_tasks, level=1, project_version="v1")
+        v1_sum = v1_eval["summary"]
+        self.assertEqual(v1_sum["prompt_version"], "web-search-v1")
+        self.assertEqual(v1_sum["primary_prompt_version"], "web-search-v1")
+        self.assertEqual(v1_sum["fallback_prompt_version"], "baseline-v1")
+        self.assertEqual(v1_sum["prompt_version_counts"], {"web-search-v1": 1})
 
 
 if __name__ == "__main__":

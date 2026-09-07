@@ -294,20 +294,65 @@ def calculate_metrics(
     if predictions and predictions[0].get("project_version"):
         resolved_pv = predictions[0].get("project_version")
 
+    # Collect prompt version counts from actual predictions
+    prompt_version_counts: Dict[str, int] = {}
+    for pred in predictions:
+        pv = pred.get("prompt_version")
+        if pv:
+            prompt_version_counts[pv] = prompt_version_counts.get(pv, 0) + 1
+
+    distinct_primary = [p for p in dict.fromkeys(pred.get("primary_prompt_version") for pred in predictions if pred.get("primary_prompt_version"))]
+    distinct_fallback = [p for p in dict.fromkeys(pred.get("fallback_prompt_version") for pred in predictions if pred.get("fallback_prompt_version"))]
+
     # Determine prompt version provenance
     # Avoid recording entire run as 'baseline-v1' if task 0 experienced search fallback
     if resolved_pv == "v2" or has_file:
         primary_pv = "file-search-v1"
         fallback_pv = "web-search-v1"
+        if distinct_primary:
+            if len(distinct_primary) == 1:
+                primary_pv = distinct_primary[0]
+                fallback_pv = distinct_fallback[0] if distinct_fallback else ("web-search-v1" if primary_pv == "file-search-v1" else "baseline-v1")
+                prompt_pv = primary_pv
+            else:
+                # Mixed V2 run (both file-search-v1 and web-search-v1 paths present)
+                preferred_order = ["file-search-v1", "web-search-v1"]
+                sorted_primary = sorted(distinct_primary, key=lambda x: preferred_order.index(x) if x in preferred_order else 99)
+                primary_pv = " / ".join(sorted_primary)
+
+                preferred_fb_order = ["web-search-v1", "baseline-v1"]
+                sorted_fb = sorted(distinct_fallback, key=lambda x: preferred_fb_order.index(x) if x in preferred_fb_order else 99)
+                fallback_pv = " / ".join(sorted_fb) if sorted_fb else "web-search-v1 / baseline-v1"
+                prompt_pv = primary_pv
+        else:
+            # Fallback if prediction records lack explicit primary_prompt_version
+            if attachment_count > 0 and non_attachment_count == 0:
+                primary_pv = "file-search-v1"
+                fallback_pv = "web-search-v1"
+                prompt_pv = "file-search-v1"
+            elif non_attachment_count > 0 and attachment_count == 0:
+                primary_pv = "web-search-v1"
+                fallback_pv = "baseline-v1"
+                prompt_pv = "web-search-v1"
+            else:
+                primary_pv = "file-search-v1 / web-search-v1"
+                fallback_pv = "web-search-v1 / baseline-v1"
+                prompt_pv = "file-search-v1 / web-search-v1"
     elif resolved_pv == "v1" or has_search:
         primary_pv = "web-search-v1"
         fallback_pv = "baseline-v1"
+        prompt_pv = "web-search-v1"
     else:
         primary_pv = prompt_version or (
-            next((p.get("primary_prompt_version") for p in predictions if p.get("primary_prompt_version")), None)
-            or next((p.get("prompt_version") for p in predictions if p.get("prompt_version")), "baseline-v1")
+            distinct_primary[0] if distinct_primary else
+            next((p.get("prompt_version") for p in predictions if p.get("prompt_version")), "baseline-v1")
         )
-        fallback_pv = next((p.get("fallback_prompt_version") for p in predictions if p.get("fallback_prompt_version")), None)
+        fallback_pv = distinct_fallback[0] if distinct_fallback else None
+        prompt_pv = primary_pv
+
+    if prompt_version is not None:
+        prompt_pv = prompt_version
+        primary_pv = prompt_version
 
     # Safe summary strictly omits questions, ground truths, or raw responses
     summary = {
@@ -328,8 +373,10 @@ def calculate_metrics(
         "model_version": (predictions[0].get("model_version") if predictions else None),
         "prompt_version": prompt_version or (predictions[0].get("prompt_version") if predictions else None),
         "prompt_version": primary_pv,
+        "prompt_version": prompt_pv,
         "primary_prompt_version": primary_pv,
         "fallback_prompt_version": fallback_pv,
+        "prompt_version_counts": prompt_version_counts,
 
         "total_tasks": total_tasks,
         "selected_task_count": total_tasks,
@@ -467,7 +514,17 @@ def evaluate_predictions(
     print(f"Accuracy:            {summary['accuracy'] * 100:.2f}%")
     print(f"Average Latency:     {summary['average_latency_seconds']}s")
     print(f"Average Tokens:      {summary['average_total_tokens']}")
-    print(f"Prompt Version:      {summary.get('primary_prompt_version') or summary.get('prompt_version')}")
+    prompt_counts = summary.get("prompt_version_counts", {})
+    if len(prompt_counts) > 1:
+        preferred_order = ["file-search-v1", "web-search-v1", "baseline-v1"]
+        sorted_counts = sorted(
+            prompt_counts.items(),
+            key=lambda item: preferred_order.index(item[0]) if item[0] in preferred_order else 99,
+        )
+        counts_str = ", ".join(f"{k} ({v})" for k, v in sorted_counts)
+        print(f"Prompt Versions:     {counts_str}")
+    else:
+        print(f"Prompt Version:      {summary.get('primary_prompt_version') or summary.get('prompt_version')}")
     if summary.get("fallback_prompt_version"):
         print(f"Fallback Prompt:     {summary.get('fallback_prompt_version')}")
     if summary['attachment_task_count'] > 0:

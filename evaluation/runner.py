@@ -142,7 +142,8 @@ def execute_task(
     start_time = time.time()
     try:
         if isinstance(agent, GAIAFileAgent):
-            result = agent.run(question, file_path=resolved_file_path)
+            target_path = resolved_file_path or clean_file_path or clean_file_name
+            result = agent.run(question, file_path=target_path)
         else:
             result = agent.run(question)
         request_success = True
@@ -188,20 +189,31 @@ def execute_task(
 
     # Prompt provenance extraction
     file_enabled = (project_version == "v2") or isinstance(agent, GAIAFileAgent)
+    if result is None:
+        if file_enabled:
+            prompt_ver = "file-search-v1" if has_attachment else "web-search-v1"
+        elif isinstance(agent, GAIAWebAgent) or project_version == "v1":
+            prompt_ver = "web-search-v1"
+        else:
+            prompt_ver = "baseline-v1"
+
     primary_prompt_ver = getattr(result, "primary_prompt_version", None) if result else None
     fallback_prompt_ver = getattr(result, "fallback_prompt_version", None) if result else None
-    if file_enabled and has_attachment:
-        primary_prompt_ver = "file-search-v1"
-        fallback_prompt_ver = "web-search-v1"
-    elif primary_prompt_ver is None:
+
+    if primary_prompt_ver is None:
         if file_enabled:
             primary_prompt_ver = "file-search-v1" if has_attachment else "web-search-v1"
-            fallback_prompt_ver = "web-search-v1" if has_attachment else "baseline-v1"
         elif isinstance(agent, GAIAWebAgent) or project_version == "v1":
             primary_prompt_ver = "web-search-v1"
-            fallback_prompt_ver = "baseline-v1"
         else:
             primary_prompt_ver = prompt_ver or "baseline-v1"
+
+    if fallback_prompt_ver is None:
+        if file_enabled:
+            fallback_prompt_ver = "web-search-v1" if has_attachment else "baseline-v1"
+        elif isinstance(agent, GAIAWebAgent) or project_version == "v1":
+            fallback_prompt_ver = "baseline-v1"
+        else:
             fallback_prompt_ver = None
 
     # Web search metadata extraction

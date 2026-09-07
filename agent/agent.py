@@ -240,6 +240,12 @@ class GAIAFileAgent(GAIAWebAgent):
 
         primary_prompt_ver = FILE_SEARCH_PROMPT_VERSION if file_path else WEB_SEARCH_PROMPT_VERSION
         fallback_prompt_ver = WEB_SEARCH_PROMPT_VERSION if search_res.success else PROMPT_VERSION
+        if file_path:
+            primary_prompt_ver = FILE_SEARCH_PROMPT_VERSION
+            fallback_prompt_ver = WEB_SEARCH_PROMPT_VERSION
+        else:
+            primary_prompt_ver = WEB_SEARCH_PROMPT_VERSION
+            fallback_prompt_ver = PROMPT_VERSION
 
         return AgentResult(
             raw_response=raw_text,
