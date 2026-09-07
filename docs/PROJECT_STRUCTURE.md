@@ -17,10 +17,13 @@ gaia-agent-benchmarking/
 │   ├── __init__.py
 │   ├── agent.py
 │   └── llm.py
+│   ├── agent.py                 (GAIAAgent, GAIAWebAgent)
+│   └── llm.py                   (LLMClient, GenerateContentConfig)
 │
 ├── tools/
 │   ├── __init__.py
 │   └── ...
+│   └── web_search.py            (TavilySearchTool, WebSearchResult)
 │
 ├── evaluation/
 │   ├── __init__.py
@@ -31,6 +34,12 @@ gaia-agent-benchmarking/
 │   ├── run_level.py
 │   ├── evaluate.py
 │   ├── metrics.py
+│   ├── runner.py                (execute_task, completion tracking)
+│   ├── run_one.py               (single-question debug runner)
+│   ├── run_level.py             (level-wide benchmark runner)
+│   ├── evaluate.py              (official evaluation & metrics calculator)
+│   ├── metrics.py               (official GAIA question scorer)
+│   ├── analyze_errors.py        (reproducible V1 error taxonomy & transition)
 │   └── experiment_logger.py
 │
 ├── experiments/
@@ -40,19 +49,39 @@ gaia-agent-benchmarking/
 │       ├── summary_level_1.json
 │       ├── runs.jsonl             (gitignored)
 │       └── predictions_*.jsonl    (gitignored)
+│   ├── runs.jsonl               (gitignored global runs)
+│   ├── v0/
+│   │   ├── config.json
+│   │   ├── summary_level_*.json (public aggregate summaries)
+│   │   ├── error_analysis_*.json(public sanitized failure analyses)
+│   │   ├── predictions_*.jsonl  (gitignored private task records)
+│   │   └── detailed_eval_*.jsonl(gitignored private detailed traces)
+│   └── v1/
+│       ├── config.json          (frozen V1 configuration)
+│       ├── summary_level_*.json (public aggregate summaries)
+│       ├── error_analysis_*.json(public sanitized failure analyses)
+│       ├── v0_v1_error_comparison.json
+│       ├── comparison_summary.json
+│       ├── predictions_*.jsonl  (gitignored private task records)
+│       └── detailed_eval_*.jsonl(gitignored private detailed traces)
 │
 ├── data/
 │   └── gaia/                      (gitignored benchmark data)
+│   └── gaia/                    (gitignored benchmark dataset)
 │       └── metadata.jsonl
 │
 ├── prompts/
 │   ├── __init__.py
 │   └── baseline.py
+│   ├── baseline.py              (baseline-v1)
+│   └── web_search.py            (web-search-v1)
 │
 ├── tests/
 │   ├── __init__.py
 │   ├── test_agent.py
 │   ├── test_llm.py
+│   ├── test_web_search.py
+│   ├── test_error_analysis.py
 │   ├── test_run_one.py
 │   ├── test_experiment_logger.py
 │   └── test_evaluation_pipeline.py
@@ -719,14 +748,38 @@ The long-term architecture may look like:
 
 ---
 
-# Current Status & Next Steps
+# Current Status & Research Evolution
 
-### Current Status: V0 — LLM-Only Baseline (Completed)
-- Clean, tool-free Gemini baseline agent (`GAIAAgent` in `agent/agent.py`).
+### V0 — Completed LLM-Only Baseline
+- Canonical model: `gemini-3.5-flash-lite`
+- Clean, tool-free baseline agent (`GAIAAgent` in `agent/agent.py`).
 - Reproducible inference tracking with schema version 2 (`experiments/v0/runs.jsonl`, git metadata, thinking tokens, completion-aware success flags).
 - Research evaluation pipeline (`evaluation/run_level.py`, `evaluation/evaluate.py`, `evaluation/metrics.py`, `evaluation/dataset.py`) supporting local Level 1/2/3 benchmarking against ground truth without calling Hugging Face `/submit`.
+- Frozen historical performance: Level 1: 26.42%, Level 2: 18.60%, Level 3: 11.54%, Overall: 20.00% (33 / 165).
+- Matched-control performance: Level 1: 28.30%, Level 2: 19.77%, Level 3: 7.69%, Overall: 20.61% (34 / 165).
 
-### Next Step: V1 — Web-Enabled Agent
-- Add search tool (`tools/web_search.py`) and webpage reader (`tools/browser.py`).
-- Benchmark V1 against exactly the same Level 1/2/3 tasks using the evaluation pipeline.
-- Generate comparative summaries (`experiments/v1/summary_level_*.json`) against V0.
+### V1 — Completed Single-Shot Web Retrieval Baseline
+- Canonical model: `gemini-3.5-flash-lite`
+- **Workflow Nature**: V1 is strictly a controlled **single-shot retrieve-then-read workflow** and NOT an autonomous multi-tool or planning agent.
+- Exactly one deterministic search is executed per task using the original question.
+- On search failure, deterministically falls back to LLM-only baseline prompt (`baseline-v1`) while preserving provenance (`primary_prompt_version = web-search-v1`, `fallback_prompt_version = baseline-v1`).
+- Canonical benchmark performance: Level 1: 52.83%, Level 2: 27.91%, Level 3: 11.54%, Overall: 33.33% (55 / 165).
+- Provides a matched-control estimate of +24.53 pp accuracy gain on Level 1 and +18.11 pp on non-attachment tasks overall (40.94% vs. 22.83% in V0 matched-control).
+- Identified persistent bottleneck: Web retrieval did not improve attachment-task accuracy in this run (7.89% in V1 vs 13.16% in V0 matched-control; observed delta: -5.27 pp; difference may also reflect run-to-run variability). Attachment tasks represent 31.82% of all V1 errors.
+
+### V2 — Next Planned Capability: File / Attachment Handling
+- Based on empirical error analysis of V1, external web search alone cannot solve tasks requiring local file inspection.
+- V2 will incrementally add file ingestion and processing tools (PDF, XLSX, CSV, images) while preserving controlled benchmarking rigor.
+
+---
+
+## Core Component Responsibilities
+
+- **`GAIAAgent`** (`agent/agent.py`): Minimal, tool-free LLM baseline agent executing Gemini generation via `baseline-v1` prompt.
+- **`GAIAWebAgent`** (`agent/agent.py`): Single-shot retrieval baseline executing exactly one Tavily search per task, formatting snippets into `web-search-v1`, and cleanly falling back to `baseline-v1` if retrieval fails.
+- **`TavilySearchTool`** (`tools/web_search.py`): Deterministic provider abstraction using `tavily-python` (depth="basic", max_results=5, no answer field, no raw HTML, deterministic 1500-char provider query truncation, logging truncation metadata).
+- **`runner`** (`evaluation/runner.py`): Orchestrates task execution, latency timing, token usage extraction from Gemini metadata, completion-aware success tracking, search provenance logging, and append-only record writing.
+- **`official GAIA scorer`** (`evaluation/metrics.py`): The official GAIA benchmark question scorer evaluating exact numeric and string normalization against ground truth.
+- **`V1 experiment config`** (`experiments/v1/config.json`): Reproducible configuration documenting model name, prompt versions, search depth, token limits, and experiment parameters.
+- **`public summaries`** (`experiments/v*/summary_*.json`): High-level, sanitized aggregate metrics (accuracy, latency, token usage, attachment breakdown, search success rates) safe for public repository tracking.
+- **`private detailed predictions/evaluations`** (`experiments/v*/detailed_eval_*.jsonl` and `predictions_*.jsonl`): Complete per-task execution traces (including questions, ground truths, raw model responses, and retrieved snippets) strictly gitignored to preserve benchmark security.

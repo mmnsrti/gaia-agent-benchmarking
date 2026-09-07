@@ -1,0 +1,153 @@
+{
+  "v0_frozen_historical": {
+    "level_1": {
+      "total_tasks": 53,
+      "correct_tasks": 14,
+      "accuracy": 0.2642,
+      "completion_rate": 0.9245,
+      "attachment_accuracy": 0.2727,
+      "non_attachment_accuracy": 0.2619,
+      "average_latency_seconds": 4.44,
+      "average_total_tokens": 1349.4
+    },
+    "level_2": {
+      "total_tasks": 86,
+      "correct_tasks": 16,
+      "accuracy": 0.186,
+      "completion_rate": 0.9651,
+      "attachment_accuracy": 0.1,
+      "non_attachment_accuracy": 0.2121,
+      "average_latency_seconds": 4.62,
+      "average_total_tokens": 1385.1
+    },
+    "level_3": {
+      "total_tasks": 26,
+      "correct_tasks": 3,
+      "accuracy": 0.1154,
+      "completion_rate": 0.9231,
+      "attachment_accuracy": 0.0,
+      "non_attachment_accuracy": 0.1579,
+      "average_latency_seconds": 5.2,
+      "average_total_tokens": 1579.4
+    },
+    "overall": {
+      "total_tasks": 165,
+      "completed_tasks": 156,
+      "completion_rate": 0.9455,
+      "correct_tasks": 33,
+      "accuracy": 0.2,
+      "attachment_task_count": 38,
+      "attachment_accuracy": 0.1316,
+      "non_attachment_task_count": 127,
+      "non_attachment_accuracy": 0.2205,
+      "average_tokens": 1404.2
+    }
+  },
+  "v0_matched_control": {
+    "level_1": {
+      "total_tasks": 53,
+      "correct_tasks": 15,
+      "accuracy": 0.283,
+      "completion_rate": 0.9057,
+      "attachment_accuracy": 0.2727,
+      "non_attachment_accuracy": 0.2857,
+      "average_latency_seconds": 4.3,
+      "average_total_tokens": 1238.8
+    },
+    "level_2": {
+      "total_tasks": 86,
+      "correct_tasks": 17,
+      "accuracy": 0.1977,
+      "completion_rate": 0.9767,
+      "attachment_accuracy": 0.1,
+      "non_attachment_accuracy": 0.2273,
+      "average_latency_seconds": 5.17,
+      "average_total_tokens": 1437.9
+    },
+    "level_3": {
+      "total_tasks": 26,
+      "correct_tasks": 2,
+      "accuracy": 0.0769,
+      "completion_rate": 0.9615,
+      "attachment_accuracy": 0.0,
+      "non_attachment_accuracy": 0.1053,
+      "average_latency_seconds": 5.48,
+      "average_total_tokens": 1508.5
+    },
+    "overall": {
+      "total_tasks": 165,
+      "completed_tasks": 157,
+      "completion_rate": 0.9515,
+      "correct_tasks": 34,
+      "accuracy": 0.2061,
+      "attachment_task_count": 38,
+      "attachment_accuracy": 0.1316,
+      "non_attachment_task_count": 127,
+      "non_attachment_accuracy": 0.2283,
+      "average_tokens": 1385.0
+    }
+  },
+  "v1_canonical": {
+    "level_1": {
+      "total_tasks": 53,
+      "correct_tasks": 28,
+      "accuracy": 0.5283,
+      "completion_rate": 0.8491,
+      "attachment_accuracy": 0.0909,
+      "non_attachment_accuracy": 0.6429,
+      "average_latency_seconds": 5.74,
+      "average_total_tokens": 2599.4
+    },
+    "level_2": {
+      "total_tasks": 86,
+      "correct_tasks": 24,
+      "accuracy": 0.2791,
+      "completion_rate": 0.6163,
+      "attachment_accuracy": 0.1,
+      "non_attachment_accuracy": 0.3333,
+      "average_latency_seconds": 6.62,
+      "average_total_tokens": 2781.2
+    },
+    "level_3": {
+      "total_tasks": 26,
+      "correct_tasks": 3,
+      "accuracy": 0.1154,
+      "completion_rate": 0.3077,
+      "attachment_accuracy": 0.0,
+      "non_attachment_accuracy": 0.1579,
+      "average_latency_seconds": 6.74,
+      "average_total_tokens": 2761.2
+    },
+    "overall": {
+      "total_tasks": 165,
+      "completed_tasks": 106,
+      "completion_rate": 0.6424,
+      "correct_tasks": 55,
+      "accuracy": 0.3333,
+      "attachment_task_count": 38,
+      "attachment_accuracy": 0.0789,
+      "non_attachment_task_count": 127,
+      "non_attachment_accuracy": 0.4094,
+      "average_tokens": 2719.7
+    },
+    "search_metrics": {
+      "total_search_calls": 165,
+      "successful_search_calls": 165,
+      "search_success_rate": 1.0,
+      "average_results_per_search": 4.92,
+      "search_fallback_count": 0
+    }
+  },
+  "controlled_deltas_percentage_points": {
+    "level_1": 24.53,
+    "level_2": 8.14,
+    "level_3": 3.85,
+    "overall": 12.72
+  },
+  "historical_deltas_percentage_points": {
+    "level_1": 26.41,
+    "level_2": 9.31,
+    "level_3": 0.0,
+    "overall": 13.33
+  }
+}

@@ -9,7 +9,7 @@ import os
 import sys
 import json
 import time
-from typing import Optional
+from typing import Optional, Any
 
 # Add repository root to python search path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -36,7 +36,7 @@ def _safe_str(val: Optional[str], max_len: int = 80) -> str:
         return snippet.encode("ascii", errors="backslashreplace").decode("ascii")
 
 
-from agent import GAIAAgent, LLMClient
+from agent import GAIAAgent, GAIAWebAgent, LLMClient
 from evaluation.dataset import load_gaia_tasks, EXPECTED_VALIDATION_COUNTS
 from evaluation.runner import execute_task
 from evaluation.experiment_logger import ExperimentLogger
@@ -53,8 +53,10 @@ def run_level(
     auto_eval: bool = True,
     enforce_task_count: bool = False,
     delay: float = 0.0,
+    version: str = "v1",
+    agent: Optional[Any] = None,
 ) -> str:
-    """Runs the tool-free v0 baseline on all tasks for a specified GAIA level.
+    """Runs the specified baseline (v0 or v1) on all tasks for a specified GAIA level.
 
     Stores complete experiment records and never submits to Hugging Face.
     """
@@ -73,11 +75,12 @@ def run_level(
     expected_tasks = EXPECTED_VALIDATION_COUNTS.get(level)
     is_partial = bool(limit or (expected_tasks and total_tasks < expected_tasks))
     run_tag = f"PARTIAL RUN (--limit {limit})" if limit else ("PARTIAL RUN" if is_partial else "COMPLETE BENCHMARK RUN")
+    version_desc = "v1 (Web retrieval baseline)" if version == "v1" else "v0 (LLM-only baseline)"
 
     print("=" * 80)
     print(f"GAIA BENCHMARK RUN — Level {level} [{run_tag}]")
     print(f"Total tasks selected: {total_tasks} (expected for complete split: {expected_tasks})")
-    print(f"Agent version:        v0 (LLM-only baseline)")
+    print(f"Agent version:        {version_desc}")
     print(f"Resume existing:      {resume}")
     if delay > 0:
         print(f"Inter-task delay:     {delay}s")
@@ -85,8 +88,8 @@ def run_level(
 
     # Determine output predictions file
     if output_file is None:
-        experiments_v0 = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "experiments", "v0"))
-        output_file = os.path.join(experiments_v0, f"predictions_level_{level}.jsonl")
+        experiments_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "experiments", version))
+        output_file = os.path.join(experiments_dir, f"predictions_level_{level}.jsonl")
 
     if not resume and os.path.exists(output_file):
         os.remove(output_file)
@@ -124,7 +127,11 @@ def run_level(
 
     # Initialize client & agent once
     llm = LLMClient()
-    agent = GAIAAgent(llm_client=llm)
+    if agent is None:
+        if version == "v1":
+            agent = GAIAWebAgent(llm_client=llm)
+        else:
+            agent = GAIAAgent(llm_client=llm)
 
     output_dir = os.path.dirname(os.path.abspath(output_file))
     filename = os.path.basename(output_file)
@@ -146,6 +153,7 @@ def run_level(
             file_name=task.file_name,
             agent=agent,
             llm=llm,
+            project_version=version,
         )
 
         status_str = "SUCCESS" if record["completion_success"] else ("FAIL (request)" if not record["request_success"] else "INCOMPLETE")
@@ -162,6 +170,7 @@ def run_level(
                 print("\nHalting run to preserve quota and avoid false failure logging.")
                 print("You can resume later with:")
                 print(f"  python -m evaluation.run_level --level {level}")
+                print(f"  python -m evaluation.run_level --version {version} --level {level}")
                 print("!" * 80 + "\n")
                 break
 
@@ -186,6 +195,7 @@ def run_level(
                 summary_output=summary_file,
                 detailed_output=detailed_file,
                 enforce_task_count=enforce_task_count,
+                project_version=version,
             )
         except Exception as e:
             print(f"Auto-evaluation warning: {e}")
@@ -196,6 +206,7 @@ def run_level(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run GAIA benchmark tasks for a specific level.")
     parser.add_argument("--level", type=int, required=True, choices=[1, 2, 3], help="GAIA level to run (1, 2, or 3)")
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1"], help="Agent version to evaluate (v0: baseline, v1: web search; required)")
     parser.add_argument("--data", type=str, default=None, help="Path to local GAIA dataset file")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of tasks to execute")
     parser.add_argument("--task-id", type=str, default=None, help="Run single specific task ID")
@@ -216,4 +227,6 @@ if __name__ == "__main__":
         auto_eval=not args.no_eval,
         enforce_task_count=args.enforce_task_count,
         delay=args.delay,
+        version=args.version,
     )
+

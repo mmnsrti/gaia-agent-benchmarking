@@ -1,0 +1,52 @@
+{
+  "version": "v1",
+  "level": 2,
+  "total_tasks": 86,
+  "correct_tasks": 24,
+  "failed_tasks": 62,
+  "accuracy": 0.2791,
+  "operational_metrics": {
+    "completion_failures": 33,
+    "completion_rate": 0.6163
+  },
+  "taxonomy": {
+    "mutually_exclusive": true,
+    "classification_policy": "Hierarchical root-cause classification into a single mutually exclusive category. Tasks with operational completion failure (completion_failures) are attributed to 'requires_attachment' if local files were required, or 'incomplete_generation' if the model was token-starved or truncated during synthesis.",
+    "precedence": [
+      "requires_attachment",
+      "retrieval_failure",
+      "incomplete_generation",
+      "retrieval_insufficient",
+      "formatting_failure",
+      "reasoning_failure",
+      "knowledge_failure",
+      "other"
+    ]
+  },
+  "error_counts": {
+    "requires_attachment": 18,
+    "retrieval_insufficient": 7,
+    "reasoning_failure": 11,
+    "formatting_failure": 1,
+    "incomplete_generation": 25
+  },
+  "error_percentages": {
+    "requires_attachment": 29.03,
+    "retrieval_insufficient": 11.29,
+    "reasoning_failure": 17.74,
+    "formatting_failure": 1.61,
+    "incomplete_generation": 40.32
+  },
+  "attachment_stats": {
+    "total_tasks": 20,
+    "correct_tasks": 2,
+    "failed_tasks": 18,
+    "accuracy": 0.1
+  },
+  "non_attachment_stats": {
+    "total_tasks": 66,
+    "correct_tasks": 22,
+    "failed_tasks": 44,
+    "accuracy": 0.3333
+  }
+}

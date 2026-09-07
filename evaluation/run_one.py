@@ -1,4 +1,4 @@
-﻿import argparse
+import argparse
 import os
 import sys
 
@@ -10,8 +10,8 @@ from evaluation.experiment_logger import ExperimentLogger
 from evaluation.runner import execute_task
 
 
-def run_one(index: int = 0, task_id: str = None, log: bool = True) -> dict:
-    """Fetches and runs the v0 baseline on a single GAIA question without submitting."""
+def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str = "v1") -> dict:
+    """Fetches and runs the agent baseline on a single GAIA question without submitting."""
     client = GAIAClient()
     questions = client.get_questions()
 
@@ -52,7 +52,7 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True) -> dict:
     print(f"Attachment: {'yes' if has_attachment else 'no'}")
     if has_attachment:
         print(f"File Name: {file_name}")
-        print("Note: v0 baseline intentionally does NOT process file attachments.")
+        print(f"Note: {version} baseline intentionally does NOT process file attachments.")
     print("-" * 80)
 
     record = execute_task(
@@ -60,6 +60,7 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True) -> dict:
         question=question,
         level=level,
         file_name=file_name,
+        project_version=version,
     )
 
     print(f"Run ID: {record['run_id']}")
@@ -69,6 +70,19 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True) -> dict:
     print(f"Max Output Tokens: {record['max_output_tokens']}")
     print(f"Thinking Level: {record['thinking_level']}")
     print(f"Prompt Version: {record['prompt_version']}")
+    if record.get("primary_prompt_version"):
+        print(f"Primary Prompt Version: {record['primary_prompt_version']}")
+    if record.get("fallback_prompt_version"):
+        print(f"Fallback Prompt Version: {record['fallback_prompt_version']}")
+    if record.get("search_enabled"):
+        print(f"Search Provider: {record['search_provider']}")
+        print(f"Search Success: {record['search_success']}")
+        print(f"Search Result Count: {record['search_result_count']}")
+        print(f"Search Fallback: {record['search_fallback']}")
+        if record.get("search_query_truncated"):
+            print(f"Search Query Truncated: True (orig={record.get('original_query_length')}, provider={record.get('provider_query_length')})")
+        if record.get("search_error_message"):
+            print(f"Search Error: [{record['search_error_type']}] {record['search_error_message']}")
     print(f"Request Success: {record['request_success']}")
     print(f"Completion Success: {record['completion_success']}")
     print(f"Finish Reason: {record['finish_reason']}")
@@ -82,7 +96,7 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True) -> dict:
     print("=" * 80)
 
     if log:
-        logger = ExperimentLogger(version="v0")
+        logger = ExperimentLogger(version=version)
         log_path = logger.append(record)
         print(f"Experiment logged to: {log_path}")
 
@@ -90,10 +104,12 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True) -> dict:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run v0 tool-free GAIA baseline on one question with completion-aware tracking.")
+    parser = argparse.ArgumentParser(description="Run GAIA baseline on one question with completion-aware tracking.")
     parser.add_argument("-i", "--index", type=int, default=0, help="Question index to run (0 to 19, default: 0)")
     parser.add_argument("-t", "--task-id", type=str, default=None, help="Specific task ID to run")
-    parser.add_argument("--no-log", action="store_true", help="Do not write record to experiments/v0/runs.jsonl")
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1"], help="Agent version (v0: baseline, v1: web search; required)")
+    parser.add_argument("--no-log", action="store_true", help="Do not write record to experiments/runs.jsonl")
     args = parser.parse_args()
 
-    run_one(index=args.index, task_id=args.task_id, log=not args.no_log)
+    run_one(index=args.index, task_id=args.task_id, log=not args.no_log, version=args.version)
+

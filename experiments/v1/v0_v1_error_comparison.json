@@ -1,0 +1,39 @@
+{
+  "v0_historical": {
+    "total_tasks": 165,
+    "correct_tasks": 33,
+    "failed_tasks": 132,
+    "accuracy": 0.2,
+    "error_counts": {
+      "requires_attachment": 33,
+      "requires_web": 48,
+      "incomplete_generation": 9,
+      "reasoning_failure": 14,
+      "knowledge_failure": 26,
+      "formatting_failure": 2
+    }
+  },
+  "v1_canonical": {
+    "total_tasks": 165,
+    "correct_tasks": 55,
+    "failed_tasks": 110,
+    "accuracy": 0.3333,
+    "error_counts": {
+      "requires_attachment": 35,
+      "retrieval_insufficient": 8,
+      "reasoning_failure": 18,
+      "formatting_failure": 4,
+      "incomplete_generation": 45
+    }
+  },
+  "transition_deltas": {
+    "accuracy_delta_percentage_points": 13.33,
+    "net_solved_tasks": 22,
+    "net_reduced_failures": 22
+  },
+  "key_findings": {
+    "requires_web_mitigation": "V0 had 48 tasks failing due to missing web access. Adding single-shot web retrieval converted 22 tasks into correct answers, while remaining unretrieved tasks shifted to 'retrieval_insufficient' (8) with 0 provider-level 'retrieval_failure'.",
+    "attachment_bottleneck": "Web retrieval did not improve attachment-task accuracy in this run (13.16% [5/38] in V0 matched-control vs 7.89% [3/38] in V1; observed delta: -5.27 pp). The observed difference may also reflect run-to-run variability. Unresolved attachment tasks constitute 31.82% of all V1 failures.",
+    "v2_empirical_justification": "Web retrieval provides a matched-control estimate of +24.53 pp accuracy gain on Level 1 and +18.11 pp on non-attachment tasks overall, but does not address tasks requiring local file inspection. This empirically supports file/attachment handling (PDF, XLSX, CSV, images) as the primary capability for V2."
+  }
+}

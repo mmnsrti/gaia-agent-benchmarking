@@ -81,6 +81,89 @@ Aggregate failure analysis across all incorrect or failed tasks (\(n=132\)) on t
 | `reasoning_failure` | 6 (15.4%) | 5 (7.1%) | 3 (13.0%) | **14 (10.6%)** | Complex multi-step deduction or calculation errors |
 | `incomplete_generation` | 4 (10.3%) | 3 (4.3%) | 2 (8.7%) | **9 (6.8%)** | Response budget exhaustion (`MAX_TOKENS`) or empty output |
 | `formatting_failure` | 1 (2.6%) | 1 (1.4%) | 0 (0.0%) | **2 (1.5%)** | Correct answer found in reasoning but missed strict normalization |
+---
+
+## v1 — Single-Shot Web Retrieval Baseline
+
+**v1** answers the core ablation research question:
+> **How much does adding web retrieval alone improve the frozen V0 LLM-only baseline?**
+
+In accordance with strict ablation principles:
+```text
+V1 = V0 + Web Search only
+```
+
+### Retrieval Flow
+```text
+GAIA Question
+     ↓
+ONE Tavily Search (Original Question as Query)
+     ↓
+Tavily-retrieved search snippets
+     ↓
+Prompt (web-search-v1)
+     ↓
+LLMClient (Gemini)
+     ↓
+Raw Model Response
+     ↓
+Minimal Answer Cleaning
+     ↓
+Final Answer
+```
+
+### Critical Research Design & Ablation Rationale
+V1 is strictly an ablation baseline, not an optimized final agent. To provide a matched-control estimate of the effect of adding single-shot web retrieval:
+1. **Single-Shot Retrieval**: Exactly one search is executed per task.
+2. **Original Question as Query**: The original GAIA question is passed directly as the search query without LLM query rewriting or expansion. For long questions, queries are deterministically capped to the first 1,500 characters (`provider_query = cleaned_query[:1500]`) to respect provider input limits while logging truncation metadata (`search_query_truncated`, `original_query_length`, `provider_query_length`).
+3. **Deterministic Search Configuration**:
+   - Provider: **Tavily Search API** (`tavily-python`)
+   - `search_depth = "basic"`
+   - `max_results = 5`
+   - `include_answer = false` (Tavily's generated answer field is strictly ignored to evaluate the LLM's own reasoning over retrieved evidence)
+   - `include_raw_content = false` (evidence consists strictly of Tavily-retrieved search snippets; no raw webpage content or HTML scraping)
+   - `include_images = false`
+   - `auto_parameters = false`
+4. **Retrieved Evidence Format**: Evidence is formatted exclusively as **Tavily-retrieved search snippets** (result number, title, URL, and snippet), never as raw webpage content.
+5. **No Planning or Router**: Web retrieval is executed uniformly without an LLM planner deciding whether to search.
+6. **Deterministic Search Failure Fallback & Prompt Provenance**:
+   If the search API fails (network timeout, HTTP error, missing key), the agent deterministically falls back to the V0 LLM-only prompt path (`fallback_prompt_version = baseline-v1`). The primary prompt version is recorded as `primary_prompt_version = web-search-v1`, ensuring fallback events are accurately tracked per-task without misclassifying the prompt provenance of the entire run.
+7. **What V1 Intentionally Does NOT Include**:
+   - Multi-hop or iterative searches
+   - Query rewriting or keyword extraction
+   - Browser automation, full-page HTML crawling, or raw webpage content
+   - Planning, reflection, or verification loops
+   - File attachment processing
+   - Python code execution
+
+### V1 Canonical Results (GAIA 2023 Validation)
+
+Local research evaluation on the complete GAIA 2023 Validation set (Levels 1, 2, and 3) scored using the official GAIA scoring implementation:
+
+| Benchmark Level | V0 Frozen Historical | V0 Matched-Control | V1 Canonical (Web Search) | Controlled Delta | Historical Delta |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Level 1** | 26.42% (14 / 53) | 28.30% (15 / 53) | **52.83%** (28 / 53) | **+24.53 pp** | +26.41 pp |
+| **Level 2** | 18.60% (16 / 86) | 19.77% (17 / 86) | **27.91%** (24 / 86) | **+8.14 pp** | +9.31 pp |
+| **Level 3** | 11.54% (3 / 26) | 7.69% (2 / 26) | **11.54%** (3 / 26) | **+3.85 pp** | +0.00 pp |
+| **Overall** | **20.00%** (33 / 165) | **20.61%** (34 / 165) | **33.33%** (55 / 165) | **+12.72 pp** | **+13.33 pp** |
+
+#### Task Type Breakdown (V1 Overall)
+
+| Task Type | Total Tasks | V0 Matched-Control Correct (Acc) | V1 Canonical Correct (Acc) | Delta (pp) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Non-Attachment** | 127 | 29 (22.83%) | **52 (40.94%)** | **+18.11 pp** |
+| **Attachment-Required** | 38 | 5 (13.16%) | **3 (7.89%)** | **-5.27 pp** |
+
+> **Ablation Comparison & Baseline Differentiation**:
+> - **V0 frozen historical**: **20.00%** (33 / 165 correct) — Frozen reference baseline established on the `v0-LLM-only` branch.
+> - **V0 matched-control**: **20.61%** (34 / 165 correct) — Contemporary tool-free control runs executed on `v1-web-search` under identical runtime conditions (`gemini-3.5-flash-lite`, prompt `baseline-v1`).
+> - **V1 canonical**: **33.33%** (55 / 165 correct) — Single-shot Tavily web retrieval baseline (`gemini-3.5-flash-lite`, prompt `web-search-v1`).
+>
+> **Core Research Findings**:
+> 1. **Web retrieval improved tasks requiring external information**: On non-attachment tasks, accuracy increased from 22.83% (29/127) in the matched control to 40.94% (52/127), and on Level 1 specifically reached 52.83% (+24.53 pp over matched-control).
+> 2. **Attachment-heavy tasks remained a major bottleneck**: Web retrieval did not improve attachment-task accuracy in this run (7.89% [3/38] in V1 vs 13.16% [5/38] in V0 matched-control; observed delta: -5.27 pp). The observed difference may also reflect run-to-run variability. Attachment tasks constitute 31.82% of all V1 errors.
+> 3. **Controlled Workflow Nature**: V1 is strictly a controlled **retrieve-then-read** baseline (single-shot search without query rewriting, multi-hop crawling, or reflection) and NOT an autonomous multi-tool/planning agent.
+> 4. **Empirical Support for V2**: Because external web search alone cannot solve tasks requiring local document parsing, V2 will focus specifically on adding file/attachment processing tools (PDF, XLSX, CSV, images).
 
 ---
 
@@ -95,17 +178,18 @@ pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment Variables
-Copy `.env.example` to `.env` and set your Google Gemini API key:
+Copy `.env.example` to `.env` and configure your API keys:
 ```bash
 cp .env.example .env
 ```
 In `.env`:
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
 GEMINI_MAX_OUTPUT_TOKENS=2048
 GEMINI_THINKING_LEVEL=medium
 # GEMINI_TEMPERATURE= (leave unset for model default sampling)
+TAVILY_API_KEY=your_tavily_api_key_here
 ```
 
 For Hugging Face Spaces deployment, set `GEMINI_API_KEY` under **Space Settings → Variables and secrets**.
@@ -156,26 +240,37 @@ Each experiment record captures:
 ### 1. Run One Development Question (Debug / Smoke Test)
 Run a single question locally without submitting:
 ```bash
-python evaluation/run_one.py -i 0
+# Run with V1 web search baseline
+python evaluation/run_one.py --version v1 -i 0
+
+# Run with V0 tool-free baseline
+python evaluation/run_one.py --version v0 -i 0
 ```
 
 ### 2. Run a Complete Benchmark Level
-Run all tasks for a specific GAIA benchmark level from local data:
+Run tasks for a specific GAIA benchmark level from local data:
 ```bash
-python -m evaluation.run_level --level 1
-python -m evaluation.run_level --level 2
-python -m evaluation.run_level --level 3
+# Run V1 single-shot web retrieval baseline
+python -m evaluation.run_level --version v1 --level 1
+
+# Run V0 tool-free baseline
+python -m evaluation.run_level --version v0 --level 1
 ```
 Useful arguments:
 - `--limit 5`: Run only the first 5 tasks of that level.
-- `--task-id <id>`: Run a specific task by ID.
+- `--task-id <id>`: Run a single specific task by ID.
 - `--no-resume`: Re-run all tasks instead of resuming skipped ones.
 - `--no-eval`: Skip automatic local evaluation after the run completes.
+- `--delay 1.0`: Throttle calls by N seconds between tasks.
 
 ### 3. Evaluate Predictions Locally
-Compute metrics (accuracy, token usage, latency, attachment breakdown) against local ground truth without calling Hugging Face:
+Compute metrics (accuracy, token usage, latency, attachment breakdown, search metrics) against local ground truth without calling Hugging Face:
 ```bash
-python -m evaluation.evaluate --level 1
+# Evaluate V1 predictions
+python -m evaluation.evaluate --version v1 --level 1
+
+# Evaluate V0 predictions
+python -m evaluation.evaluate --version v0 --level 1
 ```
 
 ### 4. Run Unit Tests

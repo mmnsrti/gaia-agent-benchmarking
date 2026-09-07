@@ -1,9 +1,9 @@
-﻿import time
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-from agent import GAIAAgent, LLMClient
+from agent import GAIAAgent, GAIAWebAgent, LLMClient
 from prompts.baseline import PROMPT_VERSION
 from evaluation.experiment_logger import get_git_metadata
 
@@ -26,7 +26,13 @@ def execute_task(
     if llm is None:
         llm = LLMClient()
     if agent is None:
-        agent = GAIAAgent(llm_client=llm)
+        if project_version == "v1":
+            agent = GAIAWebAgent(llm_client=llm)
+        else:
+            agent = GAIAAgent(llm_client=llm)
+
+    if isinstance(agent, GAIAWebAgent) and project_version == "v0":
+        project_version = "v1"
 
     clean_file_name = file_name.strip() if file_name and file_name.strip() else None
     has_attachment = bool(clean_file_name)
@@ -34,7 +40,8 @@ def execute_task(
     run_id = str(uuid.uuid4())
     git_meta = get_git_metadata()
 
-    prompt = agent.build_prompt(question)
+    prompt = None
+    prompt_ver = getattr(agent, "prompt_version", PROMPT_VERSION)
 
     raw_response = None
     normalized_response = None
@@ -47,6 +54,7 @@ def execute_task(
     response_id = None
     model_version = None
 
+    result = None
     request_success = False
     completion_success = False
     error_type = None
@@ -59,6 +67,8 @@ def execute_task(
         raw_response = result.raw_response
         normalized_response = getattr(result, "normalized_response", raw_response.strip() if raw_response else "")
         final_answer = result.final_answer
+        prompt = result.prompt
+        prompt_ver = result.prompt_version
 
         if result.llm_response:
             llm_resp = result.llm_response
@@ -82,8 +92,72 @@ def execute_task(
         error_message = str(e)
         request_success = False
         completion_success = False
+        if prompt is None and hasattr(agent, "build_prompt"):
+            try:
+                prompt = agent.build_prompt(question)
+            except Exception:
+                prompt = None
 
     latency = round(time.time() - start_time, 2)
+
+    # Prompt provenance extraction
+    primary_prompt_ver = getattr(result, "primary_prompt_version", None) if result else None
+    fallback_prompt_ver = getattr(result, "fallback_prompt_version", None) if result else None
+    if primary_prompt_ver is None:
+        if isinstance(agent, GAIAWebAgent) or project_version == "v1":
+            primary_prompt_ver = "web-search-v1"
+            fallback_prompt_ver = "baseline-v1"
+        else:
+            primary_prompt_ver = prompt_ver or "baseline-v1"
+            fallback_prompt_ver = None
+
+    # Web search metadata extraction
+    search_result = getattr(result, "search_result", None) if result else None
+    search_fallback = getattr(result, "search_fallback", False) if result else False
+
+    if search_result is not None:
+        search_enabled = True
+        search_provider = search_result.provider
+        search_query = search_result.query
+        search_query_truncated = search_result.search_query_truncated
+        original_query_length = search_result.original_query_length
+        provider_query_length = search_result.provider_query_length
+        search_call_count = search_result.call_count
+        search_success = search_result.success
+        search_latency_seconds = search_result.latency_seconds
+        search_result_count = len(search_result.results)
+        search_error_type = search_result.error_type
+        search_error_message = search_result.error_message
+        search_results_data = [item.to_dict() for item in search_result.results]
+    elif isinstance(agent, GAIAWebAgent):
+        clean_q = question.strip() if question else ""
+        search_enabled = True
+        search_provider = "tavily"
+        search_query = question
+        search_query_truncated = len(clean_q) > 1500
+        original_query_length = len(clean_q)
+        provider_query_length = min(len(clean_q), 1500)
+        search_call_count = 1
+        search_success = False
+        search_latency_seconds = None
+        search_result_count = 0
+        search_error_type = error_type
+        search_error_message = error_message
+        search_results_data = []
+    else:
+        search_enabled = False
+        search_provider = None
+        search_query = None
+        search_query_truncated = False
+        original_query_length = 0
+        provider_query_length = 0
+        search_call_count = 0
+        search_success = False
+        search_latency_seconds = None
+        search_result_count = 0
+        search_error_type = None
+        search_error_message = None
+        search_results_data = []
 
     return {
         "schema_version": schema_version,
@@ -106,7 +180,9 @@ def execute_task(
         "max_output_tokens": llm.max_output_tokens,
         "thinking_level": llm.thinking_level,
 
-        "prompt_version": PROMPT_VERSION,
+        "prompt_version": prompt_ver,
+        "primary_prompt_version": primary_prompt_ver,
+        "fallback_prompt_version": fallback_prompt_ver,
         "prompt": prompt,
 
         "raw_response": raw_response,
@@ -127,4 +203,21 @@ def execute_task(
         "completion_success": completion_success,
         "error_type": error_type,
         "error_message": error_message,
+
+        # Search metadata (V1)
+        "search_enabled": search_enabled,
+        "search_provider": search_provider,
+        "search_query": search_query,
+        "search_query_truncated": search_query_truncated,
+        "original_query_length": original_query_length,
+        "provider_query_length": provider_query_length,
+        "search_call_count": search_call_count,
+        "search_success": search_success,
+        "search_latency_seconds": search_latency_seconds,
+        "search_result_count": search_result_count,
+        "search_error_type": search_error_type,
+        "search_error_message": search_error_message,
+        "search_fallback": search_fallback,
+        "search_results": search_results_data,
     }
+
