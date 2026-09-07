@@ -37,6 +37,10 @@ class SearchResultItem:
 class WebSearchResult:
     """Encapsulates the output and metadata of a single web search call."""
     query: str
+    provider_query: str = ""
+    search_query_truncated: bool = False
+    original_query_length: int = 0
+    provider_query_length: int = 0
     results: List[SearchResultItem] = field(default_factory=list)
     success: bool = False
     latency_seconds: float = 0.0
@@ -46,6 +50,17 @@ class WebSearchResult:
     max_results: int = 5
     error_type: Optional[str] = None
     error_message: Optional[str] = None
+
+    def __post_init__(self):
+        cleaned = self.query.strip() if self.query else ""
+        if not self.original_query_length and cleaned:
+            self.original_query_length = len(cleaned)
+        if not self.provider_query and cleaned:
+            self.provider_query = cleaned[:1500]
+        if not self.provider_query_length and self.provider_query:
+            self.provider_query_length = len(self.provider_query)
+        if not self.search_query_truncated and self.original_query_length > 1500:
+            self.search_query_truncated = True
 
     def format_evidence_block(self) -> str:
         """Formats retrieved snippets into a compact, structured evidence block."""
@@ -87,17 +102,29 @@ class TavilySearchTool:
         """Executes a single search query against the Tavily Search API.
 
         Deterministic configuration:
+        - provider_query = cleaned_query[:1500] (deterministic truncation for long queries)
         - search_depth: 'basic'
         - max_results: 5
         - include_answer: False (never use generated answer)
         - include_raw_content: False
         - include_images: False
+        - auto_parameters: False
         """
         start_time = time.time()
 
-        if not query or not query.strip():
+        cleaned_query = query.strip() if query else ""
+        original_query_length = len(cleaned_query)
+        search_query_truncated = original_query_length > 1500
+        provider_query = cleaned_query[:1500]
+        provider_query_length = len(provider_query)
+
+        if not cleaned_query:
             return WebSearchResult(
                 query=query,
+                provider_query="",
+                search_query_truncated=False,
+                original_query_length=0,
+                provider_query_length=0,
                 results=[],
                 success=False,
                 latency_seconds=0.0,
@@ -111,7 +138,11 @@ class TavilySearchTool:
 
         if not self.api_key:
             return WebSearchResult(
-                query=query.strip(),
+                query=cleaned_query,
+                provider_query=provider_query,
+                search_query_truncated=search_query_truncated,
+                original_query_length=original_query_length,
+                provider_query_length=provider_query_length,
                 results=[],
                 success=False,
                 latency_seconds=0.0,
@@ -125,7 +156,11 @@ class TavilySearchTool:
 
         if TavilyClient is None:
             return WebSearchResult(
-                query=query.strip(),
+                query=cleaned_query,
+                provider_query=provider_query,
+                search_query_truncated=search_query_truncated,
+                original_query_length=original_query_length,
+                provider_query_length=provider_query_length,
                 results=[],
                 success=False,
                 latency_seconds=0.0,
@@ -142,7 +177,7 @@ class TavilySearchTool:
                 self._client = TavilyClient(api_key=self.api_key)
 
             raw_response = self._client.search(
-                query=query.strip(),
+                query=provider_query,
                 search_depth=self.search_depth,
                 max_results=self.max_results,
                 include_answer=False,
@@ -165,7 +200,11 @@ class TavilySearchTool:
                 )
 
             return WebSearchResult(
-                query=query.strip(),
+                query=cleaned_query,
+                provider_query=provider_query,
+                search_query_truncated=search_query_truncated,
+                original_query_length=original_query_length,
+                provider_query_length=provider_query_length,
                 results=parsed_items,
                 success=True,
                 latency_seconds=latency,
@@ -178,7 +217,11 @@ class TavilySearchTool:
         except Exception as e:
             latency = round(time.time() - start_time, 2)
             return WebSearchResult(
-                query=query.strip(),
+                query=cleaned_query,
+                provider_query=provider_query,
+                search_query_truncated=search_query_truncated,
+                original_query_length=original_query_length,
+                provider_query_length=provider_query_length,
                 results=[],
                 success=False,
                 latency_seconds=latency,

@@ -202,6 +202,9 @@ def calculate_metrics(
                 "search_enabled": True,
                 "search_provider": pred.get("search_provider"),
                 "search_query": pred.get("search_query"),
+                "search_query_truncated": pred.get("search_query_truncated", False),
+                "original_query_length": pred.get("original_query_length"),
+                "provider_query_length": pred.get("provider_query_length"),
                 "search_call_count": pred.get("search_call_count"),
                 "search_success": pred.get("search_success"),
                 "search_latency_seconds": pred.get("search_latency_seconds"),
@@ -239,6 +242,18 @@ def calculate_metrics(
     if predictions and predictions[0].get("project_version"):
         resolved_pv = predictions[0].get("project_version")
 
+    # Determine prompt version provenance
+    # Avoid recording entire run as 'baseline-v1' if task 0 experienced search fallback
+    if resolved_pv == "v1" or has_search:
+        primary_pv = "web-search-v1"
+        fallback_pv = "baseline-v1"
+    else:
+        primary_pv = prompt_version or (
+            next((p.get("primary_prompt_version") for p in predictions if p.get("primary_prompt_version")), None)
+            or next((p.get("prompt_version") for p in predictions if p.get("prompt_version")), "baseline-v1")
+        )
+        fallback_pv = next((p.get("fallback_prompt_version") for p in predictions if p.get("fallback_prompt_version")), None)
+
     # Safe summary strictly omits questions, ground truths, or raw responses
     summary = {
         "project_version": resolved_pv,
@@ -257,6 +272,9 @@ def calculate_metrics(
         "model": model_name or (predictions[0].get("model") if predictions else None),
         "model_version": (predictions[0].get("model_version") if predictions else None),
         "prompt_version": prompt_version or (predictions[0].get("prompt_version") if predictions else None),
+        "prompt_version": primary_pv,
+        "primary_prompt_version": primary_pv,
+        "fallback_prompt_version": fallback_pv,
 
         "total_tasks": total_tasks,
         "selected_task_count": total_tasks,
@@ -295,6 +313,7 @@ def calculate_metrics(
         summary["average_search_latency_seconds"] = round(statistics.mean(search_latencies), 2) if search_latencies else None
         summary["average_results_per_search"] = round(statistics.mean(search_result_counts), 2) if search_result_counts else 0.0
         summary["search_fallback_count"] = search_fallback_count
+        summary["search_query_truncated_count"] = sum(1 for p in predictions if p.get("search_query_truncated"))
 
     return {
         "summary": summary,
@@ -374,9 +393,12 @@ def evaluate_predictions(
     print(f"Accuracy:            {summary['accuracy'] * 100:.2f}%")
     print(f"Average Latency:     {summary['average_latency_seconds']}s")
     print(f"Average Tokens:      {summary['average_total_tokens']}")
+    print(f"Prompt Version:      {summary.get('primary_prompt_version') or summary.get('prompt_version')}")
+    if summary.get("fallback_prompt_version"):
+        print(f"Fallback Prompt:     {summary.get('fallback_prompt_version')}")
     if summary['attachment_task_count'] > 0:
         print(f"Attachment Acc:      {summary['attachment_accuracy'] * 100 if summary['attachment_accuracy'] is not None else 0.0:.2f}% ({summary['attachment_task_count']} tasks)")
-        print(f"Non-Attachment Acc:  {summary['non_attachment_accuracy'] * 100 if summary['non_attachment_accuracy'] is not None else 0.0:.2f}% ({summary['non_attachment_count']} tasks)")
+        print(f"Non-Attachment Acc:  {summary['non_attachment_accuracy'] * 100 if summary['non_attachment_accuracy'] is not None else 0.0:.2f}% ({summary['non_attachment_task_count']} tasks)")
     if summary.get("search_enabled"):
         print(f"Search Provider:     {summary.get('search_provider')}")
         print(f"Total Search Calls:  {summary.get('total_search_calls')}")
@@ -384,6 +406,8 @@ def evaluate_predictions(
         print(f"Avg Search Latency:  {summary.get('average_search_latency_seconds')}s")
         print(f"Avg Results/Search:  {summary.get('average_results_per_search')}")
         print(f"Search Fallbacks:    {summary.get('search_fallback_count')}")
+        if summary.get("search_query_truncated_count"):
+            print(f"Truncated Queries:   {summary.get('search_query_truncated_count')}")
     print("=" * 65 + "\n")
 
     # Write safe summary if requested

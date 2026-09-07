@@ -146,6 +146,40 @@ class TestTavilySearchTool(unittest.TestCase):
             auto_parameters=False,
         )
 
+    @patch("tools.web_search.TavilyClient")
+    def test_long_query_deterministic_truncation(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.search.return_value = {"results": []}
+
+        tool = TavilySearchTool(api_key="fake-key")
+        long_query = "A" * 2000
+        result = tool.search(long_query)
+
+        self.assertTrue(result.search_query_truncated)
+        self.assertEqual(result.original_query_length, 2000)
+        self.assertEqual(result.provider_query_length, 1500)
+        self.assertEqual(result.provider_query, "A" * 1500)
+        mock_client.search.assert_called_once()
+        self.assertEqual(mock_client.search.call_args.kwargs["query"], "A" * 1500)
+
+    @patch("tools.web_search.TavilyClient")
+    def test_short_query_not_truncated(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.search.return_value = {"results": []}
+
+        tool = TavilySearchTool(api_key="fake-key")
+        short_query = "Short question?"
+        result = tool.search(short_query)
+
+        self.assertFalse(result.search_query_truncated)
+        self.assertEqual(result.original_query_length, len(short_query))
+        self.assertEqual(result.provider_query_length, len(short_query))
+        self.assertEqual(result.provider_query, short_query)
+        mock_client.search.assert_called_once()
+        self.assertEqual(mock_client.search.call_args.kwargs["query"], short_query)
+
     def test_result_formatting(self):
         result = WebSearchResult(
             query="test query",
@@ -220,6 +254,8 @@ class TestGAIAWebAgent(unittest.TestCase):
 
         self.assertTrue(result.search_fallback)
         self.assertEqual(result.prompt_version, BASELINE_PROMPT_VERSION)
+        self.assertEqual(result.primary_prompt_version, WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(result.fallback_prompt_version, BASELINE_PROMPT_VERSION)
         self.assertEqual(result.final_answer, "Rome")
         self.assertIn("Answer the following question accurately.", result.prompt)
         self.assertNotIn("Web Search Evidence:", result.prompt)
@@ -240,6 +276,8 @@ class TestGAIAWebAgent(unittest.TestCase):
 
         self.assertFalse(result.search_fallback)
         self.assertEqual(result.prompt_version, WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(result.primary_prompt_version, WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(result.fallback_prompt_version, BASELINE_PROMPT_VERSION)
         self.assertIn("Web Search Evidence:", result.prompt)
         self.assertIn("The capital of Italy is Rome.", result.prompt)
         self.assertEqual(result.final_answer, "Rome")
@@ -278,9 +316,14 @@ class TestV1ExecutionAndLogging(unittest.TestCase):
 
         self.assertEqual(record["project_version"], "v1")
         self.assertEqual(record["prompt_version"], WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(record["primary_prompt_version"], WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(record["fallback_prompt_version"], BASELINE_PROMPT_VERSION)
         self.assertTrue(record["search_enabled"])
         self.assertEqual(record["search_provider"], "tavily")
         self.assertEqual(record["search_query"], "Who wrote Hamlet?")
+        self.assertFalse(record["search_query_truncated"])
+        self.assertEqual(record["original_query_length"], 17)
+        self.assertEqual(record["provider_query_length"], 17)
         self.assertEqual(record["search_call_count"], 1)
         self.assertTrue(record["search_success"])
         self.assertEqual(record["search_latency_seconds"], 0.42)
@@ -407,6 +450,89 @@ class TestV1ExecutionAndLogging(unittest.TestCase):
         self.assertTrue(gaia_question_scorer("$1,500.00", "1500"))
         self.assertTrue(gaia_question_scorer("Paris", "paris"))
         self.assertFalse(gaia_question_scorer("London", "Paris"))
+
+    def test_summary_prompt_version_provenance_not_corrupted_by_fallback(self):
+        tasks_by_id = {
+            "task-fallback": GAIATask("task-fallback", "Question?", 1, "Answer"),
+        }
+        predictions = [
+            {
+                "task_id": "task-fallback",
+                "level": 1,
+                "project_version": "v1",
+                "final_answer": "Answer",
+                "request_success": True,
+                "completion_success": True,
+                "latency_seconds": 1.0,
+                "search_enabled": True,
+                "search_provider": "tavily",
+                "search_query": "Question?",
+                "search_query_truncated": False,
+                "original_query_length": 9,
+                "provider_query_length": 9,
+                "search_call_count": 1,
+                "search_success": False,
+                "search_latency_seconds": 0.1,
+                "search_result_count": 0,
+                "search_fallback": True,
+                "prompt_version": "baseline-v1",
+                "primary_prompt_version": "web-search-v1",
+                "fallback_prompt_version": "baseline-v1",
+            }
+        ]
+
+        metrics = calculate_metrics(
+            predictions=predictions,
+            tasks_by_id=tasks_by_id,
+            level=1,
+            project_version="v1",
+        )
+        summary = metrics["summary"]
+        self.assertEqual(summary["prompt_version"], "web-search-v1")
+        self.assertEqual(summary["primary_prompt_version"], "web-search-v1")
+        self.assertEqual(summary["fallback_prompt_version"], "baseline-v1")
+        self.assertEqual(summary["search_fallback_count"], 1)
+
+    def test_evaluate_summary_non_attachment_task_count_no_keyerror(self):
+        import tempfile
+        import json
+        from evaluation.evaluate import evaluate_predictions
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pred_file = os.path.join(tmpdir, "preds.jsonl")
+            data_file = os.path.join(tmpdir, "data.jsonl")
+
+            with open(pred_file, "w", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "task_id": "t-att",
+                    "level": 1,
+                    "project_version": "v1",
+                    "final_answer": "42",
+                    "request_success": True,
+                    "completion_success": True,
+                    "latency_seconds": 1.0,
+                    "attachment_required": True,
+                }) + "\n")
+
+            with open(data_file, "w", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "task_id": "t-att",
+                    "Question": "Question?",
+                    "Level": 1,
+                    "Final answer": "42",
+                    "file_name": "doc.pdf",
+                }) + "\n")
+
+            eval_res = evaluate_predictions(
+                predictions_path=pred_file,
+                data_path=data_file,
+                level=1,
+                project_version="v1",
+            )
+            summary = eval_res["summary"]
+            self.assertIn("non_attachment_task_count", summary)
+            self.assertEqual(summary["attachment_task_count"], 1)
+            self.assertEqual(summary["non_attachment_task_count"], 0)
 
 
 class TestCLIParsers(unittest.TestCase):

@@ -100,6 +100,17 @@ def execute_task(
 
     latency = round(time.time() - start_time, 2)
 
+    # Prompt provenance extraction
+    primary_prompt_ver = getattr(result, "primary_prompt_version", None) if result else None
+    fallback_prompt_ver = getattr(result, "fallback_prompt_version", None) if result else None
+    if primary_prompt_ver is None:
+        if isinstance(agent, GAIAWebAgent) or project_version == "v1":
+            primary_prompt_ver = "web-search-v1"
+            fallback_prompt_ver = "baseline-v1"
+        else:
+            primary_prompt_ver = prompt_ver or "baseline-v1"
+            fallback_prompt_ver = None
+
     # Web search metadata extraction
     search_result = getattr(result, "search_result", None) if result else None
     search_fallback = getattr(result, "search_fallback", False) if result else False
@@ -108,6 +119,9 @@ def execute_task(
         search_enabled = True
         search_provider = search_result.provider
         search_query = search_result.query
+        search_query_truncated = search_result.search_query_truncated
+        original_query_length = search_result.original_query_length
+        provider_query_length = search_result.provider_query_length
         search_call_count = search_result.call_count
         search_success = search_result.success
         search_latency_seconds = search_result.latency_seconds
@@ -116,9 +130,13 @@ def execute_task(
         search_error_message = search_result.error_message
         search_results_data = [item.to_dict() for item in search_result.results]
     elif isinstance(agent, GAIAWebAgent):
+        clean_q = question.strip() if question else ""
         search_enabled = True
         search_provider = "tavily"
         search_query = question
+        search_query_truncated = len(clean_q) > 1500
+        original_query_length = len(clean_q)
+        provider_query_length = min(len(clean_q), 1500)
         search_call_count = 1
         search_success = False
         search_latency_seconds = None
@@ -130,6 +148,9 @@ def execute_task(
         search_enabled = False
         search_provider = None
         search_query = None
+        search_query_truncated = False
+        original_query_length = 0
+        provider_query_length = 0
         search_call_count = 0
         search_success = False
         search_latency_seconds = None
@@ -160,6 +181,8 @@ def execute_task(
         "thinking_level": llm.thinking_level,
 
         "prompt_version": prompt_ver,
+        "primary_prompt_version": primary_prompt_ver,
+        "fallback_prompt_version": fallback_prompt_ver,
         "prompt": prompt,
 
         "raw_response": raw_response,
@@ -185,6 +208,9 @@ def execute_task(
         "search_enabled": search_enabled,
         "search_provider": search_provider,
         "search_query": search_query,
+        "search_query_truncated": search_query_truncated,
+        "original_query_length": original_query_length,
+        "provider_query_length": provider_query_length,
         "search_call_count": search_call_count,
         "search_success": search_success,
         "search_latency_seconds": search_latency_seconds,

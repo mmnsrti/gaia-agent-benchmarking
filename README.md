@@ -116,6 +116,7 @@ Final Answer
 V1 is strictly an ablation baseline, not an optimized final agent. To isolate the contribution of retrieval:
 1. **Single-Shot Retrieval**: Exactly one search is executed per task.
 2. **Original Question as Query**: The original GAIA question is passed directly as the search query without LLM query rewriting or expansion.
+2. **Original Question as Query**: The original GAIA question is passed directly as the search query without LLM query rewriting or expansion. For long questions, queries are deterministically capped to the first 1,500 characters (`provider_query = cleaned_query[:1500]`) to respect provider input limits while logging truncation metadata (`search_query_truncated`, `original_query_length`, `provider_query_length`).
 3. **Deterministic Search Configuration**:
    - Provider: **Tavily Search API** (`tavily-python`)
    - `search_depth = "basic"`
@@ -128,6 +129,8 @@ V1 is strictly an ablation baseline, not an optimized final agent. To isolate th
 5. **No Planning or Router**: Web retrieval is executed uniformly without an LLM planner deciding whether to search.
 6. **Deterministic Search Failure Fallback**:
    If the search API fails (network timeout, HTTP error, missing key), the agent deterministically falls back to the V0 LLM-only prompt path (`baseline-v1`). The fallback is recorded in experiment metadata and the benchmark run continues safely.
+6. **Deterministic Search Failure Fallback & Prompt Provenance**:
+   If the search API fails (network timeout, HTTP error, missing key), the agent deterministically falls back to the V0 LLM-only prompt path (`fallback_prompt_version = baseline-v1`). The primary prompt version is recorded as `primary_prompt_version = web-search-v1`, ensuring fallback events are accurately tracked per-task without misclassifying the prompt provenance of the entire run.
 7. **What V1 Intentionally Does NOT Include**:
    - Multi-hop or iterative searches
    - Query rewriting or keyword extraction

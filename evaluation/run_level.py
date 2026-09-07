@@ -170,6 +170,7 @@ def run_level(
                 print("\nHalting run to preserve quota and avoid false failure logging.")
                 print("You can resume later with:")
                 print(f"  python -m evaluation.run_level --level {level}")
+                print(f"  python -m evaluation.run_level --version {version} --level {level}")
                 print("!" * 80 + "\n")
                 break
 

@@ -16,6 +16,8 @@ class AgentResult:
     llm_response: Optional[LLMResponse] = None
     prompt: Optional[str] = None
     prompt_version: str = PROMPT_VERSION
+    primary_prompt_version: Optional[str] = None
+    fallback_prompt_version: Optional[str] = None
     search_result: Optional[WebSearchResult] = None
     search_fallback: bool = False
 
@@ -29,6 +31,8 @@ class GAIAAgent:
 
     def __init__(self, llm_client: Any):
         self.llm = llm_client
+        self.primary_prompt_version = PROMPT_VERSION
+        self.fallback_prompt_version = None
 
     def build_prompt(self, question: str) -> str:
         """Wraps the question in the standard v0 baseline prompt."""
@@ -71,6 +75,8 @@ class GAIAAgent:
             llm_response=llm_resp if isinstance(llm_resp, LLMResponse) else None,
             prompt=prompt,
             prompt_version=PROMPT_VERSION,
+            primary_prompt_version=PROMPT_VERSION,
+            fallback_prompt_version=None,
         )
 
     def __call__(self, question: str) -> str:
@@ -90,6 +96,8 @@ class GAIAWebAgent(GAIAAgent):
         super().__init__(llm_client=llm_client)
         self.search_tool = search_tool if search_tool is not None else TavilySearchTool()
         self.prompt_version = WEB_SEARCH_PROMPT_VERSION
+        self.primary_prompt_version = WEB_SEARCH_PROMPT_VERSION
+        self.fallback_prompt_version = PROMPT_VERSION
 
     def run(self, question: str) -> AgentResult:
         """Runs the single-shot retrieval pipeline on the given question."""
@@ -127,6 +135,8 @@ class GAIAWebAgent(GAIAAgent):
             llm_response=llm_resp if isinstance(llm_resp, LLMResponse) else None,
             prompt=prompt,
             prompt_version=prompt_ver,
+            primary_prompt_version=WEB_SEARCH_PROMPT_VERSION,
+            fallback_prompt_version=PROMPT_VERSION,
             search_result=search_res,
             search_fallback=search_fallback,
         )

@@ -70,11 +70,17 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
     print(f"Max Output Tokens: {record['max_output_tokens']}")
     print(f"Thinking Level: {record['thinking_level']}")
     print(f"Prompt Version: {record['prompt_version']}")
+    if record.get("primary_prompt_version"):
+        print(f"Primary Prompt Version: {record['primary_prompt_version']}")
+    if record.get("fallback_prompt_version"):
+        print(f"Fallback Prompt Version: {record['fallback_prompt_version']}")
     if record.get("search_enabled"):
         print(f"Search Provider: {record['search_provider']}")
         print(f"Search Success: {record['search_success']}")
         print(f"Search Result Count: {record['search_result_count']}")
         print(f"Search Fallback: {record['search_fallback']}")
+        if record.get("search_query_truncated"):
+            print(f"Search Query Truncated: True (orig={record.get('original_query_length')}, provider={record.get('provider_query_length')})")
         if record.get("search_error_message"):
             print(f"Search Error: [{record['search_error_type']}] {record['search_error_message']}")
     print(f"Request Success: {record['request_success']}")
