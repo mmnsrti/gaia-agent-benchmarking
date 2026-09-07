@@ -115,7 +115,6 @@ Final Answer
 ### Critical Research Design & Ablation Rationale
 V1 is strictly an ablation baseline, not an optimized final agent. To isolate the contribution of retrieval:
 1. **Single-Shot Retrieval**: Exactly one search is executed per task.
-2. **Original Question as Query**: The original GAIA question is passed directly as the search query without LLM query rewriting or expansion.
 2. **Original Question as Query**: The original GAIA question is passed directly as the search query without LLM query rewriting or expansion. For long questions, queries are deterministically capped to the first 1,500 characters (`provider_query = cleaned_query[:1500]`) to respect provider input limits while logging truncation metadata (`search_query_truncated`, `original_query_length`, `provider_query_length`).
 3. **Deterministic Search Configuration**:
    - Provider: **Tavily Search API** (`tavily-python`)
@@ -127,8 +126,6 @@ V1 is strictly an ablation baseline, not an optimized final agent. To isolate th
    - `auto_parameters = false`
 4. **Retrieved Evidence Format**: Evidence is formatted exclusively as **Tavily-retrieved search snippets** (result number, title, URL, and snippet), never as raw webpage content.
 5. **No Planning or Router**: Web retrieval is executed uniformly without an LLM planner deciding whether to search.
-6. **Deterministic Search Failure Fallback**:
-   If the search API fails (network timeout, HTTP error, missing key), the agent deterministically falls back to the V0 LLM-only prompt path (`baseline-v1`). The fallback is recorded in experiment metadata and the benchmark run continues safely.
 6. **Deterministic Search Failure Fallback & Prompt Provenance**:
    If the search API fails (network timeout, HTTP error, missing key), the agent deterministically falls back to the V0 LLM-only prompt path (`fallback_prompt_version = baseline-v1`). The primary prompt version is recorded as `primary_prompt_version = web-search-v1`, ensuring fallback events are accurately tracked per-task without misclassifying the prompt provenance of the entire run.
 7. **What V1 Intentionally Does NOT Include**:
@@ -138,6 +135,24 @@ V1 is strictly an ablation baseline, not an optimized final agent. To isolate th
    - Planning, reflection, or verification loops
    - File attachment processing
    - Python code execution
+
+### V1 Canonical Results (GAIA 2023 Level 1 Validation)
+
+Local research evaluation on GAIA 2023 Validation Level 1 scored using the official GAIA scoring implementation:
+
+| Metric | V0 Frozen Historical | V0 Matched-Control | V1 Canonical (Web Search) |
+| :--- | :--- | :--- | :--- |
+| **Level 1 Accuracy** | **26.42%** (14 / 53) | **28.30%** (15 / 53) | **52.83%** (28 / 53) |
+| Completion Rate | 92.45% (49 / 53) | 90.57% (48 / 53) | 84.91% (45 / 53) |
+| Attachment Acc | 27.27% (3 / 11) | 27.27% (3 / 11) | 9.09% (1 / 11) |
+| Non-Attachment Acc | 26.19% (11 / 42) | 28.57% (12 / 42) | 64.29% (27 / 42) |
+
+> **Ablation Comparison & Baseline Differentiation**:
+> - **V0 frozen historical**: **26.42%** (14 / 53 correct) — Frozen reference baseline established on the `v0-LLM-only` branch.
+> - **V0 matched-control**: **28.30%** (15 / 53 correct) — Contemporary tool-free control run executed on the `v1-web-search` branch under identical runtime conditions (`gemini-3.5-flash-lite`, prompt `baseline-v1`).
+> - **V1 canonical**: **52.83%** (28 / 53 correct) — Single-shot Tavily web retrieval baseline (`gemini-3.5-flash-lite`, prompt `web-search-v1`).
+>
+> Adding single-shot web retrieval alone nearly doubles Level 1 accuracy (+26.41% over frozen historical, +24.53% over matched-control), driven primarily by non-attachment questions (64.29% vs. 28.57%).
 
 ---
 
@@ -159,7 +174,6 @@ cp .env.example .env
 In `.env`:
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-3.5-flash
 GEMINI_MODEL=gemini-3.5-flash-lite
 GEMINI_MAX_OUTPUT_TOKENS=2048
 GEMINI_THINKING_LEVEL=medium
