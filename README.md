@@ -113,7 +113,7 @@ Final Answer
 ```
 
 ### Critical Research Design & Ablation Rationale
-V1 is strictly an ablation baseline, not an optimized final agent. To isolate the contribution of retrieval:
+V1 is strictly an ablation baseline, not an optimized final agent. To provide a matched-control estimate of the effect of adding single-shot web retrieval:
 1. **Single-Shot Retrieval**: Exactly one search is executed per task.
 2. **Original Question as Query**: The original GAIA question is passed directly as the search query without LLM query rewriting or expansion. For long questions, queries are deterministically capped to the first 1,500 characters (`provider_query = cleaned_query[:1500]`) to respect provider input limits while logging truncation metadata (`search_query_truncated`, `original_query_length`, `provider_query_length`).
 3. **Deterministic Search Configuration**:
@@ -136,23 +136,34 @@ V1 is strictly an ablation baseline, not an optimized final agent. To isolate th
    - File attachment processing
    - Python code execution
 
-### V1 Canonical Results (GAIA 2023 Level 1 Validation)
+### V1 Canonical Results (GAIA 2023 Validation)
 
-Local research evaluation on GAIA 2023 Validation Level 1 scored using the official GAIA scoring implementation:
+Local research evaluation on the complete GAIA 2023 Validation set (Levels 1, 2, and 3) scored using the official GAIA scoring implementation:
 
-| Metric | V0 Frozen Historical | V0 Matched-Control | V1 Canonical (Web Search) |
-| :--- | :--- | :--- | :--- |
-| **Level 1 Accuracy** | **26.42%** (14 / 53) | **28.30%** (15 / 53) | **52.83%** (28 / 53) |
-| Completion Rate | 92.45% (49 / 53) | 90.57% (48 / 53) | 84.91% (45 / 53) |
-| Attachment Acc | 27.27% (3 / 11) | 27.27% (3 / 11) | 9.09% (1 / 11) |
-| Non-Attachment Acc | 26.19% (11 / 42) | 28.57% (12 / 42) | 64.29% (27 / 42) |
+| Benchmark Level | V0 Frozen Historical | V0 Matched-Control | V1 Canonical (Web Search) | Controlled Delta | Historical Delta |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Level 1** | 26.42% (14 / 53) | 28.30% (15 / 53) | **52.83%** (28 / 53) | **+24.53%** | +26.41% |
+| **Level 2** | 18.60% (16 / 86) | 19.77% (17 / 86) | **27.91%** (24 / 86) | **+8.14%** | +9.31% |
+| **Level 3** | 11.54% (3 / 26) | 7.69% (2 / 26) | **11.54%** (3 / 26) | **+3.85%** | +0.00% |
+| **Overall** | **20.00%** (33 / 165) | **20.61%** (34 / 165) | **33.33%** (55 / 165) | **+12.72%** | **+13.33%** |
+
+#### Task Type Breakdown (V1 Overall)
+
+| Task Type | Total Tasks | V0 Matched-Control Correct (Acc) | V1 Canonical Correct (Acc) | Delta (pp) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Non-Attachment** | 127 | 29 (22.83%) | **52 (40.94%)** | **+18.11%** |
+| **Attachment-Required** | 38 | 5 (13.16%) | **3 (7.89%)** | **-5.27%** |
 
 > **Ablation Comparison & Baseline Differentiation**:
-> - **V0 frozen historical**: **26.42%** (14 / 53 correct) — Frozen reference baseline established on the `v0-LLM-only` branch.
-> - **V0 matched-control**: **28.30%** (15 / 53 correct) — Contemporary tool-free control run executed on the `v1-web-search` branch under identical runtime conditions (`gemini-3.5-flash-lite`, prompt `baseline-v1`).
-> - **V1 canonical**: **52.83%** (28 / 53 correct) — Single-shot Tavily web retrieval baseline (`gemini-3.5-flash-lite`, prompt `web-search-v1`).
+> - **V0 frozen historical**: **20.00%** (33 / 165 correct) — Frozen reference baseline established on the `v0-LLM-only` branch.
+> - **V0 matched-control**: **20.61%** (34 / 165 correct) — Contemporary tool-free control runs executed on `v1-web-search` under identical runtime conditions (`gemini-3.5-flash-lite`, prompt `baseline-v1`).
+> - **V1 canonical**: **33.33%** (55 / 165 correct) — Single-shot Tavily web retrieval baseline (`gemini-3.5-flash-lite`, prompt `web-search-v1`).
 >
-> Adding single-shot web retrieval alone nearly doubles Level 1 accuracy (+26.41% over frozen historical, +24.53% over matched-control), driven primarily by non-attachment questions (64.29% vs. 28.57%).
+> **Core Research Findings**:
+> 1. **Web retrieval improved tasks requiring external information**: On non-attachment tasks, accuracy increased from 22.83% (29/127) in the matched control to 40.94% (52/127), and on Level 1 specifically reached 52.83% (+24.53 pp over matched-control).
+> 2. **Attachment-heavy tasks remained a major bottleneck**: Web retrieval did not improve attachment-task accuracy in this run (7.89% [3/38] in V1 vs 13.16% [5/38] in V0 matched-control; observed delta: -5.27 pp). The observed difference may also reflect run-to-run variability. Attachment tasks constitute 31.82% of all V1 errors.
+> 3. **Controlled Workflow Nature**: V1 is strictly a controlled **retrieve-then-read** baseline (single-shot search without query rewriting, multi-hop crawling, or reflection) and NOT an autonomous multi-tool/planning agent.
+> 4. **Empirical Support for V2**: Because external web search alone cannot solve tasks requiring local document parsing, V2 will focus specifically on adding file/attachment processing tools (PDF, XLSX, CSV, images).
 
 ---
 
