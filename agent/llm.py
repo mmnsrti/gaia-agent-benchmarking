@@ -2,6 +2,7 @@ import os
 import time
 from dataclasses import dataclass
 from typing import Optional, Any
+from typing import Optional, Any, List
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -91,9 +92,13 @@ class LLMClient:
 
         return types.GenerateContentConfig(**config_kwargs)
 
-    def generate(self, prompt: str) -> LLMResponse:
-        """Generates a text completion for the given prompt with tools disabled."""
-        if not prompt:
+    def generate(
+        self,
+        prompt: str,
+        attachment_parts: Optional[List[Any]] = None,
+    ) -> LLMResponse:
+        """Generates a text completion for the given prompt and optional multimodal parts with tools disabled."""
+        if not prompt and not attachment_parts:
             return LLMResponse(
                 text="",
                 finish_reason="STOP",
@@ -106,11 +111,17 @@ class LLMClient:
         config = self._build_config()
         max_retries = 3
         response = None
+
+        if attachment_parts:
+            contents = [prompt] + list(attachment_parts)
+        else:
+            contents = prompt
+
         for attempt in range(max_retries):
             try:
                 response = self._client.models.generate_content(
                     model=self.model,
-                    contents=prompt,
+                    contents=contents,
                     config=config,
                 )
                 break

@@ -3,7 +3,9 @@ from dataclasses import dataclass
 from typing import Any, Optional
 from prompts.baseline import build_baseline_prompt, PROMPT_VERSION
 from prompts.web_search import build_web_search_prompt, WEB_SEARCH_PROMPT_VERSION
+from prompts.file_search import build_file_search_prompt, FILE_SEARCH_PROMPT_VERSION
 from tools.web_search import TavilySearchTool, WebSearchResult
+from tools.file_tool import FileTool, FileResult
 from .llm import LLMResponse
 
 
@@ -20,6 +22,8 @@ class AgentResult:
     fallback_prompt_version: Optional[str] = None
     search_result: Optional[WebSearchResult] = None
     search_fallback: bool = False
+    file_result: Optional[FileResult] = None
+    file_fallback: bool = False
 
 
 class GAIAAgent:
@@ -140,3 +144,118 @@ class GAIAWebAgent(GAIAAgent):
             search_result=search_res,
             search_fallback=search_fallback,
         )
+
+
+class GAIAFileAgent(GAIAWebAgent):
+    """V2 GAIA agent combining single-shot Tavily web retrieval with local attachment access.
+
+    For every task:
+    1. Executes exactly one Tavily search on the original question.
+    2. If an attachment is provided, processes it deterministically using FileTool.
+    3. If attachment processing succeeds:
+       - For text mode: formats file evidence and web evidence into file-search-v1 prompt.
+       - For native multimodal: formats prompt with file reference and attaches binary Part.
+       - file_fallback = False.
+    4. If attachment processing fails (or no attachment):
+       - If search succeeded: falls back to V1 web-search-v1 prompt (file_fallback = True if file requested).
+       - If search also failed: falls back to V0 baseline-v1 prompt.
+    5. Queries Gemini via LLMClient with tools explicitly disabled.
+    """
+
+    def __init__(
+        self,
+        llm_client: Any,
+        search_tool: Optional[Any] = None,
+        file_tool: Optional[Any] = None,
+    ):
+        super().__init__(llm_client=llm_client, search_tool=search_tool)
+        self.file_tool = file_tool if file_tool is not None else FileTool()
+        self.prompt_version = FILE_SEARCH_PROMPT_VERSION
+        self.primary_prompt_version = FILE_SEARCH_PROMPT_VERSION
+        self.fallback_prompt_version = WEB_SEARCH_PROMPT_VERSION
+
+    def run(self, question: str, file_path: Optional[str] = None) -> AgentResult:
+        """Runs the single-shot retrieval + file pipeline on the given question and attachment."""
+        # 1. Execute exactly one search with the original GAIA question (same as V1)
+        search_res = self.search_tool.search(question)
+        web_evidence = search_res.format_evidence_block() if search_res.success else ""
+        search_fallback = not search_res.success
+
+        # 2. Process file attachment if provided
+        file_res: Optional[FileResult] = None
+        file_fallback = False
+        attachment_parts = None
+
+        if file_path:
+            file_res = self.file_tool.process(file_path)
+
+        # 3. Determine prompt and multimodal parts
+        if file_res is not None and file_res.success:
+            file_fallback = False
+            prompt_ver = FILE_SEARCH_PROMPT_VERSION
+
+            if file_res.content_mode == "native_multimodal" and file_res.native_bytes:
+                try:
+                    from google.genai import types
+                    mime = file_res.mime_type or "application/octet-stream"
+                    part = types.Part.from_bytes(data=file_res.native_bytes, mime_type=mime)
+                    attachment_parts = [part]
+                    file_evidence = f"[Attached file provided as native multimodal input: {file_res.file_name} ({mime})]"
+                except Exception as e:
+                    file_res.success = False
+                    file_res.error_type = type(e).__name__
+                    file_res.error_message = f"Failed to create multimodal part: {e}"
+                    file_fallback = True
+
+            if not file_fallback:
+                file_evidence = file_res.text_content or f"[Attached file: {file_res.file_name}]"
+                prompt = build_file_search_prompt(
+                    question=question,
+                    web_evidence=web_evidence if search_res.success else "[Web search unavailable]",
+                    file_evidence=file_evidence,
+                )
+
+        if file_res is None or not file_res.success:
+            file_fallback = bool(file_path)
+            attachment_parts = None
+
+            if search_res.success:
+                prompt = build_web_search_prompt(question, web_evidence)
+                prompt_ver = WEB_SEARCH_PROMPT_VERSION
+            else:
+                prompt = build_baseline_prompt(question)
+                prompt_ver = PROMPT_VERSION
+
+        # 4. Model generation
+        llm_resp = self.llm.generate(prompt, attachment_parts=attachment_parts)
+
+        if isinstance(llm_resp, LLMResponse):
+            raw_text = llm_resp.raw_text if llm_resp.raw_text else llm_resp.text
+            norm_text = llm_resp.text
+        else:
+            raw_text = str(llm_resp)
+            norm_text = raw_text.strip()
+
+        final_answer = self.clean_answer(raw_text)
+
+        primary_prompt_ver = FILE_SEARCH_PROMPT_VERSION if file_path else WEB_SEARCH_PROMPT_VERSION
+        fallback_prompt_ver = WEB_SEARCH_PROMPT_VERSION if search_res.success else PROMPT_VERSION
+
+        return AgentResult(
+            raw_response=raw_text,
+            normalized_response=norm_text,
+            final_answer=final_answer,
+            llm_response=llm_resp if isinstance(llm_resp, LLMResponse) else None,
+            prompt=prompt,
+            prompt_version=prompt_ver,
+            primary_prompt_version=primary_prompt_ver,
+            fallback_prompt_version=fallback_prompt_ver,
+            search_result=search_res,
+            search_fallback=search_fallback,
+            file_result=file_res,
+            file_fallback=file_fallback,
+        )
+
+    def __call__(self, question: str, file_path: Optional[str] = None) -> str:
+        return self.run(question, file_path=file_path).final_answer
+

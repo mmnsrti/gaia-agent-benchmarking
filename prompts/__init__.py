@@ -4,6 +4,11 @@ from .web_search import (
     WEB_SEARCH_PROMPT_VERSION,
     build_web_search_prompt,
 )
+from .file_search import (
+    FILE_SEARCH_SYSTEM_PROMPT,
+    FILE_SEARCH_PROMPT_VERSION,
+    build_file_search_prompt,
+)
 
 __all__ = [
     "BASELINE_SYSTEM_PROMPT",
@@ -12,4 +17,7 @@ __all__ = [
     "WEB_SEARCH_SYSTEM_PROMPT",
     "WEB_SEARCH_PROMPT_VERSION",
     "build_web_search_prompt",
+    "FILE_SEARCH_SYSTEM_PROMPT",
+    "FILE_SEARCH_PROMPT_VERSION",
+    "build_file_search_prompt",
 ]

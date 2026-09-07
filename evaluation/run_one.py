@@ -53,6 +53,10 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
     if has_attachment:
         print(f"File Name: {file_name}")
         print(f"Note: {version} baseline intentionally does NOT process file attachments.")
+        if version in ("v0", "v1"):
+            print(f"Note: {version} baseline intentionally does NOT process file attachments.")
+        else:
+            print("Note: v2 processes local file attachments.")
     print("-" * 80)
 
     record = execute_task(
@@ -83,6 +87,16 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
             print(f"Search Query Truncated: True (orig={record.get('original_query_length')}, provider={record.get('provider_query_length')})")
         if record.get("search_error_message"):
             print(f"Search Error: [{record['search_error_type']}] {record['search_error_message']}")
+    if record.get("file_enabled") and record.get("attachment_required"):
+        print(f"File Present: {record.get('file_present')}")
+        print(f"File Processing Success: {record.get('file_processing_success')}")
+        print(f"File Processor: {record.get('file_processor')}")
+        print(f"File Content Mode: {record.get('file_content_mode')}")
+        print(f"File Fallback: {record.get('file_fallback')}")
+        if record.get("file_content_truncated"):
+            print(f"File Content Truncated: True (orig={record.get('original_file_content_length')}, provided={record.get('provided_file_content_length')})")
+        if record.get("file_error_message"):
+            print(f"File Error: [{record['file_error_type']}] {record['file_error_message']}")
     print(f"Request Success: {record['request_success']}")
     print(f"Completion Success: {record['completion_success']}")
     print(f"Finish Reason: {record['finish_reason']}")
@@ -107,7 +121,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run GAIA baseline on one question with completion-aware tracking.")
     parser.add_argument("-i", "--index", type=int, default=0, help="Question index to run (0 to 19, default: 0)")
     parser.add_argument("-t", "--task-id", type=str, default=None, help="Specific task ID to run")
-    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1"], help="Agent version (v0: baseline, v1: web search; required)")
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2"], help="Agent version (v0: baseline, v1: web search, v2: file attachments; required)")
     parser.add_argument("--no-log", action="store_true", help="Do not write record to experiments/runs.jsonl")
     args = parser.parse_args()
 

@@ -97,6 +97,14 @@ def calculate_metrics(
     search_result_counts: List[int] = []
     search_fallback_count = 0
 
+    has_file = any(pred.get("file_enabled") for pred in predictions)
+    file_attempts = 0
+    file_successes = 0
+    file_fallbacks = 0
+    file_truncations = 0
+    file_latencies: List[float] = []
+    extension_stats: Dict[str, Dict[str, int]] = {}
+
     for pred in predictions:
         task_id = pred.get("task_id")
         task = tasks_by_id.get(task_id)
@@ -180,6 +188,33 @@ def calculate_metrics(
             if pred.get("search_fallback"):
                 search_fallback_count += 1
 
+        # Track file metrics for V2
+        if pred.get("file_enabled"):
+            if pred.get("file_processing_attempted"):
+                file_attempts += 1
+                if pred.get("file_processing_success"):
+                    file_successes += 1
+                flat = pred.get("file_processing_latency_seconds")
+                if flat is not None:
+                    try:
+                        file_latencies.append(float(flat))
+                    except (ValueError, TypeError):
+                        pass
+            if pred.get("file_fallback"):
+                file_fallbacks += 1
+            if pred.get("file_content_truncated"):
+                file_truncations += 1
+
+            ext = pred.get("file_extension")
+            if ext:
+                if ext not in extension_stats:
+                    extension_stats[ext] = {"total": 0, "correct": 0, "processing_success": 0}
+                extension_stats[ext]["total"] += 1
+                if is_correct:
+                    extension_stats[ext]["correct"] += 1
+                if pred.get("file_processing_success"):
+                    extension_stats[ext]["processing_success"] += 1
+
         detailed_entry = {
             "task_id": task_id,
             "level": pred.get("level", level),
@@ -214,6 +249,23 @@ def calculate_metrics(
                 "search_fallback": pred.get("search_fallback"),
                 "search_results": pred.get("search_results"),
             })
+        if pred.get("file_enabled"):
+            detailed_entry.update({
+                "file_enabled": True,
+                "file_present": pred.get("file_present"),
+                "file_extension": pred.get("file_extension"),
+                "file_processing_attempted": pred.get("file_processing_attempted"),
+                "file_processing_success": pred.get("file_processing_success"),
+                "file_processing_latency_seconds": pred.get("file_processing_latency_seconds"),
+                "file_processor": pred.get("file_processor"),
+                "file_content_mode": pred.get("file_content_mode"),
+                "file_content_truncated": pred.get("file_content_truncated", False),
+                "original_file_content_length": pred.get("original_file_content_length"),
+                "provided_file_content_length": pred.get("provided_file_content_length"),
+                "file_error_type": pred.get("file_error_type"),
+                "file_error_message": pred.get("file_error_message"),
+                "file_fallback": pred.get("file_fallback"),
+            })
         detailed_eval.append(detailed_entry)
 
     accuracy = round(correct_tasks / total_tasks, 4) if total_tasks > 0 else 0.0
@@ -244,7 +296,10 @@ def calculate_metrics(
 
     # Determine prompt version provenance
     # Avoid recording entire run as 'baseline-v1' if task 0 experienced search fallback
-    if resolved_pv == "v1" or has_search:
+    if resolved_pv == "v2" or has_file:
+        primary_pv = "file-search-v1"
+        fallback_pv = "web-search-v1"
+    elif resolved_pv == "v1" or has_search:
         primary_pv = "web-search-v1"
         fallback_pv = "baseline-v1"
     else:
@@ -314,6 +369,25 @@ def calculate_metrics(
         summary["average_results_per_search"] = round(statistics.mean(search_result_counts), 2) if search_result_counts else 0.0
         summary["search_fallback_count"] = search_fallback_count
         summary["search_query_truncated_count"] = sum(1 for p in predictions if p.get("search_query_truncated"))
+
+    if has_file:
+        summary["file_enabled"] = True
+        summary["file_processing_attempts"] = file_attempts
+        summary["successful_file_processing_count"] = file_successes
+        summary["file_processing_success_rate"] = round(file_successes / file_attempts, 4) if file_attempts > 0 else 0.0
+        summary["average_file_processing_latency_seconds"] = round(statistics.mean(file_latencies), 2) if file_latencies else None
+        summary["file_fallback_count"] = file_fallbacks
+        summary["file_content_truncated_count"] = file_truncations
+        if extension_stats:
+            summary["extension_breakdown"] = {
+                ext: {
+                    "total": data["total"],
+                    "correct": data["correct"],
+                    "accuracy": round(data["correct"] / data["total"], 4) if data["total"] > 0 else 0.0,
+                    "processing_success_rate": round(data["processing_success"] / data["total"], 4) if data["total"] > 0 else 0.0,
+                }
+                for ext, data in sorted(extension_stats.items())
+            }
 
     return {
         "summary": summary,
@@ -408,6 +482,16 @@ def evaluate_predictions(
         print(f"Search Fallbacks:    {summary.get('search_fallback_count')}")
         if summary.get("search_query_truncated_count"):
             print(f"Truncated Queries:   {summary.get('search_query_truncated_count')}")
+    if summary.get("file_enabled"):
+        print(f"File Processing:     {summary.get('successful_file_processing_count')}/{summary.get('file_processing_attempts')} ({summary.get('file_processing_success_rate', 0.0) * 100:.1f}%)")
+        print(f"File Fallbacks:      {summary.get('file_fallback_count')}")
+        print(f"Truncated Files:     {summary.get('file_content_truncated_count')}")
+        if summary.get("average_file_processing_latency_seconds") is not None:
+            print(f"Avg File Latency:    {summary.get('average_file_processing_latency_seconds')}s")
+        if summary.get("extension_breakdown"):
+            print("Extension Breakdown:")
+            for ext, s in summary["extension_breakdown"].items():
+                print(f"  {ext:8s}: {s['correct']}/{s['total']} ({s['accuracy']*100:.1f}%) | proc: {s['processing_success_rate']*100:.1f}%")
     print("=" * 65 + "\n")
 
     # Write safe summary if requested
@@ -432,6 +516,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate agent predictions against local GAIA ground truth.")
     parser.add_argument("--level", type=int, default=1, help="Benchmark level (1, 2, or 3)")
     parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1"], help="Agent version (default: v1)")
+    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2"], help="Agent version (default: v1)")
     parser.add_argument("--predictions", type=str, default=None, help="Path to predictions JSONL file")
     parser.add_argument("--data", type=str, default=None, help="Path to local ground-truth dataset")
     parser.add_argument("--summary-output", type=str, default=None, help="Output path for safe public summary JSON")

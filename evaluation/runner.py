@@ -1,9 +1,10 @@
+import os
 import time
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-from agent import GAIAAgent, GAIAWebAgent, LLMClient
+from agent import GAIAAgent, GAIAWebAgent, GAIAFileAgent, LLMClient
 from prompts.baseline import PROMPT_VERSION
 from evaluation.experiment_logger import get_git_metadata
 
@@ -13,6 +14,7 @@ def execute_task(
     question: str,
     level: int = 1,
     file_name: Optional[str] = None,
+    file_path: Optional[str] = None,
     agent: Optional[GAIAAgent] = None,
     llm: Optional[LLMClient] = None,
     project_version: str = "v0",
@@ -26,16 +28,33 @@ def execute_task(
     if llm is None:
         llm = LLMClient()
     if agent is None:
-        if project_version == "v1":
+        if project_version == "v2":
+            agent = GAIAFileAgent(llm_client=llm)
+        elif project_version == "v1":
             agent = GAIAWebAgent(llm_client=llm)
         else:
             agent = GAIAAgent(llm_client=llm)
 
-    if isinstance(agent, GAIAWebAgent) and project_version == "v0":
+    if isinstance(agent, GAIAFileAgent) and project_version in ("v0", "v1"):
+        project_version = "v2"
+    elif isinstance(agent, GAIAWebAgent) and project_version == "v0":
         project_version = "v1"
 
     clean_file_name = file_name.strip() if file_name and file_name.strip() else None
     has_attachment = bool(clean_file_name)
+
+    resolved_file_path = file_path
+    if clean_file_name and not resolved_file_path:
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        candidates = [
+            os.path.join(repo_root, "data", "gaia", "2023", "validation", clean_file_name),
+            os.path.join(repo_root, "data", "gaia", clean_file_name),
+            clean_file_name,
+        ]
+        for c in candidates:
+            if os.path.isfile(c):
+                resolved_file_path = c
+                break
 
     run_id = str(uuid.uuid4())
     git_meta = get_git_metadata()
@@ -62,7 +81,10 @@ def execute_task(
 
     start_time = time.time()
     try:
-        result = agent.run(question)
+        if isinstance(agent, GAIAFileAgent):
+            result = agent.run(question, file_path=resolved_file_path)
+        else:
+            result = agent.run(question)
         request_success = True
         raw_response = result.raw_response
         normalized_response = getattr(result, "normalized_response", raw_response.strip() if raw_response else "")
@@ -104,7 +126,10 @@ def execute_task(
     primary_prompt_ver = getattr(result, "primary_prompt_version", None) if result else None
     fallback_prompt_ver = getattr(result, "fallback_prompt_version", None) if result else None
     if primary_prompt_ver is None:
-        if isinstance(agent, GAIAWebAgent) or project_version == "v1":
+        if isinstance(agent, GAIAFileAgent) or project_version == "v2":
+            primary_prompt_ver = "file-search-v1" if has_attachment else "web-search-v1"
+            fallback_prompt_ver = "web-search-v1" if has_attachment else "baseline-v1"
+        elif isinstance(agent, GAIAWebAgent) or project_version == "v1":
             primary_prompt_ver = "web-search-v1"
             fallback_prompt_ver = "baseline-v1"
         else:
@@ -158,6 +183,50 @@ def execute_task(
         search_error_type = None
         search_error_message = None
         search_results_data = []
+
+    # File attachment metadata extraction (V2)
+    file_result = getattr(result, "file_result", None) if result else None
+    file_fallback = getattr(result, "file_fallback", False) if result else False
+
+    file_enabled = (project_version == "v2") or isinstance(agent, GAIAFileAgent)
+    file_present = has_attachment and bool(resolved_file_path and os.path.exists(resolved_file_path))
+    file_ext = os.path.splitext(clean_file_name)[1].lower() if clean_file_name else None
+
+    if file_result is not None:
+        file_processing_attempted = True
+        file_processing_success = file_result.success
+        file_processing_latency_seconds = file_result.latency_seconds
+        file_processor = file_result.processor
+        file_content_mode = file_result.content_mode
+        file_content_truncated = file_result.content_truncated
+        original_file_content_length = file_result.original_content_length
+        provided_file_content_length = file_result.provided_content_length
+        file_error_type = file_result.error_type
+        file_error_message = file_result.error_message
+    elif file_enabled and has_attachment:
+        file_processing_attempted = True
+        file_processing_success = False
+        file_processing_latency_seconds = 0.0
+        file_processor = None
+        file_content_mode = None
+        file_content_truncated = False
+        original_file_content_length = 0
+        provided_file_content_length = 0
+        file_error_type = "FileNotFoundError" if not file_present else error_type
+        file_error_message = f"File '{clean_file_name}' could not be located on disk" if not file_present else error_message
+        file_fallback = True
+    else:
+        file_processing_attempted = False
+        file_processing_success = False
+        file_processing_latency_seconds = None
+        file_processor = None
+        file_content_mode = None
+        file_content_truncated = False
+        original_file_content_length = 0
+        provided_file_content_length = 0
+        file_error_type = None
+        file_error_message = None
+        file_fallback = False
 
     return {
         "schema_version": schema_version,
@@ -219,5 +288,21 @@ def execute_task(
         "search_error_message": search_error_message,
         "search_fallback": search_fallback,
         "search_results": search_results_data,
+
+        # File attachment metadata (V2)
+        "file_enabled": file_enabled,
+        "file_present": file_present,
+        "file_extension": file_ext,
+        "file_processing_attempted": file_processing_attempted,
+        "file_processing_success": file_processing_success,
+        "file_processing_latency_seconds": file_processing_latency_seconds,
+        "file_processor": file_processor,
+        "file_content_mode": file_content_mode,
+        "file_content_truncated": file_content_truncated,
+        "original_file_content_length": original_file_content_length,
+        "provided_file_content_length": provided_file_content_length,
+        "file_error_type": file_error_type,
+        "file_error_message": file_error_message,
+        "file_fallback": file_fallback,
     }
 
