@@ -81,6 +81,60 @@ Aggregate failure analysis across all incorrect or failed tasks (\(n=132\)) on t
 | `reasoning_failure` | 6 (15.4%) | 5 (7.1%) | 3 (13.0%) | **14 (10.6%)** | Complex multi-step deduction or calculation errors |
 | `incomplete_generation` | 4 (10.3%) | 3 (4.3%) | 2 (8.7%) | **9 (6.8%)** | Response budget exhaustion (`MAX_TOKENS`) or empty output |
 | `formatting_failure` | 1 (2.6%) | 1 (1.4%) | 0 (0.0%) | **2 (1.5%)** | Correct answer found in reasoning but missed strict normalization |
+---
+
+## v1 — Single-Shot Web Retrieval Baseline
+
+**v1** answers the core ablation research question:
+> **How much does adding web retrieval alone improve the frozen V0 LLM-only baseline?**
+
+In accordance with strict ablation principles:
+```text
+V1 = V0 + Web Search only
+```
+
+### Retrieval Flow
+```text
+GAIA Question
+     ↓
+ONE Tavily Search (Original Question as Query)
+     ↓
+Tavily-retrieved search snippets
+     ↓
+Prompt (web-search-v1)
+     ↓
+LLMClient (Gemini)
+     ↓
+Raw Model Response
+     ↓
+Minimal Answer Cleaning
+     ↓
+Final Answer
+```
+
+### Critical Research Design & Ablation Rationale
+V1 is strictly an ablation baseline, not an optimized final agent. To isolate the contribution of retrieval:
+1. **Single-Shot Retrieval**: Exactly one search is executed per task.
+2. **Original Question as Query**: The original GAIA question is passed directly as the search query without LLM query rewriting or expansion.
+3. **Deterministic Search Configuration**:
+   - Provider: **Tavily Search API** (`tavily-python`)
+   - `search_depth = "basic"`
+   - `max_results = 5`
+   - `include_answer = false` (Tavily's generated answer field is strictly ignored to evaluate the LLM's own reasoning over retrieved evidence)
+   - `include_raw_content = false` (evidence consists strictly of Tavily-retrieved search snippets; no raw webpage content or HTML scraping)
+   - `include_images = false`
+   - `auto_parameters = false`
+4. **Retrieved Evidence Format**: Evidence is formatted exclusively as **Tavily-retrieved search snippets** (result number, title, URL, and snippet), never as raw webpage content.
+5. **No Planning or Router**: Web retrieval is executed uniformly without an LLM planner deciding whether to search.
+6. **Deterministic Search Failure Fallback**:
+   If the search API fails (network timeout, HTTP error, missing key), the agent deterministically falls back to the V0 LLM-only prompt path (`baseline-v1`). The fallback is recorded in experiment metadata and the benchmark run continues safely.
+7. **What V1 Intentionally Does NOT Include**:
+   - Multi-hop or iterative searches
+   - Query rewriting or keyword extraction
+   - Browser automation, full-page HTML crawling, or raw webpage content
+   - Planning, reflection, or verification loops
+   - File attachment processing
+   - Python code execution
 
 ---
 
@@ -95,7 +149,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment Variables
-Copy `.env.example` to `.env` and set your Google Gemini API key:
+Copy `.env.example` to `.env` and configure your API keys:
 ```bash
 cp .env.example .env
 ```
@@ -106,6 +160,7 @@ GEMINI_MODEL=gemini-3.5-flash
 GEMINI_MAX_OUTPUT_TOKENS=2048
 GEMINI_THINKING_LEVEL=medium
 # GEMINI_TEMPERATURE= (leave unset for model default sampling)
+TAVILY_API_KEY=your_tavily_api_key_here
 ```
 
 For Hugging Face Spaces deployment, set `GEMINI_API_KEY` under **Space Settings → Variables and secrets**.
@@ -156,26 +211,37 @@ Each experiment record captures:
 ### 1. Run One Development Question (Debug / Smoke Test)
 Run a single question locally without submitting:
 ```bash
-python evaluation/run_one.py -i 0
+# Run with V1 web search baseline
+python evaluation/run_one.py --version v1 -i 0
+
+# Run with V0 tool-free baseline
+python evaluation/run_one.py --version v0 -i 0
 ```
 
 ### 2. Run a Complete Benchmark Level
-Run all tasks for a specific GAIA benchmark level from local data:
+Run tasks for a specific GAIA benchmark level from local data:
 ```bash
-python -m evaluation.run_level --level 1
-python -m evaluation.run_level --level 2
-python -m evaluation.run_level --level 3
+# Run V1 single-shot web retrieval baseline
+python -m evaluation.run_level --version v1 --level 1
+
+# Run V0 tool-free baseline
+python -m evaluation.run_level --version v0 --level 1
 ```
 Useful arguments:
 - `--limit 5`: Run only the first 5 tasks of that level.
-- `--task-id <id>`: Run a specific task by ID.
+- `--task-id <id>`: Run a single specific task by ID.
 - `--no-resume`: Re-run all tasks instead of resuming skipped ones.
 - `--no-eval`: Skip automatic local evaluation after the run completes.
+- `--delay 1.0`: Throttle calls by N seconds between tasks.
 
 ### 3. Evaluate Predictions Locally
-Compute metrics (accuracy, token usage, latency, attachment breakdown) against local ground truth without calling Hugging Face:
+Compute metrics (accuracy, token usage, latency, attachment breakdown, search metrics) against local ground truth without calling Hugging Face:
 ```bash
-python -m evaluation.evaluate --level 1
+# Evaluate V1 predictions
+python -m evaluation.evaluate --version v1 --level 1
+
+# Evaluate V0 predictions
+python -m evaluation.evaluate --version v0 --level 1
 ```
 
 ### 4. Run Unit Tests

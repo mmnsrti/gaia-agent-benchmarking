@@ -1,0 +1,22 @@
+{
+  "project_version": "v1",
+  "description": "Single-shot Tavily web retrieval baseline with Gemini",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "web-search-v1",
+  "temperature": null,
+  "thinking_level": "medium",
+  "max_output_tokens": 2048,
+  "search_provider": "tavily",
+  "search_depth": "basic",
+  "max_results": 5,
+  "include_answer": false,
+  "include_raw_content": false,
+  "include_images": false,
+  "auto_parameters": false,
+  "search_calls_per_task": 1,
+  "query_rewriting": false,
+  "iterative_search": false,
+  "dataset": "GAIA 2023 Validation",
+  "scorer": "official-gaia-leaderboard"
+}
+

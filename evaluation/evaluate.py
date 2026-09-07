@@ -89,6 +89,14 @@ def calculate_metrics(
 
     detailed_eval: List[Dict[str, Any]] = []
 
+    has_search = any(pred.get("search_enabled") for pred in predictions)
+    search_provider = None
+    search_call_counts: List[int] = []
+    search_success_count = 0
+    search_latencies: List[float] = []
+    search_result_counts: List[int] = []
+    search_fallback_count = 0
+
     for pred in predictions:
         task_id = pred.get("task_id")
         task = tasks_by_id.get(task_id)
@@ -156,7 +164,23 @@ def calculate_metrics(
                 except (ValueError, TypeError):
                     pass
 
-        detailed_eval.append({
+        # Track search metrics for V1
+        if pred.get("search_enabled"):
+            search_provider = pred.get("search_provider") or search_provider
+            search_call_counts.append(pred.get("search_call_count", 1))
+            if pred.get("search_success"):
+                search_success_count += 1
+            lat = pred.get("search_latency_seconds")
+            if lat is not None:
+                try:
+                    search_latencies.append(float(lat))
+                except (ValueError, TypeError):
+                    pass
+            search_result_counts.append(pred.get("search_result_count", 0))
+            if pred.get("search_fallback"):
+                search_fallback_count += 1
+
+        detailed_entry = {
             "task_id": task_id,
             "level": pred.get("level", level),
             "prediction": final_ans,
@@ -172,7 +196,22 @@ def calculate_metrics(
             "attachment_required": has_att,
             "error_type": pred.get("error_type"),
             "error_message": pred.get("error_message"),
-        })
+        }
+        if pred.get("search_enabled"):
+            detailed_entry.update({
+                "search_enabled": True,
+                "search_provider": pred.get("search_provider"),
+                "search_query": pred.get("search_query"),
+                "search_call_count": pred.get("search_call_count"),
+                "search_success": pred.get("search_success"),
+                "search_latency_seconds": pred.get("search_latency_seconds"),
+                "search_result_count": pred.get("search_result_count"),
+                "search_error_type": pred.get("search_error_type"),
+                "search_error_message": pred.get("search_error_message"),
+                "search_fallback": pred.get("search_fallback"),
+                "search_results": pred.get("search_results"),
+            })
+        detailed_eval.append(detailed_entry)
 
     accuracy = round(correct_tasks / total_tasks, 4) if total_tasks > 0 else 0.0
     completion_rate = round(completed_tasks / total_tasks, 4) if total_tasks > 0 else 0.0
@@ -195,9 +234,14 @@ def calculate_metrics(
 
     git_meta = get_git_metadata()
 
+    # Determine resolved project version
+    resolved_pv = project_version
+    if predictions and predictions[0].get("project_version"):
+        resolved_pv = predictions[0].get("project_version")
+
     # Safe summary strictly omits questions, ground truths, or raw responses
     summary = {
-        "project_version": project_version,
+        "project_version": resolved_pv,
         "git_commit": git_meta.get("git_commit") or (predictions[0].get("git_commit") if predictions else None),
         "git_branch": git_meta.get("git_branch") or (predictions[0].get("git_branch") if predictions else None),
         "git_dirty": git_meta.get("git_dirty") if git_meta.get("git_dirty") is not None else (predictions[0].get("git_dirty") if predictions else None),
@@ -241,10 +285,22 @@ def calculate_metrics(
         "non_attachment_accuracy": non_att_acc,
     }
 
+    if has_search:
+        total_searches = sum(search_call_counts)
+        summary["search_enabled"] = True
+        summary["search_provider"] = search_provider or "tavily"
+        summary["total_search_calls"] = total_searches
+        summary["successful_search_calls"] = search_success_count
+        summary["search_success_rate"] = round(search_success_count / total_tasks, 4) if total_tasks > 0 else 0.0
+        summary["average_search_latency_seconds"] = round(statistics.mean(search_latencies), 2) if search_latencies else None
+        summary["average_results_per_search"] = round(statistics.mean(search_result_counts), 2) if search_result_counts else 0.0
+        summary["search_fallback_count"] = search_fallback_count
+
     return {
         "summary": summary,
         "detailed": detailed_eval,
     }
+
 
 
 def evaluate_predictions(
@@ -257,6 +313,7 @@ def evaluate_predictions(
     dataset_name: str = "GAIA",
     dataset_version: str = "2023",
     dataset_split: str = "validation",
+    project_version: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Loads prediction records, matches with local ground truth, evaluates, and writes outputs.
 
@@ -289,6 +346,7 @@ def evaluate_predictions(
         predictions=predictions,
         tasks_by_id=tasks_by_id,
         level=level,
+        project_version=project_version or (predictions[0].get("project_version") if predictions else "v0"),
         dataset_name=dataset_name,
         dataset_version=dataset_version,
         dataset_split=dataset_split,
@@ -318,7 +376,14 @@ def evaluate_predictions(
     print(f"Average Tokens:      {summary['average_total_tokens']}")
     if summary['attachment_task_count'] > 0:
         print(f"Attachment Acc:      {summary['attachment_accuracy'] * 100 if summary['attachment_accuracy'] is not None else 0.0:.2f}% ({summary['attachment_task_count']} tasks)")
-        print(f"Non-Attachment Acc:  {summary['non_attachment_accuracy'] * 100 if summary['non_attachment_accuracy'] is not None else 0.0:.2f}% ({summary['non_attachment_task_count']} tasks)")
+        print(f"Non-Attachment Acc:  {summary['non_attachment_accuracy'] * 100 if summary['non_attachment_accuracy'] is not None else 0.0:.2f}% ({summary['non_attachment_count']} tasks)")
+    if summary.get("search_enabled"):
+        print(f"Search Provider:     {summary.get('search_provider')}")
+        print(f"Total Search Calls:  {summary.get('total_search_calls')}")
+        print(f"Search Success Rate: {summary.get('search_success_rate') * 100:.1f}% ({summary.get('successful_search_calls')}/{summary.get('total_search_calls')})")
+        print(f"Avg Search Latency:  {summary.get('average_search_latency_seconds')}s")
+        print(f"Avg Results/Search:  {summary.get('average_results_per_search')}")
+        print(f"Search Fallbacks:    {summary.get('search_fallback_count')}")
     print("=" * 65 + "\n")
 
     # Write safe summary if requested
@@ -342,6 +407,7 @@ def evaluate_predictions(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate agent predictions against local GAIA ground truth.")
     parser.add_argument("--level", type=int, default=1, help="Benchmark level (1, 2, or 3)")
+    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1"], help="Agent version (default: v1)")
     parser.add_argument("--predictions", type=str, default=None, help="Path to predictions JSONL file")
     parser.add_argument("--data", type=str, default=None, help="Path to local ground-truth dataset")
     parser.add_argument("--summary-output", type=str, default=None, help="Output path for safe public summary JSON")
@@ -351,11 +417,11 @@ if __name__ == "__main__":
 
     pred_path = args.predictions
     if not pred_path:
-        pred_path = os.path.join("experiments", "v0", f"predictions_level_{args.level}.jsonl")
+        pred_path = os.path.join("experiments", args.version, f"predictions_level_{args.level}.jsonl")
         if not os.path.exists(pred_path):
-            pred_path = os.path.join("experiments", "v0", "runs.jsonl")
+            pred_path = os.path.join("experiments", args.version, "runs.jsonl")
 
-    sum_out = args.summary_output or os.path.join("experiments", "v0", f"summary_level_{args.level}.json")
+    sum_out = args.summary_output or os.path.join("experiments", args.version, f"summary_level_{args.level}.json")
 
     evaluate_predictions(
         predictions_path=pred_path,
@@ -364,4 +430,6 @@ if __name__ == "__main__":
         summary_output=sum_out,
         detailed_output=args.detailed_output,
         enforce_task_count=args.enforce_task_count,
+        project_version=args.version,
     )
+
