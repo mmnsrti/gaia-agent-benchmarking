@@ -1,4 +1,4 @@
-﻿import os
+import os
 import unittest
 from unittest.mock import patch, MagicMock
 from agent.llm import LLMClient, LLMResponse
@@ -48,6 +48,41 @@ class TestLLMClient(unittest.TestCase):
                 self.assertIsNone(client.temperature)
                 self.assertEqual(client.max_output_tokens, 2048)
                 self.assertEqual(client.thinking_level, "medium")
+
+    def test_build_config_disables_function_calling_mode_none(self):
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-key"}, clear=True):
+            with patch("google.genai.Client"):
+                client = LLMClient()
+                cfg = client._build_config()
+
+                # Verify automatic function calling is disabled
+                self.assertIsNotNone(cfg.automatic_function_calling)
+                self.assertTrue(cfg.automatic_function_calling.disable)
+
+                # Verify tool_config and function_calling_config mode is explicitly NONE
+                self.assertIsNotNone(cfg.tool_config)
+                self.assertIsNotNone(cfg.tool_config.function_calling_config)
+                self.assertEqual(cfg.tool_config.function_calling_config.mode, "NONE")
+
+                # Verify no tools or function declarations are provided
+                self.assertIsNone(cfg.tools)
+
+    def test_build_config_preserves_other_gemini_config(self):
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "fake-key"}, clear=True):
+            with patch("google.genai.Client"):
+                client = LLMClient(
+                    temperature=0.5,
+                    max_output_tokens=1024,
+                    thinking_level="high",
+                )
+                cfg = client._build_config()
+
+                self.assertEqual(cfg.temperature, 0.5)
+                self.assertEqual(cfg.max_output_tokens, 1024)
+                self.assertIsNotNone(cfg.thinking_config)
+                self.assertEqual(cfg.thinking_config.thinking_level, "HIGH")
+                self.assertTrue(cfg.automatic_function_calling.disable)
+                self.assertEqual(cfg.tool_config.function_calling_config.mode, "NONE")
 
     def test_thinking_token_and_finish_reason_extraction(self):
         with patch("google.genai.Client") as mock_client_cls:

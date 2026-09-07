@@ -75,6 +75,11 @@ class LLMClient:
         config_kwargs: dict[str, Any] = {
             "max_output_tokens": self.max_output_tokens,
             "automatic_function_calling": types.AutomaticFunctionCallingConfig(disable=True),
+            "tool_config": types.ToolConfig(
+                function_calling_config=types.FunctionCallingConfig(
+                    mode="NONE"
+                )
+            ),
         }
 
         if self.temperature is not None:
