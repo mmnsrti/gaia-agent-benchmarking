@@ -3,6 +3,7 @@ requests
 python-dotenv
 pandas
 google-genai>=2.3.0
+google-genai==2.22.0
 openpyxl
 pyarrow
 tavily-python==0.8.1

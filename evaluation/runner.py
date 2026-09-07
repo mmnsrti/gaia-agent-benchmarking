@@ -128,6 +128,10 @@ def execute_task(
     total_tokens = None
     response_id = None
     model_version = None
+    response_part_types = []
+    response_part_count = 0
+    has_text_part = False
+    has_function_call_part = False
 
     result = None
     request_success = False
@@ -157,6 +161,10 @@ def execute_task(
             total_tokens = llm_resp.total_tokens
             response_id = llm_resp.response_id
             model_version = llm_resp.model_version
+            response_part_types = getattr(llm_resp, "response_part_types", []) or []
+            response_part_count = getattr(llm_resp, "response_part_count", 0)
+            has_text_part = getattr(llm_resp, "has_text_part", False)
+            has_function_call_part = getattr(llm_resp, "has_function_call_part", False)
 
             if finish_reason == "STOP" and raw_response is not None and raw_response.strip() != "":
                 completion_success = True
@@ -325,6 +333,12 @@ def execute_task(
         "total_tokens": total_tokens,
         "response_id": response_id,
         "model_version": model_version,
+
+        # LLM candidate part diagnostics
+        "response_part_types": response_part_types,
+        "response_part_count": response_part_count,
+        "has_text_part": has_text_part,
+        "has_function_call_part": has_function_call_part,
 
         "latency_seconds": latency,
 
