@@ -10,6 +10,8 @@ from unittest.mock import patch, MagicMock
 
 import docx
 import openpyxl
+from openpyxl.styles import PatternFill, Font
+from openpyxl.styles.colors import Color
 from pptx import Presentation
 from pptx.util import Inches
 
@@ -223,6 +225,109 @@ answer = 42
         self.assertIn("Financials", result.text_content)
         self.assertIn("A1 | value=Metric", result.text_content)
         self.assertIn("B2 | value=1000000", result.text_content)
+        self.assertEqual(result.metadata["non_empty_cell_count"], 4)
+        self.assertEqual(result.metadata["styled_empty_cell_count"], 0)
+        self.assertEqual(result.metadata["represented_cell_count"], 4)
+        self.assertEqual(result.metadata["worksheet_count"], 1)
+
+    def test_xlsx_styled_empty_cells_and_metadata(self):
+        """Verify styled empty cells (fill, font color, format) are represented and default cells omitted."""
+        xlsx_path = os.path.join(self.temp_dir.name, "styled_cells.xlsx")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Data"
+
+        # 1. Non-empty cell
+        ws["A1"] = "START"
+
+        # 2. Empty cell with meaningful fill color
+        ws["B2"].fill = PatternFill(fill_type="solid", fgColor="FFFF0000")
+
+        # 3. Empty cell with meaningful font color
+        ws["B3"].font = Font(color="00FF0000")
+
+        # 4. Empty cell with meaningful number format
+        ws["B4"].number_format = "0.00%"
+
+        # 5. Completely empty/default cell (should NOT be represented)
+        ws["C3"].value = None
+
+        # 6. Non-empty cell with fill
+        ws["D1"] = "FLAG"
+        ws["D1"].fill = PatternFill(fill_type="solid", fgColor="FFFFFF00")
+
+        wb.save(xlsx_path)
+
+        result = self.tool.process_file(xlsx_path)
+        self.assertTrue(result.success)
+        self.assertEqual(result.processor, "openpyxl")
+
+        # Check 1: Non-empty cell is represented
+        self.assertIn("A1 | value=START", result.text_content)
+
+        # Check 2: Empty cell with fill is represented with coordinate
+        self.assertIn("B2 | value=<EMPTY> | fill=FFFF0000", result.text_content)
+
+        # Check 3: Empty cell with font color is represented with coordinate
+        self.assertIn("B3 | value=<EMPTY> | font_color=00FF0000", result.text_content)
+
+        # Check 4: Empty cell with number format is represented with coordinate
+        self.assertIn("B4 | value=<EMPTY> | format=0.00%", result.text_content)
+
+        # Check 5: Completely empty/default cell is NOT represented
+        self.assertNotIn("C3", result.text_content)
+
+        # Check 6: Normal cell with style has both value and fill
+        self.assertIn("D1 | value=FLAG | fill=FFFFFF00", result.text_content)
+
+        # Check 7, 8, 9: Metadata counts
+        # Non-empty cells: A1, D1 (2)
+        # Styled empty cells: B2, B3, B4 (3)
+        # Total represented: 5
+        self.assertEqual(result.metadata["non_empty_cell_count"], 2)
+        self.assertEqual(result.metadata["styled_empty_cell_count"], 3)
+        self.assertEqual(result.metadata["represented_cell_count"], 5)
+        self.assertEqual(result.metadata["worksheet_count"], 1)
+
+        # Verify represented_cell_count equals actual emitted cells
+        emitted_cells = [
+            part
+            for line in result.text_content.splitlines()
+            if " | value=" in line
+            for part in line.split(" ; ")
+            if " | value=" in part
+        ]
+        self.assertEqual(len(emitted_cells), result.metadata["represented_cell_count"])
+
+    def test_xlsx_multi_sheet_and_theme_indexed_colors(self):
+        """Verify multi-sheet metadata aggregation and openpyxl theme/indexed color handling."""
+        xlsx_path = os.path.join(self.temp_dir.name, "multi_sheet.xlsx")
+        wb = openpyxl.Workbook()
+        ws1 = wb.active
+        ws1.title = "Sheet1"
+        ws1["A1"] = "First"
+        ws1["B2"].fill = PatternFill(fill_type="solid", fgColor=Color(theme=4))
+
+        ws2 = wb.create_sheet("Sheet2")
+        ws2["A1"] = "Second"
+        ws2["C3"].font = Font(color=Color(indexed=2))  # red indexed color (00FF0000)
+
+        wb.save(xlsx_path)
+
+        result = self.tool.process_file(xlsx_path)
+        self.assertTrue(result.success)
+
+        # Verify sheets present in text
+        self.assertIn("Sheet: Sheet1", result.text_content)
+        self.assertIn("Sheet: Sheet2", result.text_content)
+        self.assertIn("B2 | value=<EMPTY> | fill=theme_4", result.text_content)
+        self.assertIn("C3 | value=<EMPTY> | font_color=00FF0000", result.text_content)
+
+        # Verify aggregated metadata counts
+        self.assertEqual(result.metadata["worksheet_count"], 2)
+        self.assertEqual(result.metadata["non_empty_cell_count"], 2)  # Sheet1!A1, Sheet2!A1
+        self.assertEqual(result.metadata["styled_empty_cell_count"], 2)  # Sheet1!B2, Sheet2!C3
+        self.assertEqual(result.metadata["represented_cell_count"], 4)
 
     @patch("openpyxl.load_workbook")
     def test_xls_rejected_as_unsupported_without_calling_openpyxl(self, mock_load_workbook):
