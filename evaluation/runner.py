@@ -9,6 +9,65 @@ from prompts.baseline import PROMPT_VERSION
 from evaluation.experiment_logger import get_git_metadata
 
 
+def resolve_attachment_path(
+    file_path: Optional[str] = None,
+    file_name: Optional[str] = None,
+    repo_root: Optional[str] = None,
+) -> Optional[str]:
+    """Deterministically resolves local GAIA task attachment path with explicit precedence.
+
+    Precedence:
+    1. If file_path is absolute and exists, use it.
+    2. If file_path exists relative to the current/repository context, use it.
+    3. Try: <repo_root>/data/gaia/<file_path>
+    4. Try: <repo_root>/data/gaia/2023/validation/<clean_file_name>
+    5. Try: <repo_root>/data/gaia/<clean_file_name>
+    6. If none exist on disk, leave as None to trigger existing safe file fallback (FileNotFoundError).
+    """
+    if repo_root is None:
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+    clean_fp = file_path.strip() if file_path and file_path.strip() else None
+    clean_fn = file_name.strip() if file_name and file_name.strip() else None
+    if not clean_fn and clean_fp:
+        clean_fn = os.path.basename(clean_fp)
+
+    # 1. If file_path is absolute and exists, use it.
+    if clean_fp and os.path.isabs(clean_fp) and os.path.isfile(clean_fp):
+        return os.path.abspath(clean_fp)
+
+    # 2. If file_path exists relative to the current/repository context, use it.
+    if clean_fp:
+        if not os.path.isabs(clean_fp) and os.path.isfile(clean_fp):
+            return os.path.abspath(clean_fp)
+        rel_fp = clean_fp.lstrip("/\\") if not (len(clean_fp) > 1 and clean_fp[1] == ":") else clean_fp
+        repo_rel = os.path.join(repo_root, rel_fp)
+        if os.path.isfile(repo_rel):
+            return os.path.abspath(repo_rel)
+
+    # 3. Try: <repo_root>/data/gaia/<file_path>
+    if clean_fp:
+        rel_fp = clean_fp.lstrip("/\\") if not (len(clean_fp) > 1 and clean_fp[1] == ":") else clean_fp
+        gaia_fp = os.path.join(repo_root, "data", "gaia", rel_fp)
+        if os.path.isfile(gaia_fp):
+            return os.path.abspath(gaia_fp)
+
+    # 4. Try: <repo_root>/data/gaia/2023/validation/<clean_file_name>
+    if clean_fn:
+        val_path = os.path.join(repo_root, "data", "gaia", "2023", "validation", clean_fn)
+        if os.path.isfile(val_path):
+            return os.path.abspath(val_path)
+
+    # 5. Try: <repo_root>/data/gaia/<clean_file_name>
+    if clean_fn:
+        root_data_path = os.path.join(repo_root, "data", "gaia", clean_fn)
+        if os.path.isfile(root_data_path):
+            return os.path.abspath(root_data_path)
+
+    # 6. If none exist on disk, leave as None to trigger existing safe file fallback (FileNotFoundError).
+    return None
+
+
 def execute_task(
     task_id: str,
     question: str,
@@ -41,20 +100,17 @@ def execute_task(
         project_version = "v1"
 
     clean_file_name = file_name.strip() if file_name and file_name.strip() else None
+    clean_file_path = file_path.strip() if file_path and file_path.strip() else None
+    if not clean_file_name and clean_file_path:
+        clean_file_name = os.path.basename(clean_file_path)
     has_attachment = bool(clean_file_name)
 
-    resolved_file_path = file_path
-    if clean_file_name and not resolved_file_path:
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        candidates = [
-            os.path.join(repo_root, "data", "gaia", "2023", "validation", clean_file_name),
-            os.path.join(repo_root, "data", "gaia", clean_file_name),
-            clean_file_name,
-        ]
-        for c in candidates:
-            if os.path.isfile(c):
-                resolved_file_path = c
-                break
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    resolved_file_path = resolve_attachment_path(
+        file_path=clean_file_path,
+        file_name=clean_file_name,
+        repo_root=repo_root,
+    )
 
     run_id = str(uuid.uuid4())
     git_meta = get_git_metadata()
@@ -123,10 +179,14 @@ def execute_task(
     latency = round(time.time() - start_time, 2)
 
     # Prompt provenance extraction
+    file_enabled = (project_version == "v2") or isinstance(agent, GAIAFileAgent)
     primary_prompt_ver = getattr(result, "primary_prompt_version", None) if result else None
     fallback_prompt_ver = getattr(result, "fallback_prompt_version", None) if result else None
-    if primary_prompt_ver is None:
-        if isinstance(agent, GAIAFileAgent) or project_version == "v2":
+    if file_enabled and has_attachment:
+        primary_prompt_ver = "file-search-v1"
+        fallback_prompt_ver = "web-search-v1"
+    elif primary_prompt_ver is None:
+        if file_enabled:
             primary_prompt_ver = "file-search-v1" if has_attachment else "web-search-v1"
             fallback_prompt_ver = "web-search-v1" if has_attachment else "baseline-v1"
         elif isinstance(agent, GAIAWebAgent) or project_version == "v1":

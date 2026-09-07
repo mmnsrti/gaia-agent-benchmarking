@@ -19,8 +19,7 @@ from agent.agent import GAIAFileAgent, GAIAWebAgent, GAIAAgent, AgentResult
 from agent.llm import LLMResponse
 from prompts.file_search import build_file_search_prompt, FILE_SEARCH_PROMPT_VERSION
 from prompts.web_search import WEB_SEARCH_PROMPT_VERSION
-from prompts.baseline import PROMPT_VERSION as BASELINE_PROMPT_VERSION
-from evaluation.runner import execute_task
+from evaluation.runner import execute_task, resolve_attachment_path
 from evaluation.evaluate import calculate_metrics
 from evaluation.dataset import GAIATask
 
@@ -528,6 +527,134 @@ class TestV2RunnerAndEvaluationPipeline(unittest.TestCase):
         self.assertFalse(record["file_processing_success"])
         self.assertEqual(record["file_error_type"], "UnsupportedFileTypeError")
         self.assertTrue(record["file_fallback"])
+
+    def test_resolve_attachment_path_precedence(self):
+        """Tests deterministic attachment resolution across all 6 precedence tiers."""
+        temp_repo = os.path.join(self.temp_dir.name, "repo")
+        gaia_val_dir = os.path.join(temp_repo, "data", "gaia", "2023", "validation")
+        gaia_root_dir = os.path.join(temp_repo, "data", "gaia")
+        repo_rel_dir = os.path.join(temp_repo, "custom")
+        os.makedirs(gaia_val_dir, exist_ok=True)
+        os.makedirs(repo_rel_dir, exist_ok=True)
+
+        # Create test files
+        abs_file = os.path.join(self.temp_dir.name, "abs_test.txt")
+        with open(abs_file, "w", encoding="utf-8") as f:
+            f.write("abs")
+
+        rel_repo_file = os.path.join(repo_rel_dir, "rel_test.txt")
+        with open(rel_repo_file, "w", encoding="utf-8") as f:
+            f.write("rel")
+
+        gaia_val_file = os.path.join(gaia_val_dir, "val_doc.txt")
+        with open(gaia_val_file, "w", encoding="utf-8") as f:
+            f.write("val")
+
+        gaia_root_file = os.path.join(gaia_root_dir, "root_doc.txt")
+        with open(gaia_root_file, "w", encoding="utf-8") as f:
+            f.write("root")
+
+        # 1. Absolute path and exists
+        res1 = resolve_attachment_path(file_path=abs_file, file_name="abs_test.txt", repo_root=temp_repo)
+        self.assertEqual(res1, os.path.abspath(abs_file))
+
+        # 2. Relative to repo_root
+        res2 = resolve_attachment_path(file_path="custom/rel_test.txt", file_name="rel_test.txt", repo_root=temp_repo)
+        self.assertEqual(res2, os.path.abspath(rel_repo_file))
+
+        # 3. <repo_root>/data/gaia/<file_path> (resolves 2023/validation/<file_name>)
+        res3 = resolve_attachment_path(file_path="2023/validation/val_doc.txt", file_name="val_doc.txt", repo_root=temp_repo)
+        self.assertEqual(res3, os.path.abspath(gaia_val_file))
+
+        # 4. <repo_root>/data/gaia/2023/validation/<clean_file_name> when file_path is missing or relative/invalid
+        res4 = resolve_attachment_path(file_path="wrong_folder/val_doc.txt", file_name="val_doc.txt", repo_root=temp_repo)
+        self.assertEqual(res4, os.path.abspath(gaia_val_file))
+
+        # 4b. When file_path is None, resolve using clean_file_name
+        res4b = resolve_attachment_path(file_path=None, file_name="val_doc.txt", repo_root=temp_repo)
+        self.assertEqual(res4b, os.path.abspath(gaia_val_file))
+
+        # 5. <repo_root>/data/gaia/<clean_file_name>
+        res5 = resolve_attachment_path(file_path=None, file_name="root_doc.txt", repo_root=temp_repo)
+        self.assertEqual(res5, os.path.abspath(gaia_root_file))
+
+        # 6. Nonexistent files return None
+        res6 = resolve_attachment_path(file_path="2023/validation/missing.txt", file_name="missing.txt", repo_root=temp_repo)
+        self.assertIsNone(res6)
+
+    def test_runner_resolves_gaia_relative_path_and_preserves_privacy(self):
+        """Verifies execute_task correctly resolves GAIA relative path and does not leak absolute path."""
+        temp_repo = os.path.join(self.temp_dir.name, "fake_repo")
+        gaia_val_dir = os.path.join(temp_repo, "data", "gaia", "2023", "validation")
+        os.makedirs(gaia_val_dir, exist_ok=True)
+        txt_path = os.path.join(gaia_val_dir, "facts.txt")
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write("GAIA facts context.")
+
+        llm = MockLLMClient(response_text="facts")
+        search = MockSearchTool(success=True)
+        file_tool = FileTool()
+        agent = GAIAFileAgent(llm_client=llm, search_tool=search, file_tool=file_tool)
+
+        with patch("evaluation.runner.resolve_attachment_path", side_effect=lambda file_path, file_name, repo_root=None: resolve_attachment_path(file_path, file_name, repo_root=temp_repo)):
+            record = execute_task(
+                task_id="test-gaia-rel-task",
+                question="What are the facts?",
+                level=1,
+                file_name="facts.txt",
+                file_path="2023/validation/facts.txt",
+                agent=agent,
+                llm=llm,
+                project_version="v2",
+            )
+
+        self.assertTrue(record["file_enabled"])
+        self.assertTrue(record["file_present"])
+        self.assertEqual(record["file_name"], "facts.txt")
+        self.assertEqual(record["file_extension"], ".txt")
+        self.assertTrue(record["file_processing_success"])
+        self.assertFalse(record["file_fallback"])
+        self.assertEqual(record["prompt_version"], FILE_SEARCH_PROMPT_VERSION)
+        self.assertEqual(record["search_call_count"], 1)
+
+        # Privacy invariant: Local absolute filesystem path must NOT be present in record values
+        for k, v in record.items():
+            if isinstance(v, str):
+                self.assertNotIn(txt_path, v)
+                self.assertNotIn(temp_repo, v)
+
+    def test_runner_nonexistent_attachment_triggers_filenotfound_and_search_fallback(self):
+        """Verifies nonexistent attachment triggers safe FileNotFoundError and falls back to search without crash."""
+        llm = MockLLMClient(response_text="fallback answer")
+        search = MockSearchTool(success=True)
+        file_tool = FileTool()
+        agent = GAIAFileAgent(llm_client=llm, search_tool=search, file_tool=file_tool)
+
+        record = execute_task(
+            task_id="test-missing-att-task",
+            question="What is the answer?",
+            level=1,
+            file_name="ghost_file.pdf",
+            file_path="2023/validation/ghost_file.pdf",
+            agent=agent,
+            llm=llm,
+            project_version="v2",
+        )
+
+        self.assertTrue(record["file_enabled"])
+        self.assertFalse(record["file_present"])
+        self.assertTrue(record["file_processing_attempted"])
+        self.assertFalse(record["file_processing_success"])
+        self.assertEqual(record["file_error_type"], "FileNotFoundError")
+        self.assertIn("ghost_file.pdf", record["file_error_message"])
+        self.assertTrue(record["file_fallback"])
+        self.assertEqual(record["prompt_version"], WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(record["primary_prompt_version"], FILE_SEARCH_PROMPT_VERSION)
+        self.assertEqual(record["fallback_prompt_version"], WEB_SEARCH_PROMPT_VERSION)
+        self.assertEqual(record["search_call_count"], 1)
+        self.assertTrue(record["request_success"])
+        self.assertTrue(record["completion_success"])
+        self.assertEqual(record["final_answer"], "fallback answer")
 
     def test_calculate_metrics_aggregates_v2_file_statistics(self):
         mock_tasks = {
