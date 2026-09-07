@@ -326,23 +326,12 @@ class FileTool:
                 lines.append(f"Merged Cells: {', '.join(merged_info)}")
 
             # Iterate rows and cells
-            row_count = 0
             for row in ws.iter_rows():
                 cell_parts = []
                 for cell in row:
                     val = cell.value
-                    if val is not None and str(val).strip() != "":
-                        coord = cell.coordinate
-                        part = f"{coord} | value={val}"
                     has_value = val is not None and str(val).strip() != ""
 
-                        # Cell style metadata
-                        fill = cell.fill
-                        if fill and hasattr(fill, "fill_type") and fill.fill_type:
-                            fg = getattr(fill, "fgColor", None)
-                            rgb = getattr(fg, "rgb", None) if fg else None
-                            if rgb and str(rgb) not in ("00000000", "0", "None"):
-                                part += f" | fill={rgb}"
                     # 1. Fill style analysis
                     fill = cell.fill
                     fill_type = getattr(fill, "fill_type", None) if fill else None
@@ -352,14 +341,6 @@ class FileTool:
                         fg = getattr(fill, "fgColor", None) or getattr(fill, "start_color", None)
                         fill_color = self._extract_xlsx_color(fg, is_font=False)
 
-                        font = cell.font
-                        if font:
-                            fc = getattr(font, "color", None)
-                            font_rgb = getattr(fc, "rgb", None) if fc else None
-                            if font_rgb and str(font_rgb) not in ("00000000", "0", "None"):
-                                part += f" | font_color={font_rgb}"
-                            if getattr(font, "bold", False):
-                                part += " | bold=True"
                     fill_repr = None
                     if has_fill_type:
                         if fill_color:
@@ -368,8 +349,6 @@ class FileTool:
                             fill_repr = str(fill_type)
                     has_meaningful_fill = bool(fill_repr)
 
-                        if cell.number_format and cell.number_format != "General":
-                            part += f" | format={cell.number_format}"
                     # 2. Font style analysis
                     font = cell.font
                     font_color = self._extract_xlsx_color(getattr(font, "color", None), is_font=True) if font else None
@@ -413,7 +392,6 @@ class FileTool:
                         total_represented_cells += 1
 
                 if cell_parts:
-                    row_count += 1
                     lines.append(" ; ".join(cell_parts))
 
             sheet_blocks.append("\n".join(lines))
@@ -433,7 +411,6 @@ class FileTool:
             content_mode="text",
             text_content="\n\n".join(sheet_blocks),
             processor="openpyxl",
-            metadata={"sheets": wb.sheetnames},
             metadata=metadata,
         )
 
