@@ -1,0 +1,74 @@
+{
+  "version": "v2",
+  "level": 3,
+  "total_tasks": 26,
+  "correct_tasks": 4,
+  "failed_tasks": 22,
+  "accuracy": 0.1538,
+  "operational_metrics": {
+    "completion_failures": 15,
+    "completion_rate": 0.4231
+  },
+  "taxonomy": {
+    "unsupported_attachment": 1,
+    "attachment_reasoning_failure": 1,
+    "incomplete_generation": 13,
+    "provider_response_anomaly": 2,
+    "retrieval_failure": 0,
+    "retrieval_insufficient": 2,
+    "reasoning_failure": 3,
+    "formatting_failure": 0
+  },
+  "error_counts": {
+    "unsupported_attachment": 1,
+    "attachment_reasoning_failure": 1,
+    "incomplete_generation": 13,
+    "provider_response_anomaly": 2,
+    "retrieval_insufficient": 2,
+    "reasoning_failure": 3
+  },
+  "error_percentages": {
+    "unsupported_attachment": 4.55,
+    "attachment_reasoning_failure": 4.55,
+    "incomplete_generation": 59.09,
+    "provider_response_anomaly": 9.09,
+    "retrieval_failure": 0.0,
+    "retrieval_insufficient": 9.09,
+    "reasoning_failure": 13.64,
+    "formatting_failure": 0.0
+  },
+  "confidence_summary": {
+    "high_confidence_metadata_count": 17,
+    "low_confidence_heuristic_count": 5,
+    "high_confidence_percentage": 77.27,
+    "low_confidence_percentage": 22.73
+  },
+  "taxonomy_metadata": {
+    "mutually_exclusive": true,
+    "deterministic_categories": [
+      "provider_response_anomaly",
+      "incomplete_generation",
+      "unsupported_attachment",
+      "attachment_reasoning_failure",
+      "retrieval_failure"
+    ],
+    "heuristic_categories": [
+      "formatting_failure",
+      "reasoning_failure",
+      "retrieval_insufficient"
+    ],
+    "policy_note": "Deterministic categories are directly supported by execution metadata (response part types, completion status, finish reasons, or file processing results) and carry high confidence. Completed non-attachment failures are classified into reasoning_failure, retrieval_insufficient, or formatting_failure using heuristic signals (ground-truth token overlap, question phrasing, and string normalization) and carry low confidence."
+  },
+  "attachment_stats": {
+    "total_tasks": 7,
+    "correct_tasks": 0,
+    "failed_tasks": 7,
+    "accuracy": 0.0
+  },
+  "non_attachment_stats": {
+    "total_tasks": 19,
+    "correct_tasks": 4,
+    "failed_tasks": 15,
+    "accuracy": 0.2105
+  }
+}

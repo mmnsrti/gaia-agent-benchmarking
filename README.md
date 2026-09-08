@@ -167,6 +167,77 @@ Local research evaluation on the complete GAIA 2023 Validation set (Levels 1, 2,
 
 ---
 
+## v2 — File / Attachment Handling
+
+Status: Frozen
+
+### Controlled Headline Metrics (GAIA 2023 Validation)
+
+```text
+Matched V1: 27.27%
+V2:         36.97%
+Delta:      +9.70 pp
+
+Attachment delta:
++31.58 pp
+```
+
+Direct attachment access substantially improved accuracy on attachment-bearing tasks in the controlled comparison. Aggregate Level 3 accuracy remained flat across both runs (15.38%), indicating that direct file access without code execution or advanced tools is insufficient for many difficult tasks. V2 is frozen as an immutable baseline for future comparative evaluations.
+
+**v2** addresses the primary bottleneck uncovered during the V1 error analysis (where attachment tasks accounted for 31.8% of all V1 errors and saw no gain from web search):
+> **How much does direct access to GAIA task attachments improve performance beyond the V1 single-shot web retrieval baseline?**
+
+In accordance with strict ablation principles:
+```text
+V0 = LLM only
+V1 = V0 + single-shot web retrieval
+V2 = V1 + local file / attachment access
+```
+
+### Retrieval & Inspection Flow
+```text
+GAIA Question + Optional Attachment File
+     ↓
+ONE Tavily Search (Original Question as Query)
+     ↓
+FileTool (Deterministic local extraction without execution or OCR)
+     ↓
+Combined Evidence Prompt (`file-search-v1`) or Multimodal Part Dispatch
+     ↓
+LLMClient (Gemini 3.5 Flash Lite with Tools Disabled)
+     ↓
+Raw Model Response
+     ↓
+Minimal Answer Cleaning
+     ↓
+Final Answer
+```
+
+### Key Architectural & Experimental Guarantees
+1. **Single-Shot Web Retrieval Invariance**:
+   Every task executes exactly one Tavily search on the original question (capped at 1,500 chars), even when an attachment is present and successfully parsed. Web search is never bypassed or routed away based on attachment presence.
+2. **Supported Attachment Types & Handlers**:
+   - **Plain text / Data (`.txt`, `.md`, `.csv`, `.json`)**: UTF-8 / Latin-1 text extraction, deterministically truncated to the first 50,000 characters if longer.
+   - **Python Source (`.py`)**: Source text extraction only. Code is **strictly prohibited from execution** (`exec`, `eval`, and `subprocess` are completely absent).
+   - **Word Documents (`.docx`)**: Paragraph headings, body text, and table cells parsed via `python-docx`.
+   - **Spreadsheets (`.xlsx`, `.xls`)**: Sheet structure, merged cell coordinates, and formatted cell coordinates/values via `openpyxl`.
+   - **Spreadsheets (`.xlsx`)**: Sheet structure, merged cell coordinates, and formatted cell coordinates/values via `openpyxl`. Legacy binary `.xls` files are unsupported and deterministically trigger fallback.
+   - **Presentations (`.pptx`)**: Slide headings, text frames, bullet points, and tables via `python-pptx`.
+   - **Native Multimodal Media (`.png`, `.jpg`, `.jpeg`, `.mp3`)**: Binary dispatch to Gemini multimodal parts (`types.Part.from_bytes`) alongside the structured prompt.
+   - **PDFs (`.pdf`)**: Native document processing via Gemini multimodal API with `pypdf` text extraction fallback.
+3. **Deterministic Fallback Hierarchy**:
+   - If attachment processing fails (missing file, unhandled format): falls back cleanly to `web-search-v1` prompt (`file_fallback=True`).
+   - If web search also fails: falls back cleanly to `baseline-v1` prompt (`search_fallback=True`).
+4. **Strict Ablation Prohibitions Preserved**:
+   - No multi-agent frameworks (LangChain, LangGraph, smolagents)
+   - No autonomous planner or routing LLM
+   - No iterative / multi-hop web searches
+   - No Python code execution or shell execution
+   - No OCR libraries or calculator tools
+   - Tools are explicitly disabled at generation time (`mode="NONE"`)
+
+---
+
 ## Getting Started
 
 ### 1. Installation
@@ -240,6 +311,9 @@ Each experiment record captures:
 ### 1. Run One Development Question (Debug / Smoke Test)
 Run a single question locally without submitting:
 ```bash
+# Run with V2 file attachment + web baseline
+python evaluation/run_one.py --version v2 -i 0
+
 # Run with V1 web search baseline
 python evaluation/run_one.py --version v1 -i 0
 
@@ -250,6 +324,9 @@ python evaluation/run_one.py --version v0 -i 0
 ### 2. Run a Complete Benchmark Level
 Run tasks for a specific GAIA benchmark level from local data:
 ```bash
+# Run V2 file attachment + web retrieval baseline
+python -m evaluation.run_level --version v2 --level 1
+
 # Run V1 single-shot web retrieval baseline
 python -m evaluation.run_level --version v1 --level 1
 
@@ -264,8 +341,11 @@ Useful arguments:
 - `--delay 1.0`: Throttle calls by N seconds between tasks.
 
 ### 3. Evaluate Predictions Locally
-Compute metrics (accuracy, token usage, latency, attachment breakdown, search metrics) against local ground truth without calling Hugging Face:
+Compute metrics (accuracy, token usage, latency, attachment breakdown, file metrics, search metrics) against local ground truth without calling Hugging Face:
 ```bash
+# Evaluate V2 predictions
+python -m evaluation.evaluate --version v2 --level 1
+
 # Evaluate V1 predictions
 python -m evaluation.evaluate --version v1 --level 1
 

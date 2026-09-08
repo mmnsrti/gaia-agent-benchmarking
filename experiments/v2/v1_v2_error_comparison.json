@@ -1,0 +1,101 @@
+{
+  "matched_v1_baseline": {
+    "total_tasks": 165,
+    "correct_tasks": 45,
+    "failed_tasks": 120,
+    "accuracy": 0.2727,
+    "completion_rate": 0.6788,
+    "attachment_accuracy": 0.1053,
+    "non_attachment_accuracy": 0.3228
+  },
+  "v2_canonical": {
+    "total_tasks": 165,
+    "correct_tasks": 61,
+    "failed_tasks": 104,
+    "accuracy": 0.3697,
+    "completion_rate": 0.6242,
+    "attachment_accuracy": 0.4211,
+    "non_attachment_accuracy": 0.3543
+  },
+  "controlled_deltas_percentage_points": {
+    "overall_accuracy_delta": 9.7,
+    "attachment_accuracy_delta": 31.58,
+    "non_attachment_accuracy_delta": 3.15,
+    "completion_rate_delta": -5.46,
+    "net_solved_tasks": 16,
+    "net_reduced_failures": 16
+  },
+  "task_transitions": {
+    "overall": {
+      "total": 165,
+      "improvement": 19,
+      "regression": 3,
+      "stable_correct": 42,
+      "stable_failure": 101,
+      "net_gain": 16
+    },
+    "attachment_tasks": {
+      "total": 38,
+      "improvement": 14,
+      "regression": 2,
+      "stable_correct": 2,
+      "stable_failure": 20,
+      "net_gain": 12
+    },
+    "non_attachment_tasks": {
+      "total": 127,
+      "improvement": 5,
+      "regression": 1,
+      "stable_correct": 40,
+      "stable_failure": 81,
+      "net_gain": 4
+    },
+    "by_level": {
+      "level_1": {
+        "total": 53,
+        "improvement": 6,
+        "regression": 1,
+        "stable_correct": 21,
+        "stable_failure": 25,
+        "net_gain": 5
+      },
+      "level_2": {
+        "total": 86,
+        "improvement": 12,
+        "regression": 1,
+        "stable_correct": 18,
+        "stable_failure": 55,
+        "net_gain": 11
+      },
+      "level_3": {
+        "total": 26,
+        "improvement": 1,
+        "regression": 1,
+        "stable_correct": 3,
+        "stable_failure": 21,
+        "net_gain": 0
+      }
+    }
+  },
+  "taxonomy": {
+    "unsupported_attachment": 3,
+    "attachment_reasoning_failure": 8,
+    "incomplete_generation": 54,
+    "provider_response_anomaly": 7,
+    "retrieval_failure": 0,
+    "retrieval_insufficient": 9,
+    "reasoning_failure": 19,
+    "formatting_failure": 4
+  },
+  "confidence_summary": {
+    "high_confidence_metadata_count": 72,
+    "low_confidence_heuristic_count": 32,
+    "high_confidence_percentage": 69.23,
+    "low_confidence_percentage": 30.77
+  },
+  "key_findings": {
+    "attachment_gain_analysis": "Adding local file handling co-occurred with a +31.58 percentage point improvement on attachment-bearing tasks (10.53% [4/38] in matched V1 -> 42.11% [16/38] in V2; 14 improvements, 2 regressions, net +12 tasks). This gain is strongly consistent with the added file capability because it is concentrated within the target subset. On supported formats, extraction was 100% successful (34/34) and accuracy reached 47.06% (16/34).",
+    "completion_tradeoff_analysis": "Overall completion declined by 5.45 percentage points (67.88% [112/165] in matched V1 -> 62.42% [103/165] in V2, a net drop of 9 tasks). This decline was associated with two distinct observable patterns: (1) 7 provider response anomalies where Gemini returned an unexpected function_call part despite tool-disabled mode, and (2) higher token usage co-occurring with attachment injection (average input tokens rose from 2005.1 to 2296.9, average total tokens rose from 2717.5 to 3171.5), accompanied by 10 MAX_TOKENS exhaustions and 45 malformed completions. However, the current experiment does not isolate token pressure as the sole cause of the completion decline.",
+    "level_3_bottleneck_analysis": "Level 3 showed zero net improvement (15.38% [4/26] in matched V1 vs 15.38% [4/26] in V2), with attachment accuracy observed at 14.29% (1/7) in matched V1 and 0.00% (0/7) in V2. The failure breakdown for the 7 L3 attachment tasks reveals that 2 tasks had unsupported archives (.zip, .jsonld), 4 tasks encountered incomplete generation (3 MALFORMED_FUNCTION_CALL, 1 MAX_TOKENS) on complex spreadsheets/CSVs, and 1 task completed with incorrect visual/spatial reasoning (.jpg). These observations suggest that direct file access alone is insufficient for many hard tasks and motivate testing computation/code execution as the next controlled capability (V3), without assuming in advance what gain V3 will produce."
+  }
+}

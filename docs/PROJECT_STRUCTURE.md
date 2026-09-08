@@ -15,40 +15,26 @@ gaia-agent-benchmarking/
 │
 ├── agent/
 │   ├── __init__.py
-│   ├── agent.py
-│   └── llm.py
-│   ├── agent.py                 (GAIAAgent, GAIAWebAgent)
-│   └── llm.py                   (LLMClient, GenerateContentConfig)
+│   ├── agent.py                 (GAIAAgent, GAIAWebAgent, GAIAFileAgent)
+│   └── llm.py                   (LLMClient, multimodal part handling)
 │
 ├── tools/
 │   ├── __init__.py
-│   └── ...
-│   └── web_search.py            (TavilySearchTool, WebSearchResult)
+│   ├── web_search.py            (TavilySearchTool, WebSearchResult)
+│   └── file_tool.py             (FileTool, FileResult, deterministic parser)
 │
 ├── evaluation/
 │   ├── __init__.py
-│   ├── gaia_client.py
-│   ├── dataset.py
-│   ├── runner.py
-│   ├── run_one.py
-│   ├── run_level.py
-│   ├── evaluate.py
-│   ├── metrics.py
-│   ├── runner.py                (execute_task, completion tracking)
-│   ├── run_one.py               (single-question debug runner)
-│   ├── run_level.py             (level-wide benchmark runner)
-│   ├── evaluate.py              (official evaluation & metrics calculator)
+│   ├── dataset.py               (GAIATask loader and validator)
+│   ├── runner.py                (execute_task, completion & file metadata tracking)
+│   ├── run_one.py               (single-question debug runner: v0/v1/v2)
+│   ├── run_level.py             (level-wide benchmark runner: v0/v1/v2)
+│   ├── evaluate.py              (official evaluation, file breakdowns & metrics)
 │   ├── metrics.py               (official GAIA question scorer)
-│   ├── analyze_errors.py        (reproducible V1 error taxonomy & transition)
+│   ├── analyze_errors.py        (reproducible error taxonomy & transition)
 │   └── experiment_logger.py
 │
 ├── experiments/
-│   └── v0/
-│       ├── .gitkeep
-│       ├── config.json
-│       ├── summary_level_1.json
-│       ├── runs.jsonl             (gitignored)
-│       └── predictions_*.jsonl    (gitignored)
 │   ├── runs.jsonl               (gitignored global runs)
 │   ├── v0/
 │   │   ├── config.json
@@ -56,31 +42,33 @@ gaia-agent-benchmarking/
 │   │   ├── error_analysis_*.json(public sanitized failure analyses)
 │   │   ├── predictions_*.jsonl  (gitignored private task records)
 │   │   └── detailed_eval_*.jsonl(gitignored private detailed traces)
-│   └── v1/
-│       ├── config.json          (frozen V1 configuration)
-│       ├── summary_level_*.json (public aggregate summaries)
-│       ├── error_analysis_*.json(public sanitized failure analyses)
-│       ├── v0_v1_error_comparison.json
-│       ├── comparison_summary.json
-│       ├── predictions_*.jsonl  (gitignored private task records)
-│       └── detailed_eval_*.jsonl(gitignored private detailed traces)
+│   ├── v1/
+│   │   ├── config.json          (frozen V1 configuration)
+│   │   ├── summary_level_*.json (public aggregate summaries)
+│   │   ├── error_analysis_*.json(public sanitized failure analyses)
+│   │   ├── v0_v1_error_comparison.json
+│   │   ├── comparison_summary.json
+│   │   ├── predictions_*.jsonl  (gitignored private task records)
+│   │   └── detailed_eval_*.jsonl(gitignored private detailed traces)
+│   └── v2/
+│       └── config.json          (frozen V2 configuration)
 │
 ├── data/
-│   └── gaia/                      (gitignored benchmark data)
 │   └── gaia/                    (gitignored benchmark dataset)
 │       └── metadata.jsonl
 │
 ├── prompts/
 │   ├── __init__.py
-│   └── baseline.py
 │   ├── baseline.py              (baseline-v1)
-│   └── web_search.py            (web-search-v1)
+│   ├── web_search.py            (web-search-v1)
+│   └── file_search.py           (file-search-v1)
 │
 ├── tests/
 │   ├── __init__.py
 │   ├── test_agent.py
 │   ├── test_llm.py
 │   ├── test_web_search.py
+│   ├── test_file_tool.py
 │   ├── test_error_analysis.py
 │   ├── test_run_one.py
 │   ├── test_experiment_logger.py

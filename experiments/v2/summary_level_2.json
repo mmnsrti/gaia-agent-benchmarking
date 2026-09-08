@@ -1,0 +1,105 @@
+{
+  "project_version": "v2",
+  "git_commit": "ba99ed4de012d912aa7ebea7fa0acbf0cdeef164",
+  "git_branch": "v2-file-attachments",
+  "git_dirty": false,
+  "dataset_name": "GAIA",
+  "dataset_version": "2023",
+  "dataset_split": "validation",
+  "level": 2,
+  "scorer_name": "official-gaia-leaderboard",
+  "scorer_version": "9f133d71362e77b3539f1514f31b9c101a545fec",
+  "model": "gemini-3.5-flash-lite",
+  "model_version": "gemini-3.5-flash-lite",
+  "prompt_version": "file-search-v1 / web-search-v1",
+  "primary_prompt_version": "file-search-v1 / web-search-v1",
+  "fallback_prompt_version": "web-search-v1 / baseline-v1",
+  "prompt_version_counts": {
+    "web-search-v1": 68,
+    "file-search-v1": 18
+  },
+  "total_tasks": 86,
+  "selected_task_count": 86,
+  "expected_task_count": 86,
+  "is_complete_benchmark": true,
+  "completed_tasks": 48,
+  "completion_rate": 0.5581,
+  "correct_tasks": 30,
+  "accuracy": 0.3488,
+  "request_failures": 0,
+  "completion_failures": 38,
+  "average_latency_seconds": 7.42,
+  "median_latency_seconds": 6.21,
+  "total_input_tokens": 194669,
+  "total_output_tokens": 14735,
+  "total_thinking_tokens": 57786,
+  "total_tokens": 267190,
+  "average_input_tokens": 2263.6,
+  "average_output_tokens": 177.5,
+  "average_thinking_tokens": 696.2,
+  "average_total_tokens": 3106.9,
+  "attachment_task_count": 20,
+  "attachment_accuracy": 0.6,
+  "non_attachment_task_count": 66,
+  "non_attachment_accuracy": 0.2727,
+  "search_enabled": true,
+  "search_provider": "tavily",
+  "total_search_calls": 86,
+  "successful_search_calls": 86,
+  "search_success_rate": 1.0,
+  "average_search_latency_seconds": 2.84,
+  "average_results_per_search": 4.9,
+  "search_fallback_count": 0,
+  "search_query_truncated_count": 0,
+  "file_enabled": true,
+  "file_processing_attempts": 20,
+  "successful_file_processing_count": 18,
+  "file_processing_success_rate": 0.9,
+  "average_file_processing_latency_seconds": 0.02,
+  "file_fallback_count": 2,
+  "file_content_truncated_count": 0,
+  "extension_breakdown": {
+    ".jpg": {
+      "total": 1,
+      "correct": 1,
+      "accuracy": 1.0,
+      "processing_success_rate": 1.0
+    },
+    ".mp3": {
+      "total": 1,
+      "correct": 0,
+      "accuracy": 0.0,
+      "processing_success_rate": 1.0
+    },
+    ".pdb": {
+      "total": 1,
+      "correct": 0,
+      "accuracy": 0.0,
+      "processing_success_rate": 0.0
+    },
+    ".pdf": {
+      "total": 3,
+      "correct": 3,
+      "accuracy": 1.0,
+      "processing_success_rate": 1.0
+    },
+    ".png": {
+      "total": 6,
+      "correct": 2,
+      "accuracy": 0.3333,
+      "processing_success_rate": 1.0
+    },
+    ".xlsx": {
+      "total": 7,
+      "correct": 6,
+      "accuracy": 0.8571,
+      "processing_success_rate": 1.0
+    },
+    ".zip": {
+      "total": 1,
+      "correct": 0,
+      "accuracy": 0.0,
+      "processing_success_rate": 0.0
+    }
+  }
+}

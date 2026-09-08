@@ -1,0 +1,75 @@
+{
+  "version": "v2",
+  "level": 2,
+  "total_tasks": 86,
+  "correct_tasks": 30,
+  "failed_tasks": 56,
+  "accuracy": 0.3488,
+  "operational_metrics": {
+    "completion_failures": 38,
+    "completion_rate": 0.5581
+  },
+  "taxonomy": {
+    "unsupported_attachment": 2,
+    "attachment_reasoning_failure": 3,
+    "incomplete_generation": 33,
+    "provider_response_anomaly": 4,
+    "retrieval_failure": 0,
+    "retrieval_insufficient": 5,
+    "reasoning_failure": 8,
+    "formatting_failure": 1
+  },
+  "error_counts": {
+    "unsupported_attachment": 2,
+    "attachment_reasoning_failure": 3,
+    "incomplete_generation": 33,
+    "provider_response_anomaly": 4,
+    "retrieval_insufficient": 5,
+    "reasoning_failure": 8,
+    "formatting_failure": 1
+  },
+  "error_percentages": {
+    "unsupported_attachment": 3.57,
+    "attachment_reasoning_failure": 5.36,
+    "incomplete_generation": 58.93,
+    "provider_response_anomaly": 7.14,
+    "retrieval_failure": 0.0,
+    "retrieval_insufficient": 8.93,
+    "reasoning_failure": 14.29,
+    "formatting_failure": 1.79
+  },
+  "confidence_summary": {
+    "high_confidence_metadata_count": 42,
+    "low_confidence_heuristic_count": 14,
+    "high_confidence_percentage": 75.0,
+    "low_confidence_percentage": 25.0
+  },
+  "taxonomy_metadata": {
+    "mutually_exclusive": true,
+    "deterministic_categories": [
+      "provider_response_anomaly",
+      "incomplete_generation",
+      "unsupported_attachment",
+      "attachment_reasoning_failure",
+      "retrieval_failure"
+    ],
+    "heuristic_categories": [
+      "formatting_failure",
+      "reasoning_failure",
+      "retrieval_insufficient"
+    ],
+    "policy_note": "Deterministic categories are directly supported by execution metadata (response part types, completion status, finish reasons, or file processing results) and carry high confidence. Completed non-attachment failures are classified into reasoning_failure, retrieval_insufficient, or formatting_failure using heuristic signals (ground-truth token overlap, question phrasing, and string normalization) and carry low confidence."
+  },
+  "attachment_stats": {
+    "total_tasks": 20,
+    "correct_tasks": 12,
+    "failed_tasks": 8,
+    "accuracy": 0.6
+  },
+  "non_attachment_stats": {
+    "total_tasks": 66,
+    "correct_tasks": 18,
+    "failed_tasks": 48,
+    "accuracy": 0.2727
+  }
+}

@@ -1,7 +1,7 @@
 import os
 import time
-from dataclasses import dataclass
-from typing import Optional, Any
+from dataclasses import dataclass, field
+from typing import Optional, Any, List, Tuple
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -21,6 +21,48 @@ class LLMResponse:
     total_tokens: Optional[int] = None
     response_id: Optional[str] = None
     model_version: Optional[str] = None
+    response_part_types: List[str] = field(default_factory=list)
+    response_part_count: int = 0
+    has_text_part: bool = False
+    has_function_call_part: bool = False
+
+
+def extract_part_diagnostics(response: Any) -> Tuple[List[str], int, bool, bool]:
+    """Safely extracts sanitized candidate part types and flags from a Gemini response.
+
+    Returns:
+        (response_part_types, response_part_count, has_text_part, has_function_call_part)
+    """
+    response_part_types: List[str] = []
+    has_text_part = False
+    has_function_call_part = False
+    parts: List[Any] = []
+
+    candidates = getattr(response, "candidates", None)
+    if candidates and isinstance(candidates, (list, tuple)) and len(candidates) > 0:
+        candidate = candidates[0]
+        content = getattr(candidate, "content", None)
+        if content is not None:
+            raw_parts = getattr(content, "parts", None)
+            if isinstance(raw_parts, (list, tuple)):
+                parts = list(raw_parts)
+
+    for part in parts:
+        thought_val = getattr(part, "thought", None)
+        is_thought = thought_val is True or (isinstance(thought_val, bool) and thought_val)
+        if is_thought:
+            response_part_types.append("thought")
+        elif getattr(part, "text", None) is not None:
+            response_part_types.append("text")
+            has_text_part = True
+        elif getattr(part, "function_call", None) is not None:
+            response_part_types.append("function_call")
+            has_function_call_part = True
+        else:
+            response_part_types.append("other")
+
+    response_part_count = len(parts)
+    return response_part_types, response_part_count, has_text_part, has_function_call_part
 
 
 class LLMClient:
@@ -91,9 +133,13 @@ class LLMClient:
 
         return types.GenerateContentConfig(**config_kwargs)
 
-    def generate(self, prompt: str) -> LLMResponse:
-        """Generates a text completion for the given prompt with tools disabled."""
-        if not prompt:
+    def generate(
+        self,
+        prompt: str,
+        attachment_parts: Optional[List[Any]] = None,
+    ) -> LLMResponse:
+        """Generates a text completion for the given prompt and optional multimodal parts with tools disabled."""
+        if not prompt and not attachment_parts:
             return LLMResponse(
                 text="",
                 finish_reason="STOP",
@@ -101,16 +147,26 @@ class LLMClient:
                 output_tokens=None,
                 thinking_tokens=None,
                 total_tokens=None,
+                response_part_types=[],
+                response_part_count=0,
+                has_text_part=False,
+                has_function_call_part=False,
             )
 
         config = self._build_config()
         max_retries = 3
         response = None
+
+        if attachment_parts:
+            contents = [prompt] + list(attachment_parts)
+        else:
+            contents = prompt
+
         for attempt in range(max_retries):
             try:
                 response = self._client.models.generate_content(
                     model=self.model,
-                    contents=prompt,
+                    contents=contents,
                     config=config,
                 )
                 break
@@ -123,6 +179,9 @@ class LLMClient:
                     time.sleep(sleep_time)
                     continue
                 raise RuntimeError(f"LLM generation failed on model '{self.model}': {e}") from e
+
+        # Extract sanitized candidate part diagnostics directly from candidate content parts
+        part_types, part_count, has_text, has_fc = extract_part_diagnostics(response)
 
         raw_text = response.text or ""
         text = raw_text.strip()
@@ -164,4 +223,8 @@ class LLMClient:
             total_tokens=total_tokens,
             response_id=response_id,
             model_version=model_version,
+            response_part_types=part_types,
+            response_part_count=part_count,
+            has_text_part=has_text,
+            has_function_call_part=has_fc,
         )
