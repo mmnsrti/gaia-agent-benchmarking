@@ -41,7 +41,6 @@ DETERMINISTIC_CATEGORIES = [
     "retrieval_failure",
 ]
 
-def classify_v2_failure(
 HEURISTIC_CATEGORIES = [
     "formatting_failure",
     "reasoning_failure",
@@ -52,7 +51,6 @@ HEURISTIC_CATEGORIES = [
 def classify_v2_failure_detailed(
     detailed_eval: Dict[str, Any],
     pred_record: Dict[str, Any],
-) -> str:
 ) -> Dict[str, str]:
     """Classifies a failed V2 task into a mutually exclusive 8-category root-cause taxonomy.
 
@@ -62,14 +60,6 @@ def classify_v2_failure_detailed(
       - classification_basis: 'metadata' | 'heuristic'
 
     Precedence order for root-cause classification:
-    1. provider_response_anomaly: Gemini returned an unexpected function_call part despite mode=NONE.
-    2. unsupported_attachment: Task required an attachment whose format is intentionally unsupported (.zip, .pdb, .jsonld).
-    3. incomplete_generation: Output truncated (MAX_TOKENS) or malformed/empty completion.
-    4. attachment_reasoning_failure: Attachment successfully processed, but reasoning/computation failed.
-    5. retrieval_failure: Tavily/search API execution failed (0 in canonical run).
-    6. formatting_failure: Semantic answer correct but failed official exact string normalization.
-    7. reasoning_failure: Evidence present in snippets or task required deduction, but model deduced incorrectly.
-    8. retrieval_insufficient: Search executed successfully but returned snippets lacking sufficient evidence.
     1. provider_response_anomaly (deterministic): Gemini returned an unexpected function_call part despite mode=NONE.
     2. unsupported_attachment (deterministic): Task required an attachment whose format is intentionally unsupported (.zip, .pdb, .jsonld).
     3. incomplete_generation (deterministic): Output truncated (MAX_TOKENS) or malformed/empty completion.
@@ -81,7 +71,6 @@ def classify_v2_failure_detailed(
     """
     # 1. Provider response anomaly (Precedence 1: diagnostic evidence of function_call part)
     if pred_record.get("has_function_call_part"):
-        return "provider_response_anomaly"
         return {
             "category": "provider_response_anomaly",
             "classification_confidence": "high",
@@ -100,7 +89,6 @@ def classify_v2_failure_detailed(
     # Note: If an unsupported attachment occurred, any downstream completion failure was a consequence
     # of lacking the file, so unsupported_attachment is the primary root cause.
     if has_att and (not proc_succ or fallback):
-        return "unsupported_attachment"
         return {
             "category": "unsupported_attachment",
             "classification_confidence": "high",
@@ -113,7 +101,6 @@ def classify_v2_failure_detailed(
     prediction = str(detailed_eval.get("prediction") or "").strip()
 
     if not completion_success or finish_reason == "MAX_TOKENS" or (finish_reason != "STOP" and not prediction):
-        return "incomplete_generation"
         return {
             "category": "incomplete_generation",
             "classification_confidence": "high",
@@ -122,7 +109,6 @@ def classify_v2_failure_detailed(
 
     # 4. Attachment reasoning failure (Precedence 4: file processed, completed, but reasoning failed)
     if has_att and proc_succ:
-        return "attachment_reasoning_failure"
         return {
             "category": "attachment_reasoning_failure",
             "classification_confidence": "high",
@@ -133,7 +119,6 @@ def classify_v2_failure_detailed(
     search_success = detailed_eval.get("search_success", pred_record.get("search_success", True))
     search_fallback = detailed_eval.get("search_fallback", pred_record.get("search_fallback", False))
     if not search_success or search_fallback:
-        return "retrieval_failure"
         return {
             "category": "retrieval_failure",
             "classification_confidence": "high",
@@ -142,14 +127,12 @@ def classify_v2_failure_detailed(
 
     search_count = detailed_eval.get("search_result_count", pred_record.get("search_result_count", 0))
     if search_count == 0:
-        return "retrieval_insufficient"
         return {
             "category": "retrieval_insufficient",
             "classification_confidence": "low",
             "classification_basis": "heuristic",
         }
 
-    # 6. Formatting failure
     # 6. Formatting failure (heuristic: normalization match)
     ground_truth = str(detailed_eval.get("ground_truth") or "").strip()
     if prediction and ground_truth:
@@ -161,14 +144,12 @@ def classify_v2_failure_detailed(
         g_set = {x.strip() for x in g_lower.split(",") if x.strip()}
 
         if p_num and p_num == g_num:
-            return "formatting_failure"
             return {
                 "category": "formatting_failure",
                 "classification_confidence": "low",
                 "classification_basis": "heuristic",
             }
         elif len(p_set) > 1 and p_set == g_set:
-            return "formatting_failure"
             return {
                 "category": "formatting_failure",
                 "classification_confidence": "low",
@@ -178,14 +159,12 @@ def classify_v2_failure_detailed(
             p_digits = re.findall(r"\d+", p_lower)
             g_digits = re.findall(r"\d+", g_lower)
             if p_digits == g_digits:
-                return "formatting_failure"
                 return {
                     "category": "formatting_failure",
                     "classification_confidence": "low",
                     "classification_basis": "heuristic",
                 }
 
-    # 7. Reasoning failure vs retrieval insufficient
     # 7. Reasoning failure vs retrieval insufficient (heuristic)
     question = str(pred_record.get("question") or "").lower()
     snippets = detailed_eval.get("search_results") or pred_record.get("search_results") or []
@@ -199,14 +178,12 @@ def classify_v2_failure_detailed(
     is_reasoning_q = any(kw in question for kw in REASONING_KEYWORDS)
 
     if evidence_has_gt or is_reasoning_q:
-        return "reasoning_failure"
         return {
             "category": "reasoning_failure",
             "classification_confidence": "low",
             "classification_basis": "heuristic",
         }
 
-    return "retrieval_insufficient"
     return {
         "category": "retrieval_insufficient",
         "classification_confidence": "low",

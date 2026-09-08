@@ -169,6 +169,21 @@ Local research evaluation on the complete GAIA 2023 Validation set (Levels 1, 2,
 
 ## v2 — File / Attachment Handling
 
+Status: Frozen
+
+### Controlled Headline Metrics (GAIA 2023 Validation)
+
+```text
+Matched V1: 27.27%
+V2:         36.97%
+Delta:      +9.70 pp
+
+Attachment delta:
++31.58 pp
+```
+
+Direct attachment access substantially improved accuracy on attachment-bearing tasks in the controlled comparison. Aggregate Level 3 accuracy remained flat across both runs (15.38%), indicating that direct file access without code execution or advanced tools is insufficient for many difficult tasks. V2 is frozen as an immutable baseline for future comparative evaluations.
+
 **v2** addresses the primary bottleneck uncovered during the V1 error analysis (where attachment tasks accounted for 31.8% of all V1 errors and saw no gain from web search):
 > **How much does direct access to GAIA task attachments improve performance beyond the V1 single-shot web retrieval baseline?**
 

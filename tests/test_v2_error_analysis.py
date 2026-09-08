@@ -43,8 +43,6 @@ class TestV2ErrorAnalysis(unittest.TestCase):
         cls.v1_preds_by_id = {p["task_id"]: p for p in cls.v1_preds}
         cls.v1_evals_by_id = {e["task_id"]: e for e in cls.v1_evals}
 
-    def test_1_failed_tasks_receive_exactly_one_category(self):
-        """1. Every failed V2 task receives exactly one category from the 8 taxonomy classes."""
     def test_01_165_unique_v2_task_ids(self):
         """1. V1 and V2 joins contain exactly 165 unique task IDs."""
         v1_ids = set(self.v1_preds_by_id.keys())
@@ -82,10 +80,7 @@ class TestV2ErrorAnalysis(unittest.TestCase):
             p = self.v2_preds_by_id[tid]
             cat = classify_v2_failure(e, p)
             self.assertIn(cat, TAXONOMY_CATEGORIES, f"Task {tid} classified as invalid category: {cat}")
-            self.assertIn(cat, TAXONOMY_CATEGORIES, f"Task {tid} classified into invalid category: {cat}")
 
-    def test_2_overall_taxonomy_sums_to_104(self):
-        """2. Overall taxonomy sums to exactly 104."""
     def test_04_overall_taxonomy_reconciles_to_104(self):
         """4. Overall taxonomy reconciles exactly to 104."""
         overall_path = os.path.join(self.v2_dir, "error_analysis_overall.json")
@@ -99,8 +94,6 @@ class TestV2ErrorAnalysis(unittest.TestCase):
         self.assertEqual(data["total_tasks"], 165)
         self.assertEqual(data["correct_tasks"], 61)
 
-    def test_3_level_1_taxonomy_sums_to_26(self):
-        """3. Level 1 taxonomy sums to exactly 26 (53 - 27)."""
     def test_05_level_1_failures_reconcile_to_26(self):
         """5. Level 1 taxonomy reconciles exactly to 26."""
         l1_path = os.path.join(self.v2_dir, "error_analysis_level_1.json")
@@ -110,13 +103,10 @@ class TestV2ErrorAnalysis(unittest.TestCase):
 
         taxonomy_sum = sum(data["taxonomy"].values())
         self.assertEqual(taxonomy_sum, 26)
-        self.assertEqual(sum(data["taxonomy"].values()), 26)
         self.assertEqual(data["failed_tasks"], 26)
         self.assertEqual(data["total_tasks"], 53)
         self.assertEqual(data["correct_tasks"], 27)
 
-    def test_4_level_2_taxonomy_sums_to_56(self):
-        """4. Level 2 taxonomy sums to exactly 56 (86 - 30)."""
     def test_06_level_2_failures_reconcile_to_56(self):
         """6. Level 2 taxonomy reconciles exactly to 56."""
         l2_path = os.path.join(self.v2_dir, "error_analysis_level_2.json")
@@ -126,13 +116,10 @@ class TestV2ErrorAnalysis(unittest.TestCase):
 
         taxonomy_sum = sum(data["taxonomy"].values())
         self.assertEqual(taxonomy_sum, 56)
-        self.assertEqual(sum(data["taxonomy"].values()), 56)
         self.assertEqual(data["failed_tasks"], 56)
         self.assertEqual(data["total_tasks"], 86)
         self.assertEqual(data["correct_tasks"], 30)
 
-    def test_5_level_3_taxonomy_sums_to_22(self):
-        """5. Level 3 taxonomy sums to exactly 22 (26 - 4)."""
     def test_07_level_3_failures_reconcile_to_22(self):
         """7. Level 3 taxonomy reconciles exactly to 22."""
         l3_path = os.path.join(self.v2_dir, "error_analysis_level_3.json")
@@ -142,15 +129,10 @@ class TestV2ErrorAnalysis(unittest.TestCase):
 
         taxonomy_sum = sum(data["taxonomy"].values())
         self.assertEqual(taxonomy_sum, 22)
-        self.assertEqual(sum(data["taxonomy"].values()), 22)
         self.assertEqual(data["failed_tasks"], 22)
         self.assertEqual(data["total_tasks"], 26)
         self.assertEqual(data["correct_tasks"], 4)
 
-    def test_6_no_correct_task_in_failure_taxonomy(self):
-        """6. No correct task is included in failure taxonomy."""
-        correct_tasks = [e for e in self.v2_evals if e.get("correct")]
-        self.assertEqual(len(correct_tasks), 61)
     def test_08_transition_counts_reconcile_to_165(self):
         """8. Transition counts reconcile to exactly 165."""
         comp_path = os.path.join(self.v2_dir, "v1_v2_error_comparison.json")
@@ -160,31 +142,37 @@ class TestV2ErrorAnalysis(unittest.TestCase):
         transitions_path = os.path.join(self.v2_dir, "v1_v2_task_transitions.json")
         with open(transitions_path, "r", encoding="utf-8") as f:
             transitions = json.load(f)
+
         t = comp["task_transitions"]["overall"]
         sum_t = t["improvement"] + t["regression"] + t["stable_correct"] + t["stable_failure"]
         self.assertEqual(sum_t, 165)
         self.assertEqual(t["total"], 165)
+        self.assertEqual(t["improvement"], 19)
+        self.assertEqual(t["regression"], 3)
+        self.assertEqual(t["stable_correct"], 42)
+        self.assertEqual(t["stable_failure"], 101)
 
-        for t in transitions:
-            if t["v2_correct"]:
+        for tr in transitions:
+            if tr["v2_correct"]:
                 self.assertIsNone(
-                    t["v2_error_category"],
-                    f"Correct task {t['task_id']} has an error category: {t['v2_error_category']}"
+                    tr["v2_error_category"],
+                    f"Correct task {tr['task_id']} has an error category: {tr['v2_error_category']}"
                 )
+
     def test_09_attachment_transitions_reconcile_to_38(self):
         """9. Attachment transition counts reconcile to exactly 38."""
         comp_path = os.path.join(self.v2_dir, "v1_v2_error_comparison.json")
         with open(comp_path, "r", encoding="utf-8") as f:
             comp = json.load(f)
 
-    def test_7_provider_response_anomaly_requires_has_function_call_part(self):
-        """7. provider_response_anomaly requires has_function_call_part=True."""
         t = comp["task_transitions"]["attachment_tasks"]
         sum_t = t["improvement"] + t["regression"] + t["stable_correct"] + t["stable_failure"]
         self.assertEqual(sum_t, 38)
         self.assertEqual(t["total"], 38)
         self.assertEqual(t["improvement"], 14)
         self.assertEqual(t["regression"], 2)
+        self.assertEqual(t["stable_correct"], 2)
+        self.assertEqual(t["stable_failure"], 20)
 
     def test_10_non_attachment_transitions_reconcile_to_127(self):
         """10. Non-attachment transition counts reconcile to exactly 127."""
@@ -198,6 +186,8 @@ class TestV2ErrorAnalysis(unittest.TestCase):
         self.assertEqual(t["total"], 127)
         self.assertEqual(t["improvement"], 5)
         self.assertEqual(t["regression"], 1)
+        self.assertEqual(t["stable_correct"], 40)
+        self.assertEqual(t["stable_failure"], 81)
 
     def test_11_provider_anomalies_require_function_call_metadata(self):
         """11. Provider anomalies require direct function-call metadata (has_function_call_part=True)."""
@@ -213,13 +203,10 @@ class TestV2ErrorAnalysis(unittest.TestCase):
                 p = self.v2_preds_by_id[tid]
                 self.assertTrue(
                     p.get("has_function_call_part"),
-                    f"Task {tid} categorized as provider_response_anomaly but has_function_call_part is not True"
                     f"Task {tid} categorized as provider_response_anomaly without has_function_call_part=True"
                 )
         self.assertEqual(anomaly_count, 7)
 
-    def test_8_retrieval_failure_requires_search_failure_evidence(self):
-        """8. retrieval_failure requires actual search failure evidence."""
     def test_12_retrieval_failure_requires_actual_search_failure_evidence(self):
         """12. Retrieval failure requires actual search-failure evidence."""
         transitions_path = os.path.join(self.v2_dir, "v1_v2_task_transitions.json")
@@ -230,14 +217,9 @@ class TestV2ErrorAnalysis(unittest.TestCase):
             if t["v2_error_category"] == "retrieval_failure":
                 tid = t["task_id"]
                 p = self.v2_preds_by_id[tid]
-                e = self.v2_evals_by_id[tid]
                 has_search_err = not p.get("search_success", True) or p.get("search_fallback", False)
                 self.assertTrue(has_search_err, f"Task {tid} classified as retrieval_failure without search error")
-                has_err = not p.get("search_success", True) or p.get("search_fallback", False)
-                self.assertTrue(has_err, f"Task {tid} labeled retrieval_failure without search error")
 
-    def test_9_attachment_reasoning_failure_requires_successful_processing(self):
-        """9. Attachment reasoning failure requires successful attachment processing."""
     def test_13_attachment_reasoning_failure_requires_successful_processing(self):
         """13. Attachment reasoning failure requires successful attachment processing."""
         transitions_path = os.path.join(self.v2_dir, "v1_v2_task_transitions.json")
@@ -245,11 +227,9 @@ class TestV2ErrorAnalysis(unittest.TestCase):
             transitions = json.load(f)
 
         arf_count = 0
-        count = 0
         for t in transitions:
             if t["v2_error_category"] == "attachment_reasoning_failure":
                 arf_count += 1
-                count += 1
                 tid = t["task_id"]
                 p = self.v2_preds_by_id[tid]
                 self.assertTrue(
@@ -260,25 +240,17 @@ class TestV2ErrorAnalysis(unittest.TestCase):
                     p.get("file_fallback"),
                     f"Task {tid} classified as attachment_reasoning_failure but file_fallback is True"
                 )
-                self.assertTrue(p.get("file_processing_success"))
-                self.assertFalse(p.get("file_fallback"))
                 self.assertTrue(t["attachment_required"])
         self.assertEqual(arf_count, 8)
-        self.assertEqual(count, 8)
 
-    def test_10_unsupported_attachment_requires_unsupported_or_failed_processing(self):
-        """10. Unsupported attachment requires attachment-processing failure or unsupported type evidence."""
-    def test_14_deterministic_vs_heuristic_classification_basis(self):
-        """14. Deterministic vs heuristic classification basis is represented correctly across all 104 failures."""
+    def test_14_unsupported_attachment_requires_unsupported_or_failed_processing(self):
+        """14. Unsupported attachment requires attachment-processing failure or unsupported type evidence."""
         transitions_path = os.path.join(self.v2_dir, "v1_v2_task_transitions.json")
         with open(transitions_path, "r", encoding="utf-8") as f:
             transitions = json.load(f)
 
         unsupported_count = 0
         unsupported_exts = {".zip", ".pdb", ".jsonld"}
-        high_count = 0
-        low_count = 0
-
         for t in transitions:
             if t["v2_error_category"] == "unsupported_attachment":
                 unsupported_count += 1
@@ -291,9 +263,20 @@ class TestV2ErrorAnalysis(unittest.TestCase):
                     f"Task {tid} classified as unsupported_attachment but was processed successfully as a supported type"
                 )
         self.assertEqual(unsupported_count, 3)
+
+    def test_15_deterministic_vs_heuristic_classification_basis(self):
+        """15. Deterministic vs heuristic classification basis reconciles across all 104 failures."""
+        transitions_path = os.path.join(self.v2_dir, "v1_v2_task_transitions.json")
+        with open(transitions_path, "r", encoding="utf-8") as f:
+            transitions = json.load(f)
+
+        high_count = 0
+        low_count = 0
+
+        for t in transitions:
             if t["v2_correct"]:
-                self.assertIsNone(t["classification_confidence"])
-                self.assertIsNone(t["classification_basis"])
+                self.assertIsNone(t.get("classification_confidence"))
+                self.assertIsNone(t.get("classification_basis"))
             else:
                 cat = t["v2_error_category"]
                 conf = t["classification_confidence"]
@@ -309,17 +292,10 @@ class TestV2ErrorAnalysis(unittest.TestCase):
                 else:
                     self.fail(f"Unknown error category: {cat}")
 
-    def test_11_v1_v2_task_joins_contain_165_unique_ids(self):
-        """11. V1/V2 task joins contain exactly 165 unique task IDs."""
-        v1_ids = set(self.v1_preds_by_id.keys())
-        v2_ids = set(self.v2_preds_by_id.keys())
         self.assertEqual(high_count, 72)
         self.assertEqual(low_count, 32)
         self.assertEqual(high_count + low_count, 104)
 
-        self.assertEqual(len(v1_ids), 165)
-        self.assertEqual(len(v2_ids), 165)
-        self.assertEqual(v1_ids, v2_ids)
         overall_path = os.path.join(self.v2_dir, "error_analysis_overall.json")
         with open(overall_path, "r", encoding="utf-8") as f:
             overall = json.load(f)
@@ -327,76 +303,8 @@ class TestV2ErrorAnalysis(unittest.TestCase):
         self.assertEqual(c_summary["high_confidence_metadata_count"], 72)
         self.assertEqual(c_summary["low_confidence_heuristic_count"], 32)
 
-        transitions_path = os.path.join(self.v2_dir, "v1_v2_task_transitions.json")
-        with open(transitions_path, "r", encoding="utf-8") as f:
-            transitions = json.load(f)
-
-        join_ids = {t["task_id"] for t in transitions}
-        self.assertEqual(len(join_ids), 165)
-
-    def test_12_transition_counts_sum_to_165(self):
-        """12. Transition counts sum to 165."""
-        comp_path = os.path.join(self.v2_dir, "v1_v2_error_comparison.json")
-        with open(comp_path, "r", encoding="utf-8") as f:
-            comp = json.load(f)
-
-        overall_trans = comp["task_transitions"]["overall"]
-        sum_transitions = (
-            overall_trans["improvement"]
-            + overall_trans["regression"]
-            + overall_trans["stable_correct"]
-            + overall_trans["stable_failure"]
-        )
-        self.assertEqual(sum_transitions, 165)
-        self.assertEqual(overall_trans["total"], 165)
-        self.assertEqual(overall_trans["improvement"], 19)
-        self.assertEqual(overall_trans["regression"], 3)
-        self.assertEqual(overall_trans["stable_correct"], 42)
-        self.assertEqual(overall_trans["stable_failure"], 101)
-
-    def test_13_attachment_transition_counts_sum_to_38(self):
-        """13. Attachment transition counts sum to 38."""
-        comp_path = os.path.join(self.v2_dir, "v1_v2_error_comparison.json")
-        with open(comp_path, "r", encoding="utf-8") as f:
-            comp = json.load(f)
-
-        att_trans = comp["task_transitions"]["attachment_tasks"]
-        sum_att = (
-            att_trans["improvement"]
-            + att_trans["regression"]
-            + att_trans["stable_correct"]
-            + att_trans["stable_failure"]
-        )
-        self.assertEqual(sum_att, 38)
-        self.assertEqual(att_trans["total"], 38)
-        self.assertEqual(att_trans["improvement"], 14)
-        self.assertEqual(att_trans["regression"], 2)
-        self.assertEqual(att_trans["stable_correct"], 2)
-        self.assertEqual(att_trans["stable_failure"], 20)
-
-    def test_14_non_attachment_transition_counts_sum_to_127(self):
-        """14. Non-attachment transition counts sum to 127."""
-        comp_path = os.path.join(self.v2_dir, "v1_v2_error_comparison.json")
-        with open(comp_path, "r", encoding="utf-8") as f:
-            comp = json.load(f)
-
-        non_att_trans = comp["task_transitions"]["non_attachment_tasks"]
-        sum_non_att = (
-            non_att_trans["improvement"]
-            + non_att_trans["regression"]
-            + non_att_trans["stable_correct"]
-            + non_att_trans["stable_failure"]
-        )
-        self.assertEqual(sum_non_att, 127)
-        self.assertEqual(non_att_trans["total"], 127)
-        self.assertEqual(non_att_trans["improvement"], 5)
-        self.assertEqual(non_att_trans["regression"], 1)
-        self.assertEqual(non_att_trans["stable_correct"], 40)
-        self.assertEqual(non_att_trans["stable_failure"], 81)
-
-    def test_15_public_generated_artifacts_contain_no_prohibited_content(self):
-    def test_15_no_public_artifact_exposes_benchmark_leakage(self):
-        """15. Public generated artifacts contain no full GAIA questions, ground-truth answers, or prompts."""
+    def test_16_public_generated_artifacts_contain_no_prohibited_content(self):
+        """16. Public generated artifacts contain no full GAIA questions, ground-truth answers, or prompts."""
         prohibited_keys = {
             "question",
             "ground_truth",
@@ -438,13 +346,27 @@ class TestV2ErrorAnalysis(unittest.TestCase):
                 content = json.load(f)
             check_no_prohibited_keys(content, fpath)
 
-    def test_operational_vs_incomplete_generation_reconciliation(self):
-        """Verifies that operational completion failures (62) reconcile exactly with root-cause taxonomy."""
+    def test_17_operational_vs_incomplete_generation_reconciliation(self):
+        """17. Verifies operational completion failures (62) reconcile exactly with root-cause taxonomy."""
         overall_path = os.path.join(self.v2_dir, "error_analysis_overall.json")
         with open(overall_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-    def test_16_no_generated_narrative_implies_v3_validated(self):
-        """16. No generated narrative says or implies that V3 has already been validated."""
+
+        comp_fails = data["operational_completion_failures"]
+        incomplete_gen = data["taxonomy"]["incomplete_generation"]
+        anomalies = data["taxonomy"]["provider_response_anomaly"]
+        unsupported = data["taxonomy"]["unsupported_attachment"]
+
+        self.assertEqual(comp_fails, 62)
+        self.assertEqual(incomplete_gen, 54)
+        self.assertEqual(anomalies, 7)
+
+        diff = comp_fails - incomplete_gen
+        self.assertEqual(diff, 8)
+        self.assertNotEqual(comp_fails, incomplete_gen)
+
+    def test_18_no_generated_narrative_implies_v3_validated(self):
+        """18. No generated narrative says or implies that V3 has already been validated."""
         invalid_phrases = [
             "v3 has been validated",
             "validated v3",
@@ -455,10 +377,6 @@ class TestV2ErrorAnalysis(unittest.TestCase):
             "will solve these tasks",
         ]
 
-        comp_fails = data["operational_completion_failures"]
-        incomplete_gen = data["taxonomy"]["incomplete_generation"]
-        anomalies = data["taxonomy"]["provider_response_anomaly"]
-        unsupported = data["taxonomy"]["unsupported_attachment"]
         def search_unvalidated_claims(data, path):
             if isinstance(data, str):
                 for p in invalid_phrases:
@@ -470,9 +388,6 @@ class TestV2ErrorAnalysis(unittest.TestCase):
                 for item in data:
                     search_unvalidated_claims(item, path)
 
-        self.assertEqual(comp_fails, 62)
-        self.assertEqual(incomplete_gen, 54)
-        self.assertEqual(anomalies, 7)
         json_files = [
             "error_analysis_level_1.json",
             "error_analysis_level_2.json",
@@ -488,11 +403,6 @@ class TestV2ErrorAnalysis(unittest.TestCase):
                 content = json.load(f)
             search_unvalidated_claims(content, fpath)
 
-        diff = comp_fails - incomplete_gen
-        self.assertEqual(diff, 8)
-        self.assertNotEqual(comp_fails, incomplete_gen)
-
 
 if __name__ == "__main__":
     unittest.main()
-
