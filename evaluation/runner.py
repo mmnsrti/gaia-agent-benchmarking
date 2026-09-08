@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-from agent import GAIAAgent, GAIAWebAgent, GAIAFileAgent, LLMClient
+from agent import GAIAAgent, GAIAWebAgent, GAIAFileAgent, GAIAPythonAgent, LLMClient
 from prompts.baseline import PROMPT_VERSION
 from evaluation.experiment_logger import get_git_metadata
 
@@ -87,14 +87,18 @@ def execute_task(
     if llm is None:
         llm = LLMClient()
     if agent is None:
-        if project_version == "v2":
+        if project_version == "v3":
+            agent = GAIAPythonAgent(llm_client=llm)
+        elif project_version == "v2":
             agent = GAIAFileAgent(llm_client=llm)
         elif project_version == "v1":
             agent = GAIAWebAgent(llm_client=llm)
         else:
             agent = GAIAAgent(llm_client=llm)
 
-    if isinstance(agent, GAIAFileAgent) and project_version in ("v0", "v1"):
+    if isinstance(agent, GAIAPythonAgent) and project_version in ("v0", "v1", "v2"):
+        project_version = "v3"
+    elif isinstance(agent, GAIAFileAgent) and project_version in ("v0", "v1"):
         project_version = "v2"
     elif isinstance(agent, GAIAWebAgent) and project_version == "v0":
         project_version = "v1"
@@ -141,7 +145,7 @@ def execute_task(
 
     start_time = time.time()
     try:
-        if isinstance(agent, GAIAFileAgent):
+        if isinstance(agent, (GAIAFileAgent, GAIAPythonAgent)):
             target_path = resolved_file_path or clean_file_path or clean_file_name
             result = agent.run(question, file_path=target_path)
         else:
@@ -308,6 +312,33 @@ def execute_task(
         file_error_message = None
         file_fallback = False
 
+    # Python execution metadata (V3)
+    py_result = getattr(result, "python_result", None) if result else None
+    python_requested = getattr(result, "python_requested", False) if result else False
+    python_executed = getattr(result, "python_executed", False) if result else False
+    python_fallback = getattr(result, "python_fallback", False) if result else False
+    python_execution_count = 1 if python_executed else 0
+    assert python_execution_count in (0, 1), f"Execution count {python_execution_count} not in {0, 1}"
+
+    if py_result is not None:
+        python_success = py_result.success
+        python_timeout = py_result.timed_out
+        python_exit_code = py_result.exit_code
+        python_error_type = py_result.error_type
+        python_latency_seconds = py_result.latency_seconds
+        python_stdout_length = py_result.stdout_length
+        python_stderr_length = py_result.stderr_length
+        python_output_truncated = py_result.output_truncated
+    else:
+        python_success = False
+        python_timeout = False
+        python_exit_code = None
+        python_error_type = None
+        python_latency_seconds = None
+        python_stdout_length = 0
+        python_stderr_length = 0
+        python_output_truncated = False
+
     return {
         "schema_version": schema_version,
         "run_id": run_id,
@@ -390,5 +421,19 @@ def execute_task(
         "file_error_type": file_error_type,
         "file_error_message": file_error_message,
         "file_fallback": file_fallback,
+
+        # Python execution metadata (V3)
+        "python_requested": python_requested,
+        "python_executed": python_executed,
+        "python_success": python_success,
+        "python_execution_count": python_execution_count,
+        "python_timeout": python_timeout,
+        "python_exit_code": python_exit_code,
+        "python_error_type": python_error_type,
+        "python_latency_seconds": python_latency_seconds,
+        "python_stdout_length": python_stdout_length,
+        "python_stderr_length": python_stderr_length,
+        "python_output_truncated": python_output_truncated,
+        "python_fallback": python_fallback,
     }
 

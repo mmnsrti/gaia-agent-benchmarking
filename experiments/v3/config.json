@@ -1,0 +1,84 @@
+{
+  "version": "v3",
+  "parent_version": "v2",
+  "capability_added": "controlled_single_shot_python_execution",
+  "research_question": "How much does adding controlled local Python execution improve GAIA performance beyond single-shot web retrieval and direct attachment access?",
+  "prospective_hypothesis": "Python execution is expected to provide the largest benefit on tasks requiring deterministic calculation, aggregation, filtering, or structured-data manipulation, while providing less benefit on tasks dominated by pure retrieval or visual recognition.",
+  "model_configuration": {
+    "model": "gemini-3.5-flash-lite",
+    "thinking_level": "medium",
+    "max_output_tokens": 2048,
+    "temperature": null,
+    "tools_mode": "NONE"
+  },
+  "search_configuration": {
+    "provider": "tavily",
+    "search_depth": "basic",
+    "max_results": 5,
+    "include_answer": false,
+    "include_raw_content": false,
+    "include_images": false,
+    "auto_parameters": false,
+    "max_query_length": 1500,
+    "executions_per_task": 1
+  },
+  "file_configuration": {
+    "status": "inherited_from_frozen_v2",
+    "supported_extensions": [
+      ".txt",
+      ".md",
+      ".csv",
+      ".json",
+      ".py",
+      ".docx",
+      ".xlsx",
+      ".pptx",
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".pdf",
+      ".mp3"
+    ],
+    "unsupported_extensions": [
+      ".zip",
+      ".pdb",
+      ".jsonld",
+      ".xls"
+    ],
+    "attached_py_execution_policy": "source_text_only_never_auto_executed"
+  },
+  "python_configuration": {
+    "max_executions_per_task": 1,
+    "timeout_seconds": 15.0,
+    "max_output_length": 20000,
+    "isolated_workspace": true,
+    "mode": "python_isolated_mode (-I)",
+    "security_policy": "static_ast_validation_blocking_network_subprocesses_and_system_evasion",
+    "fallback_on_failure": true,
+    "retries_permitted": 0
+  },
+  "prompt_versions": {
+    "primary": "python-result-v1",
+    "python_analysis": "python-analysis-v1",
+    "file_search_fallback": "file-search-v1",
+    "web_search_fallback": "web-search-v1",
+    "baseline_fallback": "baseline-v1"
+  },
+  "dataset": {
+    "name": "GAIA 2023 Validation",
+    "split": "validation",
+    "total_tasks": 165,
+    "level_1_tasks": 53,
+    "level_2_tasks": 86,
+    "level_3_tasks": 26
+  },
+  "scorer": {
+    "name": "official-gaia-leaderboard",
+    "commit": "9f133d71362e77b3539f1514f31b9c101a545fec"
+  },
+  "matched_control_protocol": {
+    "control_version": "v2",
+    "directory": "experiments/v3_matched_v2/",
+    "requirement": "Contemporaneous matched V2 control required for valid causal ablation comparisons."
+  }
+}
