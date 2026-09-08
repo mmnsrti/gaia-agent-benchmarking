@@ -37,6 +37,28 @@
     "reasoning_failure": 30.77,
     "formatting_failure": 11.54
   },
+  "confidence_summary": {
+    "high_confidence_metadata_count": 13,
+    "low_confidence_heuristic_count": 13,
+    "high_confidence_percentage": 50.0,
+    "low_confidence_percentage": 50.0
+  },
+  "taxonomy_metadata": {
+    "mutually_exclusive": true,
+    "deterministic_categories": [
+      "provider_response_anomaly",
+      "incomplete_generation",
+      "unsupported_attachment",
+      "attachment_reasoning_failure",
+      "retrieval_failure"
+    ],
+    "heuristic_categories": [
+      "formatting_failure",
+      "reasoning_failure",
+      "retrieval_insufficient"
+    ],
+    "policy_note": "Deterministic categories are directly supported by execution metadata (response part types, completion status, finish reasons, or file processing results) and carry high confidence. Completed non-attachment failures are classified into reasoning_failure, retrieval_insufficient, or formatting_failure using heuristic signals (ground-truth token overlap, question phrasing, and string normalization) and carry low confidence."
+  },
   "attachment_stats": {
     "total_tasks": 11,
     "correct_tasks": 4,

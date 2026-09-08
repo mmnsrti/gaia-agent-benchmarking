@@ -172,6 +172,12 @@
     "reasoning_failure": 19,
     "formatting_failure": 4
   },
+  "confidence_summary": {
+    "high_confidence_metadata_count": 72,
+    "low_confidence_heuristic_count": 32,
+    "high_confidence_percentage": 69.23,
+    "low_confidence_percentage": 30.77
+  },
   "methodology_notes": {
     "model_backbone": "gemini-3.5-flash-lite",
     "thinking_level": "medium",
@@ -182,5 +188,10 @@
     "scorer": "official-gaia-leaderboard (9f133d71)",
     "validation_split": "GAIA 2023 Validation (165 tasks: 53 L1, 86 L2, 26 L3)",
     "experimental_design": "Controlled ablation: V2 inherits identical model, thinking, search, and scorer, adding only local file/attachment access."
+  },
+  "token_and_latency_interpretation": {
+    "average_latency_note": "Matched V1 average latency was 6.22s versus 7.16s in V2 (+0.94s, +15.1%). Total latency reflects combined provider network, search API, and Gemini generation variation across runs. Local FileTool extraction overhead was measured as negligible (<0.05s on text/spreadsheet/pdf parsing), but total elapsed duration reflects combined end-to-end service variation.",
+    "average_token_note": "V2 was associated with higher token usage (+454.0 total tokens, +16.7% on average), reflecting attachment context injection and thinking generation on file-bearing tasks. While 10 tasks failed with MAX_TOKENS under V2, token increase alone cannot be asserted as the sole cause of the overall completion decline.",
+    "level_3_note": "File access alone did not improve Level-3 aggregate accuracy in this run (15.38% [4/26] in matched V1 vs 15.38% [4/26] in V2). These results suggest that direct file access without execution tools is insufficient for complex analytical tasks and motivate testing computation/code execution as the next controlled capability (V3), without assuming in advance what gain V3 will produce."
   }
 }

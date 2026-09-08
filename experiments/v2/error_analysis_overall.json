@@ -38,11 +38,33 @@
     "reasoning_failure": 18.27,
     "formatting_failure": 3.85
   },
+  "confidence_summary": {
+    "high_confidence_metadata_count": 72,
+    "low_confidence_heuristic_count": 32,
+    "high_confidence_percentage": 69.23,
+    "low_confidence_percentage": 30.77
+  },
+  "taxonomy_metadata": {
+    "mutually_exclusive": true,
+    "deterministic_categories": [
+      "provider_response_anomaly",
+      "incomplete_generation",
+      "unsupported_attachment",
+      "attachment_reasoning_failure",
+      "retrieval_failure"
+    ],
+    "heuristic_categories": [
+      "formatting_failure",
+      "reasoning_failure",
+      "retrieval_insufficient"
+    ],
+    "policy_note": "Deterministic categories are directly supported by execution metadata (response part types, completion status, finish reasons, or file processing results) and carry high confidence. Completed non-attachment failures are classified into reasoning_failure, retrieval_insufficient, or formatting_failure using heuristic signals (ground-truth token overlap, question phrasing, and string normalization) and carry low confidence."
+  },
   "operational_vs_taxonomy_reconciliation": {
     "operational_completion_failures": 62,
     "root_cause_incomplete_generation": 54,
     "difference": 8,
-    "difference_explanation": "Of the 62 operational completion failures (completion_success=False), 7 tasks are classified as provider_response_anomaly (Gemini returned an unexpected function_call part despite tool-disabled mode), and 1 task is classified as unsupported_attachment (a .pdb file that failed processing and subsequently encountered malformed output). The remaining 54 tasks represent genuine incomplete_generation (MAX_TOKENS or malformed output on tasks with supported/no files)."
+    "difference_explanation": "Of the 62 operational completion failures (completion_success=False), 7 tasks are classified as provider_response_anomaly (directly evidenced by has_function_call_part=True despite tool-disabled mode), and 1 task is classified as unsupported_attachment (a .pdb file that failed processing and subsequently encountered malformed output). The remaining 54 tasks represent incomplete_generation (MAX_TOKENS or malformed output on tasks with supported or no files). Note that token increases co-occurred with these completions but the current experiment does not isolate token pressure as the sole cause."
   },
   "attachment_stats": {
     "total_tasks": 38,

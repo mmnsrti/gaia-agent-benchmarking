@@ -4,6 +4,7 @@ Analyzes failure modes for V2 file/attachment handling extension across GAIA 202
 Levels 1, 2, and 3 against contemporaneous matched V1 controls.
 Generates safe, sanitized aggregate reports without leaking raw benchmark
 questions, ground-truth answers, attachment contents, or search snippets.
+Distinguishes high-confidence metadata-based classifications from heuristic classifications.
 """
 
 import json
@@ -32,12 +33,33 @@ TAXONOMY_CATEGORIES = [
     "formatting_failure",
 ]
 
+DETERMINISTIC_CATEGORIES = [
+    "provider_response_anomaly",
+    "incomplete_generation",
+    "unsupported_attachment",
+    "attachment_reasoning_failure",
+    "retrieval_failure",
+]
 
 def classify_v2_failure(
+HEURISTIC_CATEGORIES = [
+    "formatting_failure",
+    "reasoning_failure",
+    "retrieval_insufficient",
+]
+
+
+def classify_v2_failure_detailed(
     detailed_eval: Dict[str, Any],
     pred_record: Dict[str, Any],
 ) -> str:
+) -> Dict[str, str]:
     """Classifies a failed V2 task into a mutually exclusive 8-category root-cause taxonomy.
+
+    Returns a dict containing:
+      - category: str (one of TAXONOMY_CATEGORIES)
+      - classification_confidence: 'high' | 'low'
+      - classification_basis: 'metadata' | 'heuristic'
 
     Precedence order for root-cause classification:
     1. provider_response_anomaly: Gemini returned an unexpected function_call part despite mode=NONE.
@@ -48,10 +70,23 @@ def classify_v2_failure(
     6. formatting_failure: Semantic answer correct but failed official exact string normalization.
     7. reasoning_failure: Evidence present in snippets or task required deduction, but model deduced incorrectly.
     8. retrieval_insufficient: Search executed successfully but returned snippets lacking sufficient evidence.
+    1. provider_response_anomaly (deterministic): Gemini returned an unexpected function_call part despite mode=NONE.
+    2. unsupported_attachment (deterministic): Task required an attachment whose format is intentionally unsupported (.zip, .pdb, .jsonld).
+    3. incomplete_generation (deterministic): Output truncated (MAX_TOKENS) or malformed/empty completion.
+    4. attachment_reasoning_failure (deterministic): Attachment successfully processed and completed, but answer was incorrect.
+    5. retrieval_failure (deterministic): Tavily/search API execution failed (0 in canonical run).
+    6. formatting_failure (heuristic): Semantic answer correct but failed official exact string normalization.
+    7. reasoning_failure (heuristic): Evidence present in snippets or task required deduction, but model deduced incorrectly.
+    8. retrieval_insufficient (heuristic): Search executed successfully but returned snippets lacking sufficient evidence.
     """
     # 1. Provider response anomaly (Precedence 1: diagnostic evidence of function_call part)
     if pred_record.get("has_function_call_part"):
         return "provider_response_anomaly"
+        return {
+            "category": "provider_response_anomaly",
+            "classification_confidence": "high",
+            "classification_basis": "metadata",
+        }
 
     has_att = bool(
         detailed_eval.get("attachment_required")
@@ -66,6 +101,11 @@ def classify_v2_failure(
     # of lacking the file, so unsupported_attachment is the primary root cause.
     if has_att and (not proc_succ or fallback):
         return "unsupported_attachment"
+        return {
+            "category": "unsupported_attachment",
+            "classification_confidence": "high",
+            "classification_basis": "metadata",
+        }
 
     # 3. Incomplete generation (Precedence 2 on tasks where file was valid or no attachment required)
     completion_success = detailed_eval.get("completion_success", True)
@@ -74,22 +114,43 @@ def classify_v2_failure(
 
     if not completion_success or finish_reason == "MAX_TOKENS" or (finish_reason != "STOP" and not prediction):
         return "incomplete_generation"
+        return {
+            "category": "incomplete_generation",
+            "classification_confidence": "high",
+            "classification_basis": "metadata",
+        }
 
     # 4. Attachment reasoning failure (Precedence 4: file processed, completed, but reasoning failed)
     if has_att and proc_succ:
         return "attachment_reasoning_failure"
+        return {
+            "category": "attachment_reasoning_failure",
+            "classification_confidence": "high",
+            "classification_basis": "metadata",
+        }
 
     # 5. Retrieval failure: provider/search API execution failed or fallback triggered
     search_success = detailed_eval.get("search_success", pred_record.get("search_success", True))
     search_fallback = detailed_eval.get("search_fallback", pred_record.get("search_fallback", False))
     if not search_success or search_fallback:
         return "retrieval_failure"
+        return {
+            "category": "retrieval_failure",
+            "classification_confidence": "high",
+            "classification_basis": "metadata",
+        }
 
     search_count = detailed_eval.get("search_result_count", pred_record.get("search_result_count", 0))
     if search_count == 0:
         return "retrieval_insufficient"
+        return {
+            "category": "retrieval_insufficient",
+            "classification_confidence": "low",
+            "classification_basis": "heuristic",
+        }
 
     # 6. Formatting failure
+    # 6. Formatting failure (heuristic: normalization match)
     ground_truth = str(detailed_eval.get("ground_truth") or "").strip()
     if prediction and ground_truth:
         p_lower = prediction.lower()
@@ -101,15 +162,31 @@ def classify_v2_failure(
 
         if p_num and p_num == g_num:
             return "formatting_failure"
+            return {
+                "category": "formatting_failure",
+                "classification_confidence": "low",
+                "classification_basis": "heuristic",
+            }
         elif len(p_set) > 1 and p_set == g_set:
             return "formatting_failure"
+            return {
+                "category": "formatting_failure",
+                "classification_confidence": "low",
+                "classification_basis": "heuristic",
+            }
         elif (g_lower in p_lower or p_lower in g_lower) and abs(len(p_lower) - len(g_lower)) <= 15:
             p_digits = re.findall(r"\d+", p_lower)
             g_digits = re.findall(r"\d+", g_lower)
             if p_digits == g_digits:
                 return "formatting_failure"
+                return {
+                    "category": "formatting_failure",
+                    "classification_confidence": "low",
+                    "classification_basis": "heuristic",
+                }
 
     # 7. Reasoning failure vs retrieval insufficient
+    # 7. Reasoning failure vs retrieval insufficient (heuristic)
     question = str(pred_record.get("question") or "").lower()
     snippets = detailed_eval.get("search_results") or pred_record.get("search_results") or []
     snippet_text = " ".join(
@@ -123,8 +200,26 @@ def classify_v2_failure(
 
     if evidence_has_gt or is_reasoning_q:
         return "reasoning_failure"
+        return {
+            "category": "reasoning_failure",
+            "classification_confidence": "low",
+            "classification_basis": "heuristic",
+        }
 
     return "retrieval_insufficient"
+    return {
+        "category": "retrieval_insufficient",
+        "classification_confidence": "low",
+        "classification_basis": "heuristic",
+    }
+
+
+def classify_v2_failure(
+    detailed_eval: Dict[str, Any],
+    pred_record: Dict[str, Any],
+) -> str:
+    """Returns the primary error category string for backwards compatibility."""
+    return classify_v2_failure_detailed(detailed_eval, pred_record)["category"]
 
 
 def analyze_v2_level_errors(level: int, experiments_dir: str = "experiments/v2") -> Dict[str, Any]:
@@ -155,12 +250,21 @@ def analyze_v2_level_errors(level: int, experiments_dir: str = "experiments/v2")
 
     attachment_failed = 0
     non_attachment_failed = 0
+    high_conf_count = 0
+    low_conf_count = 0
 
     for e in failed_evals:
         t_id = e["task_id"]
         p = preds_by_id.get(t_id, {})
         cat = classify_v2_failure(e, p)
+        cls_info = classify_v2_failure_detailed(e, p)
+        cat = cls_info["category"]
         categories[cat] += 1
+
+        if cls_info["classification_confidence"] == "high":
+            high_conf_count += 1
+        else:
+            low_conf_count += 1
 
         has_att = e.get("attachment_required") or p.get("attachment_required") or bool(p.get("file_name"))
         if has_att:
@@ -199,6 +303,24 @@ def analyze_v2_level_errors(level: int, experiments_dir: str = "experiments/v2")
         "taxonomy": categories,
         "error_counts": {k: v for k, v in categories.items() if v > 0},
         "error_percentages": error_percentages,
+        "confidence_summary": {
+            "high_confidence_metadata_count": high_conf_count,
+            "low_confidence_heuristic_count": low_conf_count,
+            "high_confidence_percentage": round((high_conf_count / failed_tasks) * 100, 2) if failed_tasks else 0.0,
+            "low_confidence_percentage": round((low_conf_count / failed_tasks) * 100, 2) if failed_tasks else 0.0,
+        },
+        "taxonomy_metadata": {
+            "mutually_exclusive": True,
+            "deterministic_categories": DETERMINISTIC_CATEGORIES,
+            "heuristic_categories": HEURISTIC_CATEGORIES,
+            "policy_note": (
+                "Deterministic categories are directly supported by execution metadata (response part types, "
+                "completion status, finish reasons, or file processing results) and carry high confidence. "
+                "Completed non-attachment failures are classified into reasoning_failure, retrieval_insufficient, "
+                "or formatting_failure using heuristic signals (ground-truth token overlap, question phrasing, "
+                "and string normalization) and carry low confidence."
+            ),
+        },
         "attachment_stats": {
             "total_tasks": attachment_tasks_total,
             "correct_tasks": attachment_tasks_correct,
@@ -235,6 +357,9 @@ def build_overall_v2_error_analysis(
         k: round((v / failed_tasks) * 100, 2) if failed_tasks > 0 else 0.0
         for k, v in taxonomy.items()
     }
+
+    high_conf_count = sum(a["confidence_summary"]["high_confidence_metadata_count"] for a in level_analyses)
+    low_conf_count = sum(a["confidence_summary"]["low_confidence_heuristic_count"] for a in level_analyses)
 
     att_total = sum(a["attachment_stats"]["total_tasks"] for a in level_analyses)
     att_correct = sum(a["attachment_stats"]["correct_tasks"] for a in level_analyses)
@@ -313,6 +438,24 @@ def build_overall_v2_error_analysis(
         "taxonomy": taxonomy,
         "error_counts": {k: v for k, v in taxonomy.items() if v > 0},
         "error_percentages": error_percentages,
+        "confidence_summary": {
+            "high_confidence_metadata_count": high_conf_count,
+            "low_confidence_heuristic_count": low_conf_count,
+            "high_confidence_percentage": round((high_conf_count / failed_tasks) * 100, 2) if failed_tasks else 0.0,
+            "low_confidence_percentage": round((low_conf_count / failed_tasks) * 100, 2) if failed_tasks else 0.0,
+        },
+        "taxonomy_metadata": {
+            "mutually_exclusive": True,
+            "deterministic_categories": DETERMINISTIC_CATEGORIES,
+            "heuristic_categories": HEURISTIC_CATEGORIES,
+            "policy_note": (
+                "Deterministic categories are directly supported by execution metadata (response part types, "
+                "completion status, finish reasons, or file processing results) and carry high confidence. "
+                "Completed non-attachment failures are classified into reasoning_failure, retrieval_insufficient, "
+                "or formatting_failure using heuristic signals (ground-truth token overlap, question phrasing, "
+                "and string normalization) and carry low confidence."
+            ),
+        },
         "operational_vs_taxonomy_reconciliation": {
             "operational_completion_failures": completion_failures,
             "root_cause_incomplete_generation": taxonomy["incomplete_generation"],
@@ -321,9 +464,13 @@ def build_overall_v2_error_analysis(
                 f"Of the {completion_failures} operational completion failures (completion_success=False), "
                 f"{taxonomy['provider_response_anomaly']} tasks are classified as provider_response_anomaly "
                 "(Gemini returned an unexpected function_call part despite tool-disabled mode), and 1 task is classified as "
+                "(directly evidenced by has_function_call_part=True despite tool-disabled mode), and 1 task is classified as "
                 "unsupported_attachment (a .pdb file that failed processing and subsequently encountered malformed output). "
                 f"The remaining {taxonomy['incomplete_generation']} tasks represent genuine incomplete_generation "
                 "(MAX_TOKENS or malformed output on tasks with supported/no files)."
+                f"The remaining {taxonomy['incomplete_generation']} tasks represent incomplete_generation "
+                "(MAX_TOKENS or malformed output on tasks with supported or no files). Note that token increases "
+                "co-occurred with these completions but the current experiment does not isolate token pressure as the sole cause."
             )
         },
         "attachment_stats": {
@@ -377,40 +524,57 @@ def build_v1_v2_task_transitions(
                 trans = "improvement"
                 if has_att:
                     note = "Direct attachment access provided ground-truth evidence absent in single-shot web retrieval."
+                    note = "Consistent with direct attachment access providing evidence that was unavailable in single-shot web retrieval."
                 else:
                     note = "Stochastic variation in LLM reasoning produced a correct answer where matched V1 baseline failed."
+                    note = "Observed improvement is consistent with run-to-run stochastic variation in LLM generation, as no new file tools were active for this task."
             elif c1 and not c2:
                 trans = "regression"
                 if tid == "389793a7-333e-486a-9fa8-1f19f2913eeb":
                     note = "Injected text attachment led to token exhaustion (MAX_TOKENS) during reasoning simulation, preventing final answer emission."
+                    note = "Injected text attachment co-occurred with token exhaustion (MAX_TOKENS) during reasoning simulation; generation halted before a final answer was emitted."
                 elif tid == "a26649c6-8cf9-42b7-a36c-94dfc6ec7a30":
                     note = "Stochastic numerical precision variation (unrounded float calculation 115.4342 vs expected rounded integer 116)."
+                    note = "Stochastic numerical precision variation between runs (unrounded float calculation 115.4342 vs rounded integer 116 in matched V1)."
                 elif tid == "8d46b8d6-6a58-4ee0-827c-9b841d9263d9":
                     note = "Large CSV context prompted malformed function call error from Gemini API, terminating generation without final answer."
+                    note = "Gemini API emitted a malformed function call error on the prompt containing CSV data, terminating generation without a final answer."
                 else:
                     note = "Regression from matched V1 correct answer to V2 failure."
+                    note = "Observed regression from matched V1 correct answer to V2 failure."
             elif c1 and c2:
                 trans = "stable_correct"
                 note = "Task solved correctly across both V1 matched control and V2 file-augmented runs."
             else:
                 trans = "stable_failure"
                 err_cat = classify_v2_failure(e2, p2)
+                err_info = classify_v2_failure_detailed(e2, p2)
+                err_cat = err_info["category"]
                 if err_cat == "provider_response_anomaly":
                     note = "Provider emitted unexpected function_call part despite tool-disabled configuration."
                 elif err_cat == "unsupported_attachment":
                     note = f"Attachment format ({ext}) is intentionally unsupported; fallback search lacked required local file evidence."
+                    note = f"Attachment format ({ext}) is intentionally unsupported; fallback search did not yield the local archive data."
                 elif err_cat == "incomplete_generation":
                     note = "Generation terminated early due to token limit (MAX_TOKENS) or malformed function call error."
                 elif err_cat == "attachment_reasoning_failure":
                     note = "Attachment content was successfully extracted, but multi-step quantitative/spatial reasoning failed."
+                    note = "Attachment content was successfully extracted and represented, but multi-step quantitative/spatial reasoning was incorrect."
                 elif err_cat == "formatting_failure":
                     note = "Answer identified correct conceptual entity/quantity but failed official exact string normalization."
+                    note = "Answer identified correct conceptual entity/quantity but failed official exact string normalization; classification basis is heuristic."
                 elif err_cat == "reasoning_failure":
                     note = "Task completed with available evidence, but reasoning, calculation, or entity linkage was incorrect."
+                    note = "Task completed with available evidence, but reasoning, calculation, or entity linkage was incorrect; classification basis is heuristic."
                 else:
                     note = "Single-shot web search snippets lacked necessary ground truth evidence to resolve the task."
+                    note = "Single-shot web search snippets lacked necessary ground truth evidence to resolve the task; classification basis is heuristic."
 
             err_category = classify_v2_failure(e2, p2) if not c2 else None
+            cls_info = classify_v2_failure_detailed(e2, p2) if not c2 else None
+            err_category = cls_info["category"] if cls_info else None
+            conf = cls_info["classification_confidence"] if cls_info else None
+            basis = cls_info["classification_basis"] if cls_info else None
 
             transitions.append({
                 "task_id": tid,
@@ -425,6 +589,8 @@ def build_v1_v2_task_transitions(
                 "v2_file_processing_success": p2.get("file_processing_success", False),
                 "v2_file_fallback": p2.get("file_fallback", False),
                 "v2_error_category": err_category,
+                "classification_confidence": conf,
+                "classification_basis": basis,
                 "plausibility_note": note,
             })
 
@@ -509,10 +675,13 @@ def build_v1_v2_error_comparison(
             "by_level": level_trans,
         },
         "taxonomy": v2_overall["taxonomy"],
+        "confidence_summary": v2_overall["confidence_summary"],
         "key_findings": {
             "attachment_gain_analysis": (
                 "Adding local file handling produced a massive +31.58 percentage point improvement on attachment-bearing "
+                "Adding local file handling co-occurred with a +31.58 percentage point improvement on attachment-bearing "
                 "tasks (10.53% [4/38] in matched V1 -> 42.11% [16/38] in V2; 14 improvements, 2 regressions, net +12 tasks). "
+                "This gain is strongly consistent with the added file capability because it is concentrated within the target subset. "
                 "On supported formats, extraction was 100% successful (34/34) and accuracy reached 47.06% (16/34)."
             ),
             "completion_tradeoff_analysis": (
@@ -521,6 +690,10 @@ def build_v1_v2_error_comparison(
                 "returned an unexpected function_call part despite tool-disabled mode, and (2) increased token pressure from injecting large "
                 "attachment content (average input tokens rose from 2005.1 to 2296.9, average total tokens rose from 2717.5 to 3171.5), "
                 "leading to 10 MAX_TOKENS exhaustions and 45 malformed completions."
+                "a net drop of 9 tasks). This decline was associated with two distinct observable patterns: (1) 7 provider response anomalies where Gemini "
+                "returned an unexpected function_call part despite tool-disabled mode, and (2) higher token usage co-occurring with attachment injection "
+                "(average input tokens rose from 2005.1 to 2296.9, average total tokens rose from 2717.5 to 3171.5), accompanied by "
+                "10 MAX_TOKENS exhaustions and 45 malformed completions. However, the current experiment does not isolate token pressure as the sole cause of the completion decline."
             ),
             "level_3_bottleneck_analysis": (
                 "Level 3 showed zero net improvement (15.38% [4/26] in matched V1 vs 15.38% [4/26] in V2), with attachment accuracy "
@@ -529,6 +702,11 @@ def build_v1_v2_error_comparison(
                 "1 MAX_TOKENS) caused by complex spreadsheets/CSVs, and 1 task failed due to multi-step visual/spatial interpretation (.jpg). "
                 "File access successfully placed document data into the prompt, but Level 3 tasks demand multi-step computation, code execution, "
                 "and programmatic data manipulation rather than pure prompt-based synthesis."
+                "observed at 14.29% (1/7) in matched V1 and 0.00% (0/7) in V2. The failure breakdown for the 7 L3 attachment tasks reveals that 2 tasks "
+                "had unsupported archives (.zip, .jsonld), 4 tasks encountered incomplete generation (3 MALFORMED_FUNCTION_CALL, "
+                "1 MAX_TOKENS) on complex spreadsheets/CSVs, and 1 task completed with incorrect visual/spatial reasoning (.jpg). "
+                "These observations suggest that direct file access alone is insufficient for many hard tasks and motivate testing computation/code execution "
+                "as the next controlled capability (V3), without assuming in advance what gain V3 will produce."
             )
         }
     }
@@ -670,6 +848,7 @@ def build_comparison_summary(
             "level_3": summarize_trans(lambda t: t["level"] == 3),
         },
         "error_taxonomy": v2_overall["taxonomy"],
+        "confidence_summary": v2_overall["confidence_summary"],
         "methodology_notes": {
             "model_backbone": "gemini-3.5-flash-lite",
             "thinking_level": "medium",
@@ -680,6 +859,24 @@ def build_comparison_summary(
             "scorer": "official-gaia-leaderboard (9f133d71)",
             "validation_split": "GAIA 2023 Validation (165 tasks: 53 L1, 86 L2, 26 L3)",
             "experimental_design": "Controlled ablation: V2 inherits identical model, thinking, search, and scorer, adding only local file/attachment access.",
+        },
+        "token_and_latency_interpretation": {
+            "average_latency_note": (
+                "Matched V1 average latency was 6.22s versus 7.16s in V2 (+0.94s, +15.1%). Total latency reflects "
+                "combined provider network, search API, and Gemini generation variation across runs. Local FileTool "
+                "extraction overhead was measured as negligible (<0.05s on text/spreadsheet/pdf parsing), but total "
+                "elapsed duration reflects combined end-to-end service variation."
+            ),
+            "average_token_note": (
+                "V2 was associated with higher token usage (+454.0 total tokens, +16.7% on average), reflecting attachment "
+                "context injection and thinking generation on file-bearing tasks. While 10 tasks failed with MAX_TOKENS under V2, "
+                "token increase alone cannot be asserted as the sole cause of the overall completion decline."
+            ),
+            "level_3_note": (
+                "File access alone did not improve Level-3 aggregate accuracy in this run (15.38% [4/26] in matched V1 vs 15.38% [4/26] in V2). "
+                "These results suggest that direct file access without execution tools is insufficient for complex analytical tasks "
+                "and motivate testing computation/code execution as the next controlled capability (V3), without assuming in advance what gain V3 will produce."
+            )
         }
     }
 
