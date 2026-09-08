@@ -4,6 +4,7 @@ All tests use local files or mocks to ensure no external network or API calls ar
 """
 
 import os
+import ast
 import json
 import tempfile
 import unittest
@@ -1144,6 +1145,48 @@ class TestV2PromptProvenance(unittest.TestCase):
         self.assertEqual(loaded["primary_prompt_version"], "web-search-v1")
         self.assertEqual(loaded["fallback_prompt_version"], "baseline-v1")
         self.assertEqual(loaded["prompt_version_counts"], {"web-search-v1": 1})
+
+    def test_evaluate_source_ast_single_prompt_version_key(self):
+        """AST regression test: verifies evaluation/evaluate.py source defines 'prompt_version' exactly once in summary dict."""
+        eval_path = os.path.join(
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..")),
+            "evaluation",
+            "evaluate.py",
+        )
+        with open(eval_path, "r", encoding="utf-8") as f:
+            tree = ast.parse(f.read(), filename=eval_path)
+
+        summary_dicts = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id == "summary":
+                        if isinstance(node.value, ast.Dict):
+                            summary_dicts.append(node.value)
+
+        self.assertEqual(
+            len(summary_dicts),
+            1,
+            "Expected exactly one 'summary = { ... }' dictionary assignment in evaluation/evaluate.py",
+        )
+        summary_dict = summary_dicts[0]
+        literal_keys = [
+            k.value for k in summary_dict.keys
+            if isinstance(k, ast.Constant)
+        ]
+        prompt_version_keys = [k for k in literal_keys if k == "prompt_version"]
+        self.assertEqual(
+            len(prompt_version_keys),
+            1,
+            f"Expected exactly one 'prompt_version' key in summary dict, found {len(prompt_version_keys)}",
+        )
+        # Ensure no duplicate keys of any kind in the summary dictionary definition
+        duplicates = sorted(set(k for k in literal_keys if literal_keys.count(k) > 1))
+        self.assertEqual(
+            duplicates,
+            [],
+            f"Found duplicate literal keys in summary dictionary definition: {duplicates}",
+        )
 
     def test_scenario7_v0_and_v1_provenance_unchanged(self):
         """Test 7: Verify V0 and V1 provenance remains completely unchanged."""

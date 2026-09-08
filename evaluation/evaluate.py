@@ -371,8 +371,6 @@ def calculate_metrics(
 
         "model": model_name or (predictions[0].get("model") if predictions else None),
         "model_version": (predictions[0].get("model_version") if predictions else None),
-        "prompt_version": prompt_version or (predictions[0].get("prompt_version") if predictions else None),
-        "prompt_version": primary_pv,
         "prompt_version": prompt_pv,
         "primary_prompt_version": primary_pv,
         "fallback_prompt_version": fallback_pv,
