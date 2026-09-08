@@ -417,7 +417,113 @@ class TestPythonTool(unittest.TestCase):
         self.assertFalse(task_res["python_executed"])
         self.assertFalse(task_res["python_fallback"])
         self.assertEqual(task_res["final_answer"], "42")
+        self.assertEqual(task_res["python_prompt_version"], "python-execution-v1")
         self.assertEqual(mock_llm.generate.call_count, 1)
+
+
+    # 21. Supported attachment + successful FileTool processing
+    def test_21_supported_attachment_file_tool_success(self):
+        with tempfile.NamedTemporaryFile(suffix=".csv", mode="w", delete=False, encoding="utf-8") as tf:
+            tf.write("colA,colB\n10,20\n")
+            csv_path = tf.name
+
+        try:
+            mock_llm = MagicMock()
+            mock_llm.generate.return_value = LLMResponse(
+                raw_text="FINAL: 30", text="FINAL: 30"
+            )
+
+            agent = GAIAPythonAgent(
+                llm_client=mock_llm,
+                search_tool=MagicMock(search=MagicMock(return_value=MagicMock(success=False))),
+                python_tool=self.tool,
+            )
+
+            res = agent.run("What is the sum?", file_path=csv_path)
+            self.assertTrue(res.file_result.success)
+            self.assertFalse(res.file_fallback)
+            # Both attachment evidence and attachment filename are in the single prompt
+            self.assertIn("ATTACHMENT EVIDENCE:", res.prompt)
+            self.assertIn("ATTACHMENT FILE:", res.prompt)
+            self.assertIn(os.path.basename(csv_path), res.prompt)
+            self.assertEqual(res.final_answer, "30")
+        finally:
+            if os.path.exists(csv_path):
+                os.remove(csv_path)
+
+    # 22. Unsupported attachment + failed FileTool processing
+    def test_22_unsupported_attachment_file_tool_fails(self):
+        with tempfile.NamedTemporaryFile(suffix=".zip", mode="wb", delete=False) as tf:
+            tf.write(b"PK\x05\x06" + b"\x00" * 18)
+            zip_path = tf.name
+
+        try:
+            ft = FileTool()
+            f_res = ft.process(zip_path)
+            # FileTool support rules remain strictly unchanged (unsupported)
+            self.assertFalse(f_res.success)
+            self.assertEqual(f_res.error_type, "UnsupportedFileTypeError")
+        finally:
+            if os.path.exists(zip_path):
+                os.remove(zip_path)
+
+    # 23. Unsupported attachment still exposes basename to V3 Python prompt and runtime
+    def test_23_unsupported_attachment_exposes_basename_to_python_prompt_and_runtime(self):
+        with tempfile.NamedTemporaryFile(suffix=".zip", mode="wb", delete=False) as tf:
+            tf.write(b"dummy zip data")
+            zip_path = tf.name
+
+        try:
+            mock_llm = MagicMock()
+            # Model uses Python code to inspect the zip file
+            zip_base = os.path.basename(zip_path)
+            mock_llm.generate.return_value = LLMResponse(
+                raw_text=f"```python\nimport os\nexists = os.path.exists('{zip_base}')\nprint(f'FINAL_ANSWER: {{exists}}')\n```",
+                text="code",
+            )
+
+            agent = GAIAPythonAgent(
+                llm_client=mock_llm,
+                search_tool=MagicMock(search=MagicMock(return_value=MagicMock(success=False))),
+                python_tool=self.tool,
+            )
+
+            res = agent.run("Does the archive exist?", file_path=zip_path)
+            # FileTool failed (unsupported)
+            self.assertFalse(res.file_result.success)
+            self.assertTrue(res.file_fallback)
+            # But the prompt STILL informed the model of the attachment filename
+            self.assertIn("ATTACHMENT FILE:", res.prompt)
+            self.assertIn(zip_base, res.prompt)
+            # And Python runtime received the file in its workspace and successfully accessed it!
+            self.assertTrue(res.python_executed)
+            self.assertTrue(res.python_result.success)
+            self.assertEqual(res.final_answer, "True")
+        finally:
+            if os.path.exists(zip_path):
+                os.remove(zip_path)
+
+    # 24. Single-generation provenance metadata
+    def test_24_single_generation_provenance_metadata(self):
+        mock_llm = MagicMock()
+        mock_llm.generate.return_value = LLMResponse(
+            raw_text="FINAL: 42", text="FINAL: 42"
+        )
+
+        agent = GAIAPythonAgent(
+            llm_client=mock_llm,
+            search_tool=MagicMock(search=MagicMock(return_value=MagicMock(success=False))),
+            python_tool=self.tool,
+        )
+
+        res = agent.run("What is 40 + 2?")
+        self.assertEqual(res.python_prompt_version, PYTHON_EXECUTION_PROMPT_VERSION)
+        self.assertEqual(res.python_prompt, res.prompt)
+        self.assertEqual(res.llm_generation_count, 1)
+        # Deprecated fields do not contain active multi-stage prompts
+        self.assertIsNone(res.python_analysis_prompt)
+        self.assertIsNone(res.python_analysis_response)
+        self.assertEqual(res.python_final_prompt, res.prompt)
 
 
 if __name__ == "__main__":

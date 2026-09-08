@@ -320,7 +320,8 @@ def execute_task(
     python_execution_count = 1 if python_executed else 0
     assert python_execution_count in (0, 1), f"Execution count {python_execution_count} not in {0, 1}"
     llm_generation_count = getattr(result, "llm_generation_count", 1) if result else 1
-    assert llm_generation_count == 1, f"LLM generation count {llm_generation_count} != 1" 
+    assert llm_generation_count == 1, f"LLM generation count {llm_generation_count} != 1"
+    python_prompt_version = getattr(result, "python_prompt_version", None) if result else None
 
     if py_result is not None:
         python_success = py_result.success
@@ -425,6 +426,7 @@ def execute_task(
         "file_fallback": file_fallback,
 
         # Python execution metadata (V3)
+        "python_prompt_version": python_prompt_version,
         "python_requested": python_requested,
         "python_executed": python_executed,
         "python_success": python_success,

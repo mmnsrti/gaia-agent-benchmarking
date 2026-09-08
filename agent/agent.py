@@ -1,3 +1,4 @@
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -31,11 +32,24 @@ class AgentResult:
     python_requested: bool = False
     python_executed: bool = False
     python_fallback: bool = False
+    python_prompt_version: Optional[str] = None
     python_prompt: Optional[str] = None
-    python_analysis_prompt: Optional[str] = None
-    python_analysis_response: Optional[str] = None
-    python_final_prompt: Optional[str] = None
     llm_generation_count: int = 1
+
+    @property
+    def python_analysis_prompt(self) -> Optional[str]:
+        """Deprecated: V3 uses single-generation prompt (python_prompt)."""
+        return None
+
+    @property
+    def python_analysis_response(self) -> Optional[str]:
+        """Deprecated: V3 has no separate analysis response."""
+        return None
+
+    @property
+    def python_final_prompt(self) -> Optional[str]:
+        """Deprecated: V3 uses single-generation prompt (python_prompt)."""
+        return self.python_prompt
 
 
 class GAIAAgent:
@@ -363,6 +377,11 @@ class GAIAPythonAgent(GAIAFileAgent):
         attachment_filename = ""
 
         if file_path:
+            # Derive attachment basename independently of FileTool processing success.
+            # In V3, Python can access the task attachment in its workspace even when
+            # FileTool does not support text/multimodal extraction (e.g. .zip, .pdb, .jsonld).
+            attachment_filename = os.path.basename(file_path)
+
             file_res = self.file_tool.process(file_path)
             if file_res.success:
                 if file_res.content_mode == "native_multimodal" and file_res.native_bytes:
@@ -379,7 +398,6 @@ class GAIAPythonAgent(GAIAFileAgent):
                         file_fallback = True
                 if not file_fallback:
                     file_evidence = file_res.text_content or f"[Attached file: {file_res.file_name}]"
-                    attachment_filename = os.path.basename(file_path)
             else:
                 file_fallback = True
         else:
@@ -459,10 +477,8 @@ class GAIAPythonAgent(GAIAFileAgent):
             python_requested=python_requested,
             python_executed=python_executed,
             python_fallback=python_fallback,
+            python_prompt_version=self.prompt_version,
             python_prompt=prompt,
-            python_analysis_prompt=prompt,
-            python_analysis_response=None,
-            python_final_prompt=prompt,
             llm_generation_count=1,
         )
 
