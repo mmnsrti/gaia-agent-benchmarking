@@ -1,0 +1,52 @@
+{
+  "version": "v2",
+  "level": 1,
+  "total_tasks": 53,
+  "correct_tasks": 27,
+  "failed_tasks": 26,
+  "accuracy": 0.5094,
+  "operational_metrics": {
+    "completion_failures": 9,
+    "completion_rate": 0.8302
+  },
+  "taxonomy": {
+    "unsupported_attachment": 0,
+    "attachment_reasoning_failure": 4,
+    "incomplete_generation": 8,
+    "provider_response_anomaly": 1,
+    "retrieval_failure": 0,
+    "retrieval_insufficient": 2,
+    "reasoning_failure": 8,
+    "formatting_failure": 3
+  },
+  "error_counts": {
+    "attachment_reasoning_failure": 4,
+    "incomplete_generation": 8,
+    "provider_response_anomaly": 1,
+    "retrieval_insufficient": 2,
+    "reasoning_failure": 8,
+    "formatting_failure": 3
+  },
+  "error_percentages": {
+    "unsupported_attachment": 0.0,
+    "attachment_reasoning_failure": 15.38,
+    "incomplete_generation": 30.77,
+    "provider_response_anomaly": 3.85,
+    "retrieval_failure": 0.0,
+    "retrieval_insufficient": 7.69,
+    "reasoning_failure": 30.77,
+    "formatting_failure": 11.54
+  },
+  "attachment_stats": {
+    "total_tasks": 11,
+    "correct_tasks": 4,
+    "failed_tasks": 7,
+    "accuracy": 0.3636
+  },
+  "non_attachment_stats": {
+    "total_tasks": 42,
+    "correct_tasks": 23,
+    "failed_tasks": 19,
+    "accuracy": 0.5476
+  }
+}

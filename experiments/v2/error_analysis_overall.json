@@ -1,0 +1,208 @@
+{
+  "version": "v2",
+  "total_tasks": 165,
+  "correct_tasks": 61,
+  "failed_tasks": 104,
+  "accuracy": 0.3697,
+  "operational_completion_failures": 62,
+  "operational_metrics": {
+    "completion_failures": 62,
+    "completion_rate": 0.6242
+  },
+  "taxonomy": {
+    "unsupported_attachment": 3,
+    "attachment_reasoning_failure": 8,
+    "incomplete_generation": 54,
+    "provider_response_anomaly": 7,
+    "retrieval_failure": 0,
+    "retrieval_insufficient": 9,
+    "reasoning_failure": 19,
+    "formatting_failure": 4
+  },
+  "error_counts": {
+    "unsupported_attachment": 3,
+    "attachment_reasoning_failure": 8,
+    "incomplete_generation": 54,
+    "provider_response_anomaly": 7,
+    "retrieval_insufficient": 9,
+    "reasoning_failure": 19,
+    "formatting_failure": 4
+  },
+  "error_percentages": {
+    "unsupported_attachment": 2.88,
+    "attachment_reasoning_failure": 7.69,
+    "incomplete_generation": 51.92,
+    "provider_response_anomaly": 6.73,
+    "retrieval_failure": 0.0,
+    "retrieval_insufficient": 8.65,
+    "reasoning_failure": 18.27,
+    "formatting_failure": 3.85
+  },
+  "operational_vs_taxonomy_reconciliation": {
+    "operational_completion_failures": 62,
+    "root_cause_incomplete_generation": 54,
+    "difference": 8,
+    "difference_explanation": "Of the 62 operational completion failures (completion_success=False), 7 tasks are classified as provider_response_anomaly (Gemini returned an unexpected function_call part despite tool-disabled mode), and 1 task is classified as unsupported_attachment (a .pdb file that failed processing and subsequently encountered malformed output). The remaining 54 tasks represent genuine incomplete_generation (MAX_TOKENS or malformed output on tasks with supported/no files)."
+  },
+  "attachment_stats": {
+    "total_tasks": 38,
+    "correct_tasks": 16,
+    "failed_tasks": 22,
+    "accuracy": 0.4211,
+    "processed_successfully": 34,
+    "file_fallbacks": 4,
+    "supported_tasks": 34,
+    "supported_processed": 34,
+    "supported_accuracy": 0.4706,
+    "percentage_of_all_failures": 21.15
+  },
+  "non_attachment_stats": {
+    "total_tasks": 127,
+    "correct_tasks": 45,
+    "failed_tasks": 82,
+    "accuracy": 0.3543,
+    "percentage_of_all_failures": 78.85
+  },
+  "extension_breakdown": {
+    ".xlsx": {
+      "tasks": 13,
+      "processing_successes": 13,
+      "processing_rate": 1.0,
+      "file_fallbacks": 0,
+      "correct": 6,
+      "accuracy": 0.4615,
+      "primary_failure_categories": {
+        "attachment_reasoning_failure": 3,
+        "incomplete_generation": 4
+      }
+    },
+    ".png": {
+      "tasks": 8,
+      "processing_successes": 8,
+      "processing_rate": 1.0,
+      "file_fallbacks": 0,
+      "correct": 2,
+      "accuracy": 0.25,
+      "primary_failure_categories": {
+        "attachment_reasoning_failure": 2,
+        "incomplete_generation": 4
+      }
+    },
+    ".mp3": {
+      "tasks": 3,
+      "processing_successes": 3,
+      "processing_rate": 1.0,
+      "file_fallbacks": 0,
+      "correct": 2,
+      "accuracy": 0.6667,
+      "primary_failure_categories": {
+        "attachment_reasoning_failure": 1
+      }
+    },
+    ".pdf": {
+      "tasks": 3,
+      "processing_successes": 3,
+      "processing_rate": 1.0,
+      "file_fallbacks": 0,
+      "correct": 3,
+      "accuracy": 1.0,
+      "primary_failure_categories": {}
+    },
+    ".zip": {
+      "tasks": 2,
+      "processing_successes": 0,
+      "processing_rate": 0.0,
+      "file_fallbacks": 2,
+      "correct": 0,
+      "accuracy": 0.0,
+      "primary_failure_categories": {
+        "unsupported_attachment": 1,
+        "provider_response_anomaly": 1
+      }
+    },
+    ".jpg": {
+      "tasks": 2,
+      "processing_successes": 2,
+      "processing_rate": 1.0,
+      "file_fallbacks": 0,
+      "correct": 1,
+      "accuracy": 0.5,
+      "primary_failure_categories": {
+        "attachment_reasoning_failure": 1
+      }
+    },
+    ".docx": {
+      "tasks": 1,
+      "processing_successes": 1,
+      "processing_rate": 1.0,
+      "file_fallbacks": 0,
+      "correct": 0,
+      "accuracy": 0.0,
+      "primary_failure_categories": {
+        "attachment_reasoning_failure": 1
+      }
+    },
+    ".txt": {
+      "tasks": 1,
+      "processing_successes": 1,
+      "processing_rate": 1.0,
+      "file_fallbacks": 0,
+      "correct": 0,
+      "accuracy": 0.0,
+      "primary_failure_categories": {
+        "incomplete_generation": 1
+      }
+    },
+    ".pptx": {
+      "tasks": 1,
+      "processing_successes": 1,
+      "processing_rate": 1.0,
+      "file_fallbacks": 0,
+      "correct": 1,
+      "accuracy": 1.0,
+      "primary_failure_categories": {}
+    },
+    ".py": {
+      "tasks": 1,
+      "processing_successes": 1,
+      "processing_rate": 1.0,
+      "file_fallbacks": 0,
+      "correct": 1,
+      "accuracy": 1.0,
+      "primary_failure_categories": {}
+    },
+    ".pdb": {
+      "tasks": 1,
+      "processing_successes": 0,
+      "processing_rate": 0.0,
+      "file_fallbacks": 1,
+      "correct": 0,
+      "accuracy": 0.0,
+      "primary_failure_categories": {
+        "unsupported_attachment": 1
+      }
+    },
+    ".jsonld": {
+      "tasks": 1,
+      "processing_successes": 0,
+      "processing_rate": 0.0,
+      "file_fallbacks": 1,
+      "correct": 0,
+      "accuracy": 0.0,
+      "primary_failure_categories": {
+        "unsupported_attachment": 1
+      }
+    },
+    ".csv": {
+      "tasks": 1,
+      "processing_successes": 1,
+      "processing_rate": 1.0,
+      "file_fallbacks": 0,
+      "correct": 0,
+      "accuracy": 0.0,
+      "primary_failure_categories": {
+        "incomplete_generation": 1
+      }
+    }
+  }
+}

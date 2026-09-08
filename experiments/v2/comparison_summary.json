@@ -1,0 +1,186 @@
+{
+  "v1_matched_control": {
+    "level_1": {
+      "total_tasks": 53,
+      "completed_tasks": 40,
+      "correct_tasks": 22,
+      "accuracy": 0.4151,
+      "completion_rate": 0.7547,
+      "attachment_task_count": 11,
+      "attachment_accuracy": 0.0909,
+      "non_attachment_task_count": 42,
+      "non_attachment_accuracy": 0.5,
+      "average_latency_seconds": 10.65,
+      "average_total_tokens": 2734.2
+    },
+    "level_2": {
+      "total_tasks": 86,
+      "completed_tasks": 55,
+      "correct_tasks": 19,
+      "accuracy": 0.2209,
+      "completion_rate": 0.6395,
+      "attachment_task_count": 20,
+      "attachment_accuracy": 0.1,
+      "non_attachment_task_count": 66,
+      "non_attachment_accuracy": 0.2576,
+      "average_latency_seconds": 4.27,
+      "average_total_tokens": 2719.5
+    },
+    "level_3": {
+      "total_tasks": 26,
+      "completed_tasks": 17,
+      "correct_tasks": 4,
+      "accuracy": 0.1538,
+      "completion_rate": 0.6538,
+      "attachment_task_count": 7,
+      "attachment_accuracy": 0.1429,
+      "non_attachment_task_count": 19,
+      "non_attachment_accuracy": 0.1579,
+      "average_latency_seconds": 3.63,
+      "average_total_tokens": 2677.0
+    },
+    "overall": {
+      "total_tasks": 165,
+      "completed_tasks": 112,
+      "correct_tasks": 45,
+      "accuracy": 0.2727,
+      "completion_rate": 0.6788,
+      "attachment_task_count": 38,
+      "attachment_accuracy": 0.1053,
+      "non_attachment_task_count": 127,
+      "non_attachment_accuracy": 0.3228,
+      "average_latency_seconds": 6.22,
+      "average_total_tokens": 2717.5
+    }
+  },
+  "v2_canonical": {
+    "level_1": {
+      "total_tasks": 53,
+      "completed_tasks": 44,
+      "correct_tasks": 27,
+      "accuracy": 0.5094,
+      "completion_rate": 0.8302,
+      "attachment_task_count": 11,
+      "attachment_accuracy": 0.3636,
+      "non_attachment_task_count": 42,
+      "non_attachment_accuracy": 0.5476,
+      "average_latency_seconds": 6.64,
+      "average_total_tokens": 3191.5
+    },
+    "level_2": {
+      "total_tasks": 86,
+      "completed_tasks": 48,
+      "correct_tasks": 30,
+      "accuracy": 0.3488,
+      "completion_rate": 0.5581,
+      "attachment_task_count": 20,
+      "attachment_accuracy": 0.6,
+      "non_attachment_task_count": 66,
+      "non_attachment_accuracy": 0.2727,
+      "average_latency_seconds": 7.42,
+      "average_total_tokens": 3106.9
+    },
+    "level_3": {
+      "total_tasks": 26,
+      "completed_tasks": 11,
+      "correct_tasks": 4,
+      "accuracy": 0.1538,
+      "completion_rate": 0.4231,
+      "attachment_task_count": 7,
+      "attachment_accuracy": 0.0,
+      "non_attachment_task_count": 19,
+      "non_attachment_accuracy": 0.2105,
+      "average_latency_seconds": 7.38,
+      "average_total_tokens": 3344.3
+    },
+    "overall": {
+      "total_tasks": 165,
+      "completed_tasks": 103,
+      "correct_tasks": 61,
+      "accuracy": 0.3697,
+      "completion_rate": 0.6242,
+      "attachment_task_count": 38,
+      "attachment_accuracy": 0.4211,
+      "non_attachment_task_count": 127,
+      "non_attachment_accuracy": 0.3543,
+      "average_latency_seconds": 7.16,
+      "average_total_tokens": 3171.5,
+      "attachment_processing_rate": 0.8947,
+      "supported_processed_attachment_accuracy": 0.4706
+    }
+  },
+  "controlled_deltas_percentage_points": {
+    "level_1_accuracy": 9.43,
+    "level_2_accuracy": 12.79,
+    "level_3_accuracy": 0.0,
+    "overall_accuracy": 9.7,
+    "attachment_accuracy": 31.58,
+    "non_attachment_accuracy": 3.15,
+    "completion_rate": -5.46
+  },
+  "task_transitions": {
+    "overall": {
+      "total": 165,
+      "improvement": 19,
+      "regression": 3,
+      "stable_correct": 42,
+      "stable_failure": 101
+    },
+    "attachment_tasks": {
+      "total": 38,
+      "improvement": 14,
+      "regression": 2,
+      "stable_correct": 2,
+      "stable_failure": 20
+    },
+    "non_attachment_tasks": {
+      "total": 127,
+      "improvement": 5,
+      "regression": 1,
+      "stable_correct": 40,
+      "stable_failure": 81
+    },
+    "level_1": {
+      "total": 53,
+      "improvement": 6,
+      "regression": 1,
+      "stable_correct": 21,
+      "stable_failure": 25
+    },
+    "level_2": {
+      "total": 86,
+      "improvement": 12,
+      "regression": 1,
+      "stable_correct": 18,
+      "stable_failure": 55
+    },
+    "level_3": {
+      "total": 26,
+      "improvement": 1,
+      "regression": 1,
+      "stable_correct": 3,
+      "stable_failure": 21
+    }
+  },
+  "error_taxonomy": {
+    "unsupported_attachment": 3,
+    "attachment_reasoning_failure": 8,
+    "incomplete_generation": 54,
+    "provider_response_anomaly": 7,
+    "retrieval_failure": 0,
+    "retrieval_insufficient": 9,
+    "reasoning_failure": 19,
+    "formatting_failure": 4
+  },
+  "methodology_notes": {
+    "model_backbone": "gemini-3.5-flash-lite",
+    "thinking_level": "medium",
+    "max_output_tokens": 2048,
+    "web_search_provider": "tavily",
+    "search_depth": "basic",
+    "max_search_results": 5,
+    "scorer": "official-gaia-leaderboard (9f133d71)",
+    "validation_split": "GAIA 2023 Validation (165 tasks: 53 L1, 86 L2, 26 L3)",
+    "experimental_design": "Controlled ablation: V2 inherits identical model, thinking, search, and scorer, adding only local file/attachment access."
+  }
+}
