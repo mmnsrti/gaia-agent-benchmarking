@@ -55,14 +55,13 @@
     "mode": "python_isolated_mode (-I)",
     "security_policy": "static_ast_validation_blocking_network_subprocesses_and_system_evasion",
     "fallback_on_failure": true,
-    "retries_permitted": 0
+    "retries_permitted": 0,
+    "isolation_type": "best_effort_research_execution_isolation",
+    "llm_generations_per_task": 1
   },
   "prompt_versions": {
-    "primary": "python-result-v1",
-    "python_analysis": "python-analysis-v1",
-    "file_search_fallback": "file-search-v1",
-    "web_search_fallback": "web-search-v1",
-    "baseline_fallback": "baseline-v1"
+    "primary": "python-execution-v1",
+    "python_execution": "python-execution-v1"
   },
   "dataset": {
     "name": "GAIA 2023 Validation",

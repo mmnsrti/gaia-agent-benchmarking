@@ -1,19 +1,35 @@
 """PythonTool: Controlled, single-shot local Python execution environment for V3.
 
-Executes generated Python code in an isolated temporary directory with:
-- Static AST validation blocking dangerous modules and system calls
+Executes generated Python code in an ephemeral temporary directory with:
+- Best-effort research execution isolation for empirical capability ablation
+- Static AST validation blocking dangerous modules, system calls, dynamic imports, and path traversal
 - Explicit read-only task attachment copying into the execution workspace
-- Subprocess execution in isolated mode (python -I) without sensitive environment variables
-- Deterministic timeout enforcement
-- Bounded stdout/stderr capture and truncation flags
+- Subprocess execution with isolated flag (python -I) without sensitive environment variables
+- Deterministic timeout enforcement (default: 15s)
+- Bounded stdout/stderr capture and truncation flags (default: 20,000 chars)
 - Automatic temporary directory cleanup
 
-Note: This tool provides conservative isolation for research ablation runs.
-It is not a multi-tenant, kernel-level secure operating system container.
+Note on Isolation Boundaries & Limitations:
+This tool provides best-effort research execution isolation. It is designed to evaluate
+single-shot algorithmic/computational assistance under controlled benchmark conditions.
+Guarantees provided:
+- Subprocess execution in an isolated working directory with copied read-only attachments.
+- Subprocess launched with `sys.executable -I` (ignores environment variables like PYTHONPATH,
+  disables user site-packages with -s, and activates safe path with -P). Virtualenv site-packages
+  remains accessible (no_site=0), but user-specific directories and ambient environment variables are ignored.
+- Minimal sanitized environment variables (no API keys, no tokens, no secrets).
+- Static AST policy rejecting dangerous standard-library modules, OS escape calls, and literal path traversal.
+
+Limitations:
+- Not an OS-level kernel sandbox (no Linux namespaces/cgroups, Docker, or gVisor).
+- Static AST analysis inspects syntax trees; non-literal or dynamically assembled string paths
+  cannot be guaranteed caught without kernel containment.
+- No guaranteed OS-level network barrier; network isolation relies on static AST import restrictions.
 """
 
 import ast
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -21,7 +37,7 @@ import sys
 import tempfile
 import time
 from dataclasses import dataclass
-from typing import Optional, Set, Tuple
+from typing import List, Optional, Set
 
 
 FORBIDDEN_MODULES: Set[str] = {
@@ -42,15 +58,23 @@ FORBIDDEN_MODULES: Set[str] = {
     "smtplib",
     "telnetlib",
     "webbrowser",
-    # Low-level memory / system evasion
+    "ssl",
+    "xmlrpc",
+    "socketserver",
+    "asyncio",
+    "ipaddress",
+    # Dynamic code loading & low-level evasion
+    "importlib",
     "ctypes",
     "cffi",
-    # Process / thread spawning
+    # Process / thread concurrency
     "multiprocessing",
     "threading",
+    "concurrent",
 }
 
 FORBIDDEN_OS_CALLS: Set[str] = {
+    # Process execution
     "system",
     "popen",
     "kill",
@@ -71,6 +95,21 @@ FORBIDDEN_OS_CALLS: Set[str] = {
     "execve",
     "execvp",
     "execvpe",
+    # Directory & permission modifications outside sandbox
+    "chdir",
+    "chroot",
+    "chmod",
+    "chown",
+    # Destructive operations
+    "remove",
+    "unlink",
+    "rmdir",
+    "removedirs",
+}
+
+FORBIDDEN_SHUTIL_CALLS: Set[str] = {
+    "rmtree",
+    "move",
 }
 
 FORBIDDEN_ATTRIBUTES: Set[str] = {
@@ -78,6 +117,19 @@ FORBIDDEN_ATTRIBUTES: Set[str] = {
     "__globals__",
     "__code__",
     "__builtins__",
+    "__class__",
+    "__mro__",
+    "__bases__",
+    "__base__",
+}
+
+FORBIDDEN_BUILTINS: Set[str] = {
+    "eval",
+    "exec",
+    "__import__",
+    "compile",
+    "globals",
+    "locals",
 }
 
 
@@ -87,16 +139,24 @@ class SecurityPolicyError(Exception):
 
 
 class SecurityValidator(ast.NodeVisitor):
-    """Validates Python AST against forbidden imports, calls, and dunders."""
+    """Validates Python AST against forbidden imports, calls, path traversals, and dunders."""
 
     def __init__(self):
-        self.errors = []
+        self.errors: List[str] = []
+        self.os_aliases: Set[str] = {"os"}
+        self.shutil_aliases: Set[str] = {"shutil"}
+        self.forbidden_func_aliases: Set[str] = set()
 
     def visit_Import(self, node: ast.Import):
         for alias in node.names:
             base_mod = alias.name.split(".")[0]
             if base_mod in FORBIDDEN_MODULES:
                 self.errors.append(f"Import of forbidden module: '{alias.name}'")
+            # Track aliased module names
+            if alias.name == "os" and alias.asname:
+                self.os_aliases.add(alias.asname)
+            if alias.name == "shutil" and alias.asname:
+                self.shutil_aliases.add(alias.asname)
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom):
@@ -104,17 +164,70 @@ class SecurityValidator(ast.NodeVisitor):
             base_mod = node.module.split(".")[0]
             if base_mod in FORBIDDEN_MODULES:
                 self.errors.append(f"Import from forbidden module: '{node.module}'")
+
+            # Check imports from os
+            if base_mod == "os":
+                for alias in node.names:
+                    if alias.name in FORBIDDEN_OS_CALLS or alias.name == "*":
+                        self.errors.append(f"Import of forbidden os function: 'os.{alias.name}'")
+                    if alias.asname:
+                        self.forbidden_func_aliases.add(alias.asname)
+                    else:
+                        self.forbidden_func_aliases.add(alias.name)
+
+            # Check imports from shutil
+            if base_mod == "shutil":
+                for alias in node.names:
+                    if alias.name in FORBIDDEN_SHUTIL_CALLS or alias.name == "*":
+                        self.errors.append(f"Import of forbidden shutil function: 'shutil.{alias.name}'")
+
         self.generic_visit(node)
 
+    def _check_string_path(self, path_str: str, context: str):
+        """Rejects obvious directory traversal or absolute paths outside the sandbox."""
+        if ".." in path_str:
+            self.errors.append(f"Directory traversal ('..') forbidden in {context}: '{path_str}'")
+        elif path_str.startswith(("/", "\\")) or re.match(r"^[a-zA-Z]:", path_str):
+            self.errors.append(f"Absolute path forbidden in {context}: '{path_str}'")
+
     def visit_Call(self, node: ast.Call):
-        # Detect os.system(), os.popen(), etc.
-        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
-            if node.func.value.id == "os" and node.func.attr in FORBIDDEN_OS_CALLS:
-                self.errors.append(f"Call to forbidden os function: 'os.{node.func.attr}'")
-        # Detect direct eval, exec, __import__
-        elif isinstance(node.func, ast.Name):
-            if node.func.id in ("eval", "exec", "__import__"):
-                self.errors.append(f"Direct call to forbidden builtin: '{node.func.id}'")
+        # 1. Check direct forbidden function calls (eval, exec, compile, etc.)
+        if isinstance(node.func, ast.Name):
+            func_name = node.func.id
+            if func_name in FORBIDDEN_BUILTINS:
+                self.errors.append(f"Direct call to forbidden builtin: '{func_name}'")
+            elif func_name in self.forbidden_func_aliases:
+                self.errors.append(f"Call to aliased forbidden function: '{func_name}'")
+            elif func_name in ("open", "Path") and node.args:
+                # Check path argument in open()
+                first_arg = node.args[0]
+                if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+                    self._check_string_path(first_arg.value, "open()")
+
+        # 2. Check attribute calls (os.system, shutil.rmtree, etc.)
+        elif isinstance(node.func, ast.Attribute):
+            attr_name = node.func.attr
+
+            # Check os.<call>
+            if isinstance(node.func.value, ast.Name) and node.func.value.id in self.os_aliases:
+                if attr_name in FORBIDDEN_OS_CALLS:
+                    self.errors.append(f"Call to forbidden os function: 'os.{attr_name}'")
+                elif attr_name == "open" and node.args:
+                    first_arg = node.args[0]
+                    if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+                        self._check_string_path(first_arg.value, "os.open()")
+
+            # Check shutil.<call>
+            elif isinstance(node.func.value, ast.Name) and node.func.value.id in self.shutil_aliases:
+                if attr_name in FORBIDDEN_SHUTIL_CALLS:
+                    self.errors.append(f"Call to forbidden shutil function: 'shutil.{attr_name}'")
+
+            # Check Path() / pathlib.Path()
+            elif attr_name == "Path" and node.args:
+                first_arg = node.args[0]
+                if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+                    self._check_string_path(first_arg.value, "Path()")
+
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute):
@@ -143,7 +256,7 @@ class PythonResult:
 
 
 class PythonTool:
-    """Controlled single-shot Python execution tool."""
+    """Controlled single-shot Python execution tool providing best-effort research execution isolation."""
 
     DEFAULT_TIMEOUT_SECONDS: float = 15.0
     DEFAULT_MAX_OUTPUT_LENGTH: int = 20000
@@ -180,7 +293,7 @@ class PythonTool:
         code: str,
         attachment_path: Optional[str] = None,
     ) -> PythonResult:
-        """Executes the given Python code in an ephemeral directory."""
+        """Executes the given Python code in an ephemeral directory with best-effort research isolation."""
         code_str = code if code is not None else ""
         code_len = len(code_str)
 

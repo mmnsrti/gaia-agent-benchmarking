@@ -319,6 +319,8 @@ def execute_task(
     python_fallback = getattr(result, "python_fallback", False) if result else False
     python_execution_count = 1 if python_executed else 0
     assert python_execution_count in (0, 1), f"Execution count {python_execution_count} not in {0, 1}"
+    llm_generation_count = getattr(result, "llm_generation_count", 1) if result else 1
+    assert llm_generation_count == 1, f"LLM generation count {llm_generation_count} != 1" 
 
     if py_result is not None:
         python_success = py_result.success
@@ -435,5 +437,6 @@ def execute_task(
         "python_stderr_length": python_stderr_length,
         "python_output_truncated": python_output_truncated,
         "python_fallback": python_fallback,
+        "llm_generation_count": llm_generation_count,
     }
 

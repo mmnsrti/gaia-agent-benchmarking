@@ -4,8 +4,7 @@ from typing import Any, Optional
 from prompts.baseline import build_baseline_prompt, PROMPT_VERSION
 from prompts.web_search import build_web_search_prompt, WEB_SEARCH_PROMPT_VERSION
 from prompts.file_search import build_file_search_prompt, FILE_SEARCH_PROMPT_VERSION
-from prompts.python_analysis import build_python_analysis_prompt, PYTHON_ANALYSIS_PROMPT_VERSION
-from prompts.python_result import build_python_result_prompt, PYTHON_RESULT_PROMPT_VERSION
+from prompts.python_execution import build_python_execution_prompt, PYTHON_EXECUTION_PROMPT_VERSION
 from tools.web_search import TavilySearchTool, WebSearchResult
 from tools.file_tool import FileTool, FileResult
 from tools.python_tool import PythonTool, PythonResult
@@ -32,9 +31,11 @@ class AgentResult:
     python_requested: bool = False
     python_executed: bool = False
     python_fallback: bool = False
+    python_prompt: Optional[str] = None
     python_analysis_prompt: Optional[str] = None
     python_analysis_response: Optional[str] = None
     python_final_prompt: Optional[str] = None
+    llm_generation_count: int = 1
 
 
 class GAIAAgent:
@@ -277,41 +278,61 @@ class GAIAFileAgent(GAIAWebAgent):
 
 
 def extract_python_code(text: str) -> Optional[str]:
-    """Extracts Python code from model response markdown blocks."""
+    """Extracts Python code enclosed within ```python ... ``` or ``` ... ``` blocks."""
     if not text:
         return None
-    # 1. ```python ... ``` or ```py ... ```
-    m = re.search(r"```(?:python|py)\s*\n(.*?)```", text, re.DOTALL | re.IGNORECASE)
-    if m:
-        code = m.group(1).strip()
-        if code:
-            return code
-    # 2. Generic ``` ... ``` if not NO_CODE
-    m2 = re.search(r"```\s*\n(.*?)```", text, re.DOTALL)
-    if m2:
-        code = m2.group(1).strip()
-        if code and not code.upper().startswith("NO_CODE"):
-            return code
+    pattern = r"```(?:python|py)?\s*\n(.*?)```"
+    match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+    if match:
+        code = match.group(1).strip()
+        return code if code else None
     return None
+
+
+def extract_python_final_answer(stdout: str) -> Optional[str]:
+    """Extracts the final answer marker 'FINAL_ANSWER: <ans>' printed by Python code."""
+    if not stdout:
+        return None
+    pattern = r"(?:^|\n)\s*FINAL_?ANSWER\s*:\s*(.+)$"
+    matches = re.findall(pattern, stdout, re.IGNORECASE | re.MULTILINE)
+    if matches:
+        return matches[-1].strip()
+    return None
+
+
+def extract_direct_answer(raw_text: str) -> str:
+    """Extracts direct answer from 'FINAL: <ans>' line or falls back to clean_answer."""
+    if not raw_text:
+        return ""
+    pattern = r"(?:^|\n)\s*FINAL\s*:\s*(.+)$"
+    matches = re.findall(pattern, raw_text, re.IGNORECASE | re.MULTILINE)
+    if matches:
+        return matches[-1].strip()
+    # Fallback to standard clean_answer
+    text = raw_text.strip()
+    prefix_pattern = r"^(?:final answer|answer)\s*:\s*"
+    return re.sub(prefix_pattern, "", text, flags=re.IGNORECASE).strip()
 
 
 class GAIAPythonAgent(GAIAFileAgent):
     """V3 GAIA agent combining single-shot Tavily search, V2 attachment handling,
-    and controlled single-shot local Python execution.
+    and controlled single-shot local Python execution under a single-generation contract.
 
-    Flow:
+    Contract:
     1. Executes exactly one Tavily search on original question (inherited from V1/V2).
     2. Processes file attachment using FileTool if provided (inherited from V2).
-    3. Stage 1: Calls Gemini with python-analysis-v1 prompt asking whether Python is needed.
-    4. If code is generated:
-       - Executes PythonTool.execute(code, attachment_path) strictly ONCE (execution_count <= 1).
-       - If execution succeeds:
-         - Calls Gemini with python-result-v1 prompt containing the code and stdout.
-       - If execution fails / times out / rejected:
+    3. Builds a single execution-aware prompt (`python-execution-v1`).
+    4. Executes exactly ONE primary Gemini generation (`llm_generation_count == 1`).
+    5. The model chooses either:
+       Option A (Direct Answer): Returns 'FINAL: <answer>'
+       Option B (Python Code): Returns ```python ... ``` script printing 'FINAL_ANSWER: <answer>'
+    6. If Python code is returned:
+       - Executes PythonTool.execute(code, attachment_path) strictly ONCE (`python_execution_count <= 1`).
+       - If execution succeeds and stdout contains 'FINAL_ANSWER: <answer>', extracts it deterministically.
+       - If execution fails (syntax error, AST violation, non-zero return code, timeout) OR missing marker:
          - Sets python_fallback = True.
-         - Falls back to V2 evidence prompt without retrying Python.
-    5. If NO_CODE generated:
-       - Uses V2 evidence prompt directly.
+         - Uses direct answer if present in model text; otherwise empty string.
+         - Does NOT invoke a second Gemini synthesis or retry turn.
     """
 
     def __init__(
@@ -323,9 +344,9 @@ class GAIAPythonAgent(GAIAFileAgent):
     ):
         super().__init__(llm_client=llm_client, search_tool=search_tool, file_tool=file_tool)
         self.python_tool = python_tool if python_tool is not None else PythonTool()
-        self.prompt_version = PYTHON_RESULT_PROMPT_VERSION
-        self.primary_prompt_version = PYTHON_RESULT_PROMPT_VERSION
-        self.fallback_prompt_version = FILE_SEARCH_PROMPT_VERSION
+        self.prompt_version = PYTHON_EXECUTION_PROMPT_VERSION
+        self.primary_prompt_version = PYTHON_EXECUTION_PROMPT_VERSION
+        self.fallback_prompt_version = None
 
     def run(self, question: str, file_path: Optional[str] = None) -> AgentResult:
         """Runs the V3 single-shot retrieval + file + single-shot Python execution pipeline."""
@@ -339,6 +360,7 @@ class GAIAPythonAgent(GAIAFileAgent):
         file_fallback = False
         attachment_parts = None
         file_evidence = ""
+        attachment_filename = ""
 
         if file_path:
             file_res = self.file_tool.process(file_path)
@@ -357,121 +379,78 @@ class GAIAPythonAgent(GAIAFileAgent):
                         file_fallback = True
                 if not file_fallback:
                     file_evidence = file_res.text_content or f"[Attached file: {file_res.file_name}]"
+                    attachment_filename = os.path.basename(file_path)
             else:
                 file_fallback = True
         else:
             file_fallback = False
 
-        # 3. Stage 1: Python analysis / code generation
-        analysis_prompt = build_python_analysis_prompt(
+        # 3. Build single V3 execution-aware prompt
+        prompt = build_python_execution_prompt(
             question=question,
             web_evidence=web_evidence if search_res.success else "[Web search unavailable]",
             file_evidence=file_evidence,
+            attachment_filename=attachment_filename,
         )
 
-        analysis_resp = self.llm.generate(analysis_prompt, attachment_parts=attachment_parts)
-        if isinstance(analysis_resp, LLMResponse):
-            analysis_raw = analysis_resp.raw_text if analysis_resp.raw_text else analysis_resp.text
+        # 4. Execute exactly one primary LLM generation (llm_generation_count == 1)
+        llm_resp = self.llm.generate(prompt, attachment_parts=attachment_parts)
+        if isinstance(llm_resp, LLMResponse):
+            raw_text = llm_resp.raw_text if llm_resp.raw_text else llm_resp.text
+            norm_text = llm_resp.text
         else:
-            analysis_raw = str(analysis_resp)
+            raw_text = str(llm_resp)
+            norm_text = raw_text.strip()
 
-        code = extract_python_code(analysis_raw)
+        # 5. Parse response: Option A (Direct) vs Option B (Python)
+        code = extract_python_code(raw_text)
         py_result: Optional[PythonResult] = None
         python_requested = bool(code)
         python_executed = False
         python_fallback = False
-
-        # 4. Stage 2: Execute code if requested (strictly ONCE)
-        final_prompt = None
-        final_resp = None
-        prompt_ver = None
-        primary_ver = None
-        fallback_ver = None
+        final_answer = ""
 
         if code:
+            # Option B: Python execution requested (strictly at most once)
             python_executed = True
             py_result = self.python_tool.execute(code, attachment_path=file_path)
 
             if py_result.success:
-                final_prompt = build_python_result_prompt(
-                    question=question,
-                    web_evidence=web_evidence if search_res.success else "[Web search unavailable]",
-                    file_evidence=file_evidence,
-                    executed_code=code,
-                    execution_stdout=py_result.stdout,
-                    execution_stderr=py_result.stderr,
-                )
-                prompt_ver = PYTHON_RESULT_PROMPT_VERSION
-                primary_ver = PYTHON_RESULT_PROMPT_VERSION
-                fallback_ver = FILE_SEARCH_PROMPT_VERSION if file_path else WEB_SEARCH_PROMPT_VERSION
-                final_resp = self.llm.generate(final_prompt, attachment_parts=attachment_parts)
-            else:
-                # Python execution failed, timed out, or violated policy -> fallback without retry
-                python_fallback = True
-                primary_ver = PYTHON_RESULT_PROMPT_VERSION
-                fallback_ver = FILE_SEARCH_PROMPT_VERSION if file_path else WEB_SEARCH_PROMPT_VERSION
-
-                if file_res and file_res.success and not file_fallback:
-                    final_prompt = build_file_search_prompt(
-                        question=question,
-                        web_evidence=web_evidence if search_res.success else "[Web search unavailable]",
-                        file_evidence=file_evidence,
-                    )
-                    prompt_ver = FILE_SEARCH_PROMPT_VERSION
-                elif search_res.success:
-                    final_prompt = build_web_search_prompt(question, web_evidence)
-                    prompt_ver = WEB_SEARCH_PROMPT_VERSION
+                extracted_ans = extract_python_final_answer(py_result.stdout)
+                if extracted_ans is not None:
+                    final_answer = self.clean_answer(extracted_ans)
+                    python_fallback = False
                 else:
-                    final_prompt = build_baseline_prompt(question)
-                    prompt_ver = PROMPT_VERSION
-
-                final_resp = self.llm.generate(final_prompt, attachment_parts=attachment_parts)
+                    # Missing or malformed FINAL_ANSWER: marker
+                    python_fallback = True
+                    py_result.success = False
+                    py_result.error_type = py_result.error_type or "MissingFinalAnswerMarker"
+                    py_result.error_message = (
+                        py_result.error_message
+                        or "Python execution succeeded but stdout did not contain 'FINAL_ANSWER:' marker"
+                    )
+                    # Check if model had a FINAL: direct answer in its text; otherwise empty
+                    final_answer = self.clean_answer(extract_direct_answer(raw_text)) if "FINAL:" in raw_text else ""
+            else:
+                # Execution failed, timed out, or violated policy -> fallback without second LLM call
+                python_fallback = True
+                final_answer = self.clean_answer(extract_direct_answer(raw_text)) if "FINAL:" in raw_text else ""
         else:
-            # NO_CODE: direct V2 evidence synthesis
+            # Option A: Direct answer without Python execution
+            python_requested = False
             python_executed = False
             python_fallback = False
-
-            if file_res and file_res.success and not file_fallback:
-                final_prompt = build_file_search_prompt(
-                    question=question,
-                    web_evidence=web_evidence if search_res.success else "[Web search unavailable]",
-                    file_evidence=file_evidence,
-                )
-                prompt_ver = FILE_SEARCH_PROMPT_VERSION
-                primary_ver = FILE_SEARCH_PROMPT_VERSION
-                fallback_ver = WEB_SEARCH_PROMPT_VERSION
-            elif search_res.success:
-                final_prompt = build_web_search_prompt(question, web_evidence)
-                prompt_ver = WEB_SEARCH_PROMPT_VERSION
-                primary_ver = WEB_SEARCH_PROMPT_VERSION
-                fallback_ver = PROMPT_VERSION
-            else:
-                final_prompt = build_baseline_prompt(question)
-                prompt_ver = PROMPT_VERSION
-                primary_ver = WEB_SEARCH_PROMPT_VERSION
-                fallback_ver = PROMPT_VERSION
-
-            final_resp = self.llm.generate(final_prompt, attachment_parts=attachment_parts)
-
-        # 5. Extract and clean final answer
-        if isinstance(final_resp, LLMResponse):
-            raw_text = final_resp.raw_text if final_resp.raw_text else final_resp.text
-            norm_text = final_resp.text
-        else:
-            raw_text = str(final_resp)
-            norm_text = raw_text.strip()
-
-        final_answer = self.clean_answer(raw_text)
+            final_answer = self.clean_answer(extract_direct_answer(raw_text))
 
         return AgentResult(
             raw_response=raw_text,
             normalized_response=norm_text,
             final_answer=final_answer,
-            llm_response=final_resp if isinstance(final_resp, LLMResponse) else None,
-            prompt=final_prompt,
-            prompt_version=prompt_ver,
-            primary_prompt_version=primary_ver,
-            fallback_prompt_version=fallback_ver,
+            llm_response=llm_resp if isinstance(llm_resp, LLMResponse) else None,
+            prompt=prompt,
+            prompt_version=self.prompt_version,
+            primary_prompt_version=self.primary_prompt_version,
+            fallback_prompt_version=self.fallback_prompt_version,
             search_result=search_res,
             search_fallback=search_fallback,
             file_result=file_res,
@@ -480,9 +459,11 @@ class GAIAPythonAgent(GAIAFileAgent):
             python_requested=python_requested,
             python_executed=python_executed,
             python_fallback=python_fallback,
-            python_analysis_prompt=analysis_prompt,
-            python_analysis_response=analysis_raw,
-            python_final_prompt=final_prompt,
+            python_prompt=prompt,
+            python_analysis_prompt=prompt,
+            python_analysis_response=None,
+            python_final_prompt=prompt,
+            llm_generation_count=1,
         )
 
     def __call__(self, question: str, file_path: Optional[str] = None) -> str:

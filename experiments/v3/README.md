@@ -16,7 +16,7 @@ V3 = frozen V2 + controlled single-shot local Python execution
 V3 does NOT add:
 - Autonomous tool loops
 - Multi-step Python retries or debugging loops
-- Planning / routing agents
+- Planning / routing agents or multiple reasoning turns
 - Multiple web searches or query rewriting
 - Verification / reflection agents
 - Autonomous Gemini function calling (tools disabled, `mode="NONE"`)
@@ -28,49 +28,61 @@ V3 does NOT add:
 
 *(Note: This is a prospective hypothesis to be evaluated empirically against contemporaneous matched V2 controls, not a proven claim.)*
 
-## Execution Flow & Invariants
+## Single-Generation Execution Flow & Invariants
+
+To avoid confounding the ablation with extra LLM reasoning turns, V3 enforces a strict single-generation contract (`llm_generation_count == 1` per task).
 
 ```text
 Question
     |
-    +-- exactly one Tavily search
+    +-- exactly one Tavily search (inherited from V1/V2)
     |
-    +-- optional V2 FileTool processing
-    |
-    v
-V2 evidence context
+    +-- optional V2 FileTool processing (inherited from V2)
     |
     v
-Python analysis stage (`python-analysis-v1`)
+Single V3 execution-aware prompt (`python-execution-v1`)
     |
-    +-- NO_CODE generated
-    |       |
-    |       v
-    |   Direct V2 evidence prompt (`file-search-v1` / `web-search-v1`)
-    |       |
-    |       v
-    |   Final Answer
+    v
+Single Gemini generation (`llm_generation_count == 1`)
     |
-    +-- Python code generated
+    +-- Option A: "FINAL: <answer>"
+    |       -> Deterministically extract answer (python_executed = False)
+    |
+    +-- Option B: ```python ... ``` script
             |
             v
-        PythonTool.execute() [strictly once, max_executions=1]
+        PythonTool.execute() [strictly once, python_execution_count <= 1]
             |
-            +-- Success:
-            |       `python-result-v1` prompt -> Gemini -> Final Answer
+            +-- Success (stdout contains 'FINAL_ANSWER: <ans>'):
+            |       Extract <ans> deterministically from stdout
             |
-            +-- Failure / Timeout / Policy rejection:
+            +-- Failure / Missing Marker / Policy Rejection / Timeout:
                     python_fallback = True
-                    Fallback to V2 evidence prompt without retrying
-                    -> Final Answer
+                    Extract direct answer if present in model text; otherwise empty string
+                    No second Gemini call, no retry, no self-correction
 ```
 
-## Security & Isolation Boundaries
+### Invariants Preserved
+- `llm_generation_count == 1` for every task
+- `python_execution_count in (0, 1)` for every task
+- No second LLM synthesis turn after Python execution
+- No retry or self-correction turn on execution failure
 
-- Out-of-process execution in an ephemeral temporary directory (`tempfile.mkdtemp`)
-- Pre-execution static AST validation (blocking forbidden imports: `subprocess`, `socket`, `requests`, `urllib`, `ctypes`, `os.system`, etc.)
-- Task attachment copied into temporary directory as read-only
-- Subprocess invoked in isolated mode (`python -I`) with sanitized environment
-- Bounded stdout and stderr capture (default 20,000 characters)
-- Deterministic timeout (default 15.0 seconds)
-- Ephemeral workspace cleanup on completion
+## Isolation Boundaries & Limitations
+
+Execution isolation in V3 is characterized as **best-effort research execution isolation**:
+- **Ephemeral Workspace:** Executed inside a dedicated temporary directory (`tempfile.mkdtemp`), cleaned up immediately upon completion.
+- **Read-Only Attachments:** Copied task attachments are placed in the ephemeral directory with read-only permissions (`stat.S_IREAD`).
+- **Subprocess Flag (`-I`):** Launched via `[sys.executable, "-I", "solution.py"]`. The `-I` flag operates in isolated mode:
+  - `-E`: Ignores ambient environment variables such as `PYTHONPATH` and `PYTHONHOME`.
+  - `-s`: Disables user site-packages (`~/.local` or `%APPDATA%\Python`).
+  - `-P`: Safe path mode (does not prepend current directory to `sys.path` by default).
+  - *Note:* Virtual environment `site-packages` remains accessible (`no_site=0`), but ambient user paths are excluded.
+- **Environment Sanitization:** Subprocess receives a minimal whitelist of system variables (`SYSTEMROOT`, `PATH`, `TMP`, etc.), omitting all API keys and secrets.
+- **Static AST Policy:** Static syntax inspection blocks dangerous modules (`subprocess`, `socket`, `urllib`, `requests`, `aiohttp`, `importlib`, `ctypes`, `multiprocessing`), dangerous functions (`os.system`, `eval`, `exec`, `compile`), and path traversal (`..` or absolute paths in `open`/`pathlib.Path`).
+- **Resource Bounds:** Execution timeout at 15.0s; stdout and stderr capped at 20,000 characters.
+
+### Explicit Limitations
+- **Not a Kernel Container:** Does not employ OS-level containerization (Docker, gVisor, or Linux namespaces/cgroups).
+- **Static Inspection Limits:** Static AST analysis inspects literal syntax nodes; non-literal or dynamically assembled string paths cannot be guaranteed caught without kernel sandboxing.
+- **No Kernel Network Firewall:** Network isolation relies on static AST import restrictions, not OS-level firewall rules.
