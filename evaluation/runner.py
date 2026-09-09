@@ -192,9 +192,12 @@ def execute_task(
     latency = round(time.time() - start_time, 2)
 
     # Prompt provenance extraction
-    file_enabled = (project_version == "v2") or isinstance(agent, GAIAFileAgent)
+    is_v3 = (project_version == "v3") or isinstance(agent, GAIAPythonAgent)
+    file_enabled = ((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3
     if result is None:
-        if file_enabled:
+        if is_v3:
+            prompt_ver = "python-execution-v1"
+        elif file_enabled:
             prompt_ver = "file-search-v1" if has_attachment else "web-search-v1"
         elif isinstance(agent, GAIAWebAgent) or project_version == "v1":
             prompt_ver = "web-search-v1"
@@ -205,7 +208,9 @@ def execute_task(
     fallback_prompt_ver = getattr(result, "fallback_prompt_version", None) if result else None
 
     if primary_prompt_ver is None:
-        if file_enabled:
+        if is_v3:
+            primary_prompt_ver = "python-execution-v1"
+        elif file_enabled:
             primary_prompt_ver = "file-search-v1" if has_attachment else "web-search-v1"
         elif isinstance(agent, GAIAWebAgent) or project_version == "v1":
             primary_prompt_ver = "web-search-v1"
@@ -213,7 +218,9 @@ def execute_task(
             primary_prompt_ver = prompt_ver or "baseline-v1"
 
     if fallback_prompt_ver is None:
-        if file_enabled:
+        if is_v3:
+            fallback_prompt_ver = None
+        elif file_enabled:
             fallback_prompt_ver = "web-search-v1" if has_attachment else "baseline-v1"
         elif isinstance(agent, GAIAWebAgent) or project_version == "v1":
             fallback_prompt_ver = "baseline-v1"

@@ -52,11 +52,12 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
     print(f"Attachment: {'yes' if has_attachment else 'no'}")
     if has_attachment:
         print(f"File Name: {file_name}")
-        print(f"Note: {version} baseline intentionally does NOT process file attachments.")
         if version in ("v0", "v1"):
             print(f"Note: {version} baseline intentionally does NOT process file attachments.")
-        else:
+        elif version == "v2":
             print("Note: v2 processes local file attachments.")
+        elif version == "v3":
+            print("Note: v3 processes local file attachments and supports controlled Python execution.")
     print("-" * 80)
 
     record = execute_task(
@@ -97,6 +98,16 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
             print(f"File Content Truncated: True (orig={record.get('original_file_content_length')}, provided={record.get('provided_file_content_length')})")
         if record.get("file_error_message"):
             print(f"File Error: [{record['file_error_type']}] {record['file_error_message']}")
+    if record.get("python_requested") or record.get("python_executed"):
+        print(f"Python Requested: {record.get('python_requested')}")
+        print(f"Python Executed: {record.get('python_executed')}")
+        print(f"Python Execution Count: {record.get('python_execution_count')}")
+        print(f"Python Success: {record.get('python_success')}")
+        print(f"Python Fallback: {record.get('python_fallback')}")
+        if record.get("python_exit_code") is not None:
+            print(f"Python Exit Code: {record.get('python_exit_code')}")
+        if record.get("python_error_type"):
+            print(f"Python Error Type: {record.get('python_error_type')}")
     print(f"Request Success: {record['request_success']}")
     print(f"Completion Success: {record['completion_success']}")
     print(f"Finish Reason: {record['finish_reason']}")
@@ -121,7 +132,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run GAIA baseline on one question with completion-aware tracking.")
     parser.add_argument("-i", "--index", type=int, default=0, help="Question index to run (0 to 19, default: 0)")
     parser.add_argument("-t", "--task-id", type=str, default=None, help="Specific task ID to run")
-    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2"], help="Agent version (v0: baseline, v1: web search, v2: file attachments; required)")
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution; required)")
     parser.add_argument("--no-log", action="store_true", help="Do not write record to experiments/runs.jsonl")
     args = parser.parse_args()
 
