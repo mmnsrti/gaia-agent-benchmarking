@@ -1,0 +1,67 @@
+{
+  "version": "v3",
+  "total_tasks": 165,
+  "execution_outcome": {
+    "python_executed_count": 95,
+    "python_execution_rate": 0.5758,
+    "python_success_count": 26,
+    "python_success_rate": 0.2737,
+    "python_failure_count": 69,
+    "python_fallback_count": 69
+  },
+  "failure_reasons_breakdown": {
+    "python_missing_final_marker": 60,
+    "python_policy_rejection": 5,
+    "python_dependency_failure": 4,
+    "python_runtime_failure": 0,
+    "python_timeout": 0,
+    "other": 0
+  },
+  "accuracy_breakdown": {
+    "python_executed_accuracy": 0.1263,
+    "python_executed_correct": 12,
+    "python_executed_total": 95,
+    "python_not_executed_accuracy": 0.5143,
+    "python_not_executed_correct": 36,
+    "python_not_executed_total": 70,
+    "cross_tabulation": {
+      "python_success_and_correct": 12,
+      "python_success_and_wrong": 14,
+      "python_failure_and_correct": 0,
+      "python_failure_and_wrong": 69
+    }
+  },
+  "methodological_interpretation": {
+    "endogenous_routing_warning": "Python routing is endogenous: the model selected Python more often for computationally intensive or difficult tasks. Therefore, the raw accuracy difference between the executed subset (12.63%) and the non-executed subset (51.43%) does not establish causal harm from Python execution alone.",
+    "observed_policy_characterization": "The model selected Python on 57.58% of tasks across the benchmark. Given that Python failed to produce the required final marker in 60 out of 95 executed tasks (63.16%), the model's execution strategy was aggressive relative to its reliability in satisfying the answer-extraction contract."
+  },
+  "routing_by_level": {
+    "level_1": {
+      "total_tasks": 53,
+      "python_executed_count": 25,
+      "python_execution_rate": 0.4717,
+      "python_success_count": 7,
+      "python_success_rate": 0.28,
+      "accuracy_among_executed": 0.16,
+      "accuracy_among_non_executed": 0.7143
+    },
+    "level_2": {
+      "total_tasks": 86,
+      "python_executed_count": 55,
+      "python_execution_rate": 0.6395,
+      "python_success_count": 18,
+      "python_success_rate": 0.3273,
+      "accuracy_among_executed": 0.1455,
+      "accuracy_among_non_executed": 0.4839
+    },
+    "level_3": {
+      "total_tasks": 26,
+      "python_executed_count": 15,
+      "python_execution_rate": 0.5769,
+      "python_success_count": 1,
+      "python_success_rate": 0.0667,
+      "accuracy_among_executed": 0.0,
+      "accuracy_among_non_executed": 0.0909
+    }
+  }
+}

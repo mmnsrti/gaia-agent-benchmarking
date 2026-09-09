@@ -1,0 +1,234 @@
+{
+  "version": "v3",
+  "level": 2,
+  "total_tasks": 86,
+  "correct_tasks": 23,
+  "failed_tasks": 63,
+  "accuracy": 0.2674,
+  "operational_metrics": {
+    "completion_failures": 18,
+    "completion_rate": 0.7907,
+    "python_executed_count": 55,
+    "python_success_count": 18,
+    "python_failure_count": 37
+  },
+  "taxonomy": {
+    "provider_response_anomaly": 14,
+    "python_policy_rejection": 2,
+    "python_dependency_failure": 4,
+    "python_runtime_failure": 0,
+    "python_missing_final_marker": 31,
+    "python_timeout": 0,
+    "python_success_wrong_answer": 10,
+    "direct_incomplete_generation": 1,
+    "direct_reasoning_or_retrieval_failure": 0,
+    "formatting_failure": 1,
+    "unsupported_attachment_path_failure": 0,
+    "other": 0
+  },
+  "error_counts": {
+    "provider_response_anomaly": 14,
+    "python_policy_rejection": 2,
+    "python_dependency_failure": 4,
+    "python_missing_final_marker": 31,
+    "python_success_wrong_answer": 10,
+    "direct_incomplete_generation": 1,
+    "formatting_failure": 1
+  },
+  "error_percentages": {
+    "provider_response_anomaly": 22.22,
+    "python_policy_rejection": 3.17,
+    "python_dependency_failure": 6.35,
+    "python_runtime_failure": 0.0,
+    "python_missing_final_marker": 49.21,
+    "python_timeout": 0.0,
+    "python_success_wrong_answer": 15.87,
+    "direct_incomplete_generation": 1.59,
+    "direct_reasoning_or_retrieval_failure": 0.0,
+    "formatting_failure": 1.59,
+    "unsupported_attachment_path_failure": 0.0,
+    "other": 0.0
+  },
+  "confidence_summary": {
+    "high_confidence_metadata_count": 62,
+    "low_confidence_heuristic_count": 1,
+    "high_confidence_percentage": 98.41,
+    "low_confidence_percentage": 1.59
+  },
+  "taxonomy_metadata": {
+    "mutually_exclusive": true,
+    "deterministic_categories": [
+      "provider_response_anomaly",
+      "python_policy_rejection",
+      "python_dependency_failure",
+      "python_runtime_failure",
+      "python_missing_final_marker",
+      "python_timeout",
+      "python_success_wrong_answer",
+      "direct_incomplete_generation"
+    ],
+    "heuristic_categories": [
+      "direct_reasoning_or_retrieval_failure",
+      "formatting_failure",
+      "unsupported_attachment_path_failure",
+      "other"
+    ],
+    "policy_note": "Deterministic categories are directly supported by execution metadata (response finish reasons, Python exit codes, error types, or timeout flags) and carry high confidence. Completed non-python failures are classified into direct_reasoning_or_retrieval_failure or formatting_failure using heuristic signals and carry low confidence."
+  },
+  "category_breakdown": {
+    "provider_response_anomaly": {
+      "count": 14,
+      "percentage": 22.22,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "c61d22de-5f6c-4958-a7f6-5e9707bd3466",
+        "87c610df-bef7-4932-b950-1d83ef4e282b",
+        "dd3c7503-f62a-4bd0-9f67-1b63b94194cc",
+        "b9763138-c053-4832-9f55-86200cb1f99c",
+        "bfcd99e1-0690-4b53-a85c-0174a8629083",
+        "9f41b083-683e-4dcf-9185-ccfeaa88fa45",
+        "7b5377b0-3f38-4103-8ad2-90fe89864c04",
+        "114d5fd0-e2ae-4b6d-a65a-870da2d19c08",
+        "48eb8242-1099-4c26-95d4-ef22b002457a",
+        "0b260a57-3f3a-4405-9f29-6d7a1012dbfb",
+        "65638e28-7f37-4fa7-b7b9-8c19bb609879",
+        "3ff6b7a9-a5bd-4412-ad92-0cd0d45c0fee",
+        "0bb3b44a-ede5-4db5-a520-4e844b0079c5",
+        "4d0aa727-86b1-406b-9b33-f870dd14a4a5"
+      ]
+    },
+    "python_policy_rejection": {
+      "count": 2,
+      "percentage": 3.17,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "b4cc024b-3f5e-480e-b96a-6656493255b5",
+        "2b3ef98c-cc05-450b-a719-711aee40ac65"
+      ]
+    },
+    "python_dependency_failure": {
+      "count": 4,
+      "percentage": 6.35,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "7dd30055-0198-452e-8c25-f73dbe27dcb8",
+        "df6561b2-7ee5-4540-baab-5095f742716a",
+        "8f80e01c-1296-4371-9486-bb3d68651a60",
+        "6359a0b1-8f7b-499b-9336-840f9ab90688"
+      ]
+    },
+    "python_runtime_failure": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": []
+    },
+    "python_missing_final_marker": {
+      "count": 31,
+      "percentage": 49.21,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "17b5a6a3-bc87-42e8-b0fb-6ab0781ef2cc",
+        "32102e3e-d12a-4209-9163-7b3a104efe5d",
+        "7619a514-5fa8-43ef-9143-83b66a43d7a4",
+        "2a649bb1-795f-4a01-b3be-9a01868dae73",
+        "624cbf11-6a41-4692-af9c-36b3e5ca3130",
+        "e4e91f1c-1dcd-439e-9fdd-cb976f5293fd",
+        "56137764-b4e0-45b8-9c52-1866420c3df5",
+        "8b3379c0-0981-4f5b-8407-6444610cb212",
+        "a7feb290-76bb-4cb7-8800-7edaf7954f2f",
+        "e8cb5b03-41e0-4086-99e5-f6806cd97211",
+        "05407167-39ec-4d3a-a234-73a9120c325d",
+        "16d825ff-1623-4176-a5b5-42e0f5c2b0ac",
+        "6b078778-0b90-464d-83f6-59511c811b01",
+        "2dfc4c37-fec1-4518-84a7-10095d30ad75",
+        "ecbc4f94-95a3-4cc7-b255-6741a458a625",
+        "71345b0a-9c7d-4b50-b2bf-937ec5879845",
+        "ad37a656-079a-49f9-a493-7b739c9167d1",
+        "f3917a3d-1d17-4ee2-90c5-683b072218fe",
+        "d1af70ea-a9a4-421a-b9cc-94b5e02f1788",
+        "08f3a05f-5947-4089-a4c4-d4bcfaa6b7a0",
+        "ded28325-3447-4c56-860f-e497d6fb3577",
+        "f2feb6a4-363c-4c09-a804-0db564eafd68",
+        "d8152ad6-e4d5-4c12-8bb7-8d57dc10c6de",
+        "023e9d44-96ae-4eed-b912-244ee8c3b994",
+        "4d51c4bf-4b0e-4f3d-897b-3f6687a7d9f2",
+        "73c1b9fe-ee1d-4cf4-96ca-35c08f97b054",
+        "42d4198c-5895-4f0a-b0c0-424a66465d83",
+        "edd4d4f2-1a58-45c4-b038-67337af4e029",
+        "1dcc160f-c187-48c2-b68e-319bd4354f3d",
+        "08c0b6e9-1b43-4c2e-ae55-4e3fce2c2715",
+        "853c8244-429e-46ca-89f2-addf40dfb2bd"
+      ]
+    },
+    "python_timeout": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": []
+    },
+    "python_success_wrong_answer": {
+      "count": 10,
+      "percentage": 15.87,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "f0f46385-fc03-4599-b5d3-f56496c3e69f",
+        "ed58682d-bc52-4baa-9eb0-4eb81e1edacc",
+        "cca70ce6-1952-45d2-acd4-80c903b0bc49",
+        "b7f857e4-d8aa-4387-af2a-0e844df5b9d8",
+        "e2d69698-bc99-4e85-9880-67eaccd66e6c",
+        "a26649c6-1cb2-470a-871e-6910c64c3e53",
+        "d5141ca5-e7a0-469f-bf3e-e773507c86e2",
+        "e0c10771-d627-4fd7-9694-05348e54ee36",
+        "e29834fd-413a-455c-a33e-c3915b07401c",
+        "db4fd70a-2d37-40ea-873f-9433dc5e301f"
+      ]
+    },
+    "direct_incomplete_generation": {
+      "count": 1,
+      "percentage": 1.59,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "7a4a336d-dcfa-45a0-b014-824c7619e8de"
+      ]
+    },
+    "direct_reasoning_or_retrieval_failure": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "low",
+      "classification_basis": "heuristic",
+      "task_ids": []
+    },
+    "formatting_failure": {
+      "count": 1,
+      "percentage": 1.59,
+      "classification_confidence": "low",
+      "classification_basis": "heuristic",
+      "task_ids": [
+        "708b99c5-e4a7-49cb-a5cf-933c8d46470d"
+      ]
+    },
+    "unsupported_attachment_path_failure": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "low",
+      "classification_basis": "heuristic",
+      "task_ids": []
+    },
+    "other": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "low",
+      "classification_basis": "heuristic",
+      "task_ids": []
+    }
+  }
+}

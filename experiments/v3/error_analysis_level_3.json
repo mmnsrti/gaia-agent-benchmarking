@@ -1,0 +1,190 @@
+{
+  "version": "v3",
+  "level": 3,
+  "total_tasks": 26,
+  "correct_tasks": 1,
+  "failed_tasks": 25,
+  "accuracy": 0.0385,
+  "operational_metrics": {
+    "completion_failures": 11,
+    "completion_rate": 0.5769,
+    "python_executed_count": 15,
+    "python_success_count": 1,
+    "python_failure_count": 14
+  },
+  "taxonomy": {
+    "provider_response_anomaly": 10,
+    "python_policy_rejection": 2,
+    "python_dependency_failure": 0,
+    "python_runtime_failure": 0,
+    "python_missing_final_marker": 12,
+    "python_timeout": 0,
+    "python_success_wrong_answer": 1,
+    "direct_incomplete_generation": 0,
+    "direct_reasoning_or_retrieval_failure": 0,
+    "formatting_failure": 0,
+    "unsupported_attachment_path_failure": 0,
+    "other": 0
+  },
+  "error_counts": {
+    "provider_response_anomaly": 10,
+    "python_policy_rejection": 2,
+    "python_missing_final_marker": 12,
+    "python_success_wrong_answer": 1
+  },
+  "error_percentages": {
+    "provider_response_anomaly": 40.0,
+    "python_policy_rejection": 8.0,
+    "python_dependency_failure": 0.0,
+    "python_runtime_failure": 0.0,
+    "python_missing_final_marker": 48.0,
+    "python_timeout": 0.0,
+    "python_success_wrong_answer": 4.0,
+    "direct_incomplete_generation": 0.0,
+    "direct_reasoning_or_retrieval_failure": 0.0,
+    "formatting_failure": 0.0,
+    "unsupported_attachment_path_failure": 0.0,
+    "other": 0.0
+  },
+  "confidence_summary": {
+    "high_confidence_metadata_count": 25,
+    "low_confidence_heuristic_count": 0,
+    "high_confidence_percentage": 100.0,
+    "low_confidence_percentage": 0.0
+  },
+  "taxonomy_metadata": {
+    "mutually_exclusive": true,
+    "deterministic_categories": [
+      "provider_response_anomaly",
+      "python_policy_rejection",
+      "python_dependency_failure",
+      "python_runtime_failure",
+      "python_missing_final_marker",
+      "python_timeout",
+      "python_success_wrong_answer",
+      "direct_incomplete_generation"
+    ],
+    "heuristic_categories": [
+      "direct_reasoning_or_retrieval_failure",
+      "formatting_failure",
+      "unsupported_attachment_path_failure",
+      "other"
+    ],
+    "policy_note": "Deterministic categories are directly supported by execution metadata (response finish reasons, Python exit codes, error types, or timeout flags) and carry high confidence. Completed non-python failures are classified into direct_reasoning_or_retrieval_failure or formatting_failure using heuristic signals and carry low confidence."
+  },
+  "category_breakdown": {
+    "provider_response_anomaly": {
+      "count": 10,
+      "percentage": 40.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "bec74516-02fc-48dc-b202-55e78d0e17cf",
+        "00d579ea-0889-4fd9-a771-2c8d79835c8d",
+        "983bba7c-c092-455f-b6c9-7857003d48fc",
+        "9b54f9d9-35ee-4a14-b62f-d130ea00317f",
+        "56db2318-640f-477a-a82f-bc93ad13e882",
+        "8131e2c0-0083-4265-9ce7-78c2d568425d",
+        "72c06643-a2fa-4186-aa5c-9ec33ae9b445",
+        "c526d8d6-5987-4da9-b24c-83466fa172f3",
+        "3da89939-209c-4086-8520-7eb734e6b4ef",
+        "5f982798-16b9-4051-ab57-cfc7ebdb2a91"
+      ]
+    },
+    "python_policy_rejection": {
+      "count": 2,
+      "percentage": 8.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "e961a717-6b25-4175-8a68-874d28190ee4",
+        "851e570a-e3de-4d84-bcfa-cc85578baa59"
+      ]
+    },
+    "python_dependency_failure": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": []
+    },
+    "python_runtime_failure": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": []
+    },
+    "python_missing_final_marker": {
+      "count": 12,
+      "percentage": 48.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "676e5e31-a554-4acc-9286-b60d90a92d26",
+        "de9887f5-ead8-4727-876f-5a4078f8598c",
+        "ebbc1f13-d24d-40df-9068-adcf735b4240",
+        "8d46b8d6-b38a-47ff-ac74-cda14cf2d19b",
+        "50f58759-7bd6-406f-9b0d-5692beb2a926",
+        "872bfbb1-9ccf-49f6-8c5f-aa22818ccd66",
+        "c3a79cfe-8206-451f-aca8-3fec8ebe51d3",
+        "da52d699-e8d2-4dc5-9191-a2199e0b6a9b",
+        "ad2b4d70-9314-4fe6-bfbe-894a45f6055f",
+        "9e1fc53b-46ff-49a1-9d05-9e6faac34cc5",
+        "0512426f-4d28-49f0-be77-06d05daec096",
+        "0bdb7c40-671d-4ad1-9ce3-986b159c0ddc"
+      ]
+    },
+    "python_timeout": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": []
+    },
+    "python_success_wrong_answer": {
+      "count": 1,
+      "percentage": 4.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "5b2a14e8-6e59-479c-80e3-4696e8980152"
+      ]
+    },
+    "direct_incomplete_generation": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": []
+    },
+    "direct_reasoning_or_retrieval_failure": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "low",
+      "classification_basis": "heuristic",
+      "task_ids": []
+    },
+    "formatting_failure": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "low",
+      "classification_basis": "heuristic",
+      "task_ids": []
+    },
+    "unsupported_attachment_path_failure": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "low",
+      "classification_basis": "heuristic",
+      "task_ids": []
+    },
+    "other": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "low",
+      "classification_basis": "heuristic",
+      "task_ids": []
+    }
+  }
+}
