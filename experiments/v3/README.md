@@ -1,6 +1,8 @@
 # V3 — Controlled Single-Shot Python Execution Baseline
 
-Status: In Development (Capability Scaffolding Phase)
+Status: FROZEN
+
+See [FROZEN.md](FROZEN.md) for the complete canonical freeze manifest, benchmark results, transition analysis, regression mechanism audit, and research summary.
 
 Branch: `v3-python-execution`
 
@@ -86,3 +88,13 @@ Execution isolation in V3 is characterized as **best-effort research execution i
 - **Not a Kernel Container:** Does not employ OS-level containerization (Docker, gVisor, or Linux namespaces/cgroups).
 - **Static Inspection Limits:** Static AST analysis inspects literal syntax nodes; non-literal or dynamically assembled string paths cannot be guaranteed caught without kernel sandboxing.
 - **No Kernel Network Firewall:** Network isolation relies on static AST import restrictions, not OS-level firewall rules.
+
+## Freeze Rule
+
+V3 is frozen as the immutable research baseline for controlled single-shot local Python execution:
+
+```text
+V3 = V2 + controlled single-shot local Python execution
+```
+
+Future work must not alter V3 results, agent runtime behavior, prompts, model settings, tool configurations, or benchmark evaluations. Any subsequent planner/router work belongs to V4.

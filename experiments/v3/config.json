@@ -9,7 +9,8 @@
     "thinking_level": "medium",
     "max_output_tokens": 2048,
     "temperature": null,
-    "tools_mode": "NONE"
+    "tools_mode": "NONE",
+    "function_calling_enabled": false
   },
   "search_configuration": {
     "provider": "tavily",
@@ -20,7 +21,9 @@
     "include_images": false,
     "auto_parameters": false,
     "max_query_length": 1500,
-    "executions_per_task": 1
+    "executions_per_task": 1,
+    "query_used": "original_question",
+    "retries": 0
   },
   "file_configuration": {
     "status": "inherited_from_frozen_v2",
@@ -79,5 +82,23 @@
     "control_version": "v2",
     "directory": "experiments/v3_matched_v2/",
     "requirement": "Contemporaneous matched V2 control required for valid causal ablation comparisons."
+  },
+  "status": "frozen",
+  "research_label": "controlled single-shot Python execution",
+  "parent_baseline": "frozen V2",
+  "frozen_invariants": {
+    "llm_generation_count": 1,
+    "python_execution_count_range": [
+      0,
+      1
+    ],
+    "second_llm_synthesis": false,
+    "python_retry": false,
+    "planner_router": false,
+    "verification": false,
+    "ocr": false,
+    "browser_automation": false,
+    "rag": false,
+    "autonomous_tool_loop": false
   }
 }
