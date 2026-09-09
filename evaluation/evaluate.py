@@ -23,6 +23,13 @@ from evaluation.dataset import load_gaia_tasks, GAIATask
 from evaluation.metrics import normalize_answer, check_exact_match
 from evaluation.dataset import load_gaia_tasks, GAIATask, EXPECTED_VALIDATION_COUNTS
 from evaluation.metrics import gaia_question_scorer, SCORER_NAME, SCORER_COMMIT
+from evaluation.metrics import (
+    normalize_answer,
+    check_exact_match,
+    gaia_question_scorer,
+    SCORER_NAME,
+    SCORER_COMMIT,
+)
 from evaluation.experiment_logger import get_git_metadata
 
 
@@ -104,6 +111,26 @@ def calculate_metrics(
     file_truncations = 0
     file_latencies: List[float] = []
     extension_stats: Dict[str, Dict[str, int]] = {}
+
+    # Determine resolved project version
+    resolved_pv = project_version
+    if predictions and predictions[0].get("project_version"):
+        resolved_pv = predictions[0].get("project_version")
+
+    has_python = (resolved_pv == "v3") or any(
+        pred.get("python_requested") or pred.get("python_executed") or pred.get("python_prompt_version")
+        for pred in predictions
+    )
+    python_requested_count = 0
+    python_execution_count = 0
+    python_success_count = 0
+    python_failure_count = 0
+    python_timeout_count = 0
+    python_fallback_count = 0
+    python_latencies: List[float] = []
+    python_executed_correct = 0
+    python_not_executed_count = 0
+    python_not_executed_correct = 0
 
     for pred in predictions:
         task_id = pred.get("task_id")
@@ -215,6 +242,34 @@ def calculate_metrics(
                 if pred.get("file_processing_success"):
                     extension_stats[ext]["processing_success"] += 1
 
+        # Track Python metrics for V3
+        if pred.get("python_requested"):
+            python_requested_count += 1
+        py_exec = bool(pred.get("python_executed"))
+        if py_exec:
+            python_execution_count += 1
+            if pred.get("python_success"):
+                python_success_count += 1
+            else:
+                python_failure_count += 1
+            if pred.get("python_timeout"):
+                python_timeout_count += 1
+            py_lat = pred.get("python_latency_seconds")
+            if py_lat is not None:
+                try:
+                    python_latencies.append(float(py_lat))
+                except (ValueError, TypeError):
+                    pass
+            if is_correct:
+                python_executed_correct += 1
+        else:
+            python_not_executed_count += 1
+            if is_correct:
+                python_not_executed_correct += 1
+
+        if pred.get("python_fallback"):
+            python_fallback_count += 1
+
         detailed_entry = {
             "task_id": task_id,
             "level": pred.get("level", level),
@@ -266,6 +321,23 @@ def calculate_metrics(
                 "file_error_message": pred.get("file_error_message"),
                 "file_fallback": pred.get("file_fallback"),
             })
+        if has_python or pred.get("python_requested") or pred.get("python_executed") or pred.get("python_prompt_version"):
+            detailed_entry.update({
+                "python_prompt_version": pred.get("python_prompt_version"),
+                "llm_generation_count": pred.get("llm_generation_count"),
+                "python_requested": pred.get("python_requested", False),
+                "python_executed": pred.get("python_executed", False),
+                "python_execution_count": pred.get("python_execution_count", 1 if py_exec else 0),
+                "python_success": pred.get("python_success", False),
+                "python_timeout": pred.get("python_timeout", False),
+                "python_exit_code": pred.get("python_exit_code"),
+                "python_error_type": pred.get("python_error_type"),
+                "python_latency_seconds": pred.get("python_latency_seconds"),
+                "python_stdout_length": pred.get("python_stdout_length", 0),
+                "python_stderr_length": pred.get("python_stderr_length", 0),
+                "python_output_truncated": pred.get("python_output_truncated", False),
+                "python_fallback": pred.get("python_fallback", False),
+            })
         detailed_eval.append(detailed_entry)
 
     accuracy = round(correct_tasks / total_tasks, 4) if total_tasks > 0 else 0.0
@@ -306,7 +378,22 @@ def calculate_metrics(
 
     # Determine prompt version provenance
     # Avoid recording entire run as 'baseline-v1' if task 0 experienced search fallback
-    if resolved_pv == "v2" or has_file:
+    if resolved_pv == "v3" or (has_python and resolved_pv not in ("v0", "v1", "v2")):
+        primary_pv = "python-execution-v1"
+        fallback_pv = None
+        prompt_pv = "python-execution-v1"
+        if distinct_primary:
+            if len(distinct_primary) == 1:
+                primary_pv = distinct_primary[0]
+                fallback_pv = distinct_fallback[0] if distinct_fallback else None
+                prompt_pv = primary_pv
+            else:
+                preferred_order = ["python-execution-v1"]
+                sorted_primary = sorted(distinct_primary, key=lambda x: preferred_order.index(x) if x in preferred_order else 99)
+                primary_pv = " / ".join(sorted_primary)
+                fallback_pv = " / ".join(distinct_fallback) if distinct_fallback else None
+                prompt_pv = primary_pv
+    elif resolved_pv == "v2" or has_file:
         primary_pv = "file-search-v1"
         fallback_pv = "web-search-v1"
         if distinct_primary:
@@ -434,6 +521,23 @@ def calculate_metrics(
                 for ext, data in sorted(extension_stats.items())
             }
 
+    if has_python:
+        summary["python_enabled"] = True
+        summary["python_requested_count"] = python_requested_count
+        summary["python_execution_count"] = python_execution_count
+        summary["python_execution_rate"] = round(python_execution_count / total_tasks, 4) if total_tasks > 0 else 0.0
+        summary["python_success_count"] = python_success_count
+        summary["python_success_rate"] = round(python_success_count / python_execution_count, 4) if python_execution_count > 0 else 0.0
+        summary["python_failure_count"] = python_failure_count
+        summary["python_timeout_count"] = python_timeout_count
+        summary["python_fallback_count"] = python_fallback_count
+        summary["average_python_latency_seconds"] = round(statistics.mean(python_latencies), 2) if python_latencies else None
+        summary["python_executed_correct"] = python_executed_correct
+        summary["python_executed_accuracy"] = round(python_executed_correct / python_execution_count, 4) if python_execution_count > 0 else None
+        summary["python_not_executed_count"] = python_not_executed_count
+        summary["python_not_executed_correct"] = python_not_executed_correct
+        summary["python_not_executed_accuracy"] = round(python_not_executed_correct / python_not_executed_count, 4) if python_not_executed_count > 0 else None
+
     return {
         "summary": summary,
         "detailed": detailed_eval,
@@ -547,6 +651,17 @@ def evaluate_predictions(
             print("Extension Breakdown:")
             for ext, s in summary["extension_breakdown"].items():
                 print(f"  {ext:8s}: {s['correct']}/{s['total']} ({s['accuracy']*100:.1f}%) | proc: {s['processing_success_rate']*100:.1f}%")
+    if summary.get("python_enabled"):
+        print(f"Python Execution:    {summary.get('python_execution_count')}/{summary.get('total_tasks')} ({summary.get('python_execution_rate', 0.0) * 100:.1f}%)")
+        print(f"Python Success Rate: {summary.get('python_success_rate', 0.0) * 100:.1f}% ({summary.get('python_success_count')}/{summary.get('python_execution_count')})")
+        print(f"Python Failures:     {summary.get('python_failure_count')} (timeouts: {summary.get('python_timeout_count')})")
+        print(f"Python Fallbacks:    {summary.get('python_fallback_count')}")
+        if summary.get("average_python_latency_seconds") is not None:
+            print(f"Avg Python Latency:  {summary.get('average_python_latency_seconds')}s")
+        if summary.get("python_executed_accuracy") is not None:
+            print(f"Py Executed Acc:     {summary.get('python_executed_accuracy') * 100:.2f}% ({summary.get('python_executed_correct')}/{summary.get('python_execution_count')})")
+        if summary.get("python_not_executed_accuracy") is not None:
+            print(f"Py Non-Exec Acc:     {summary.get('python_not_executed_accuracy') * 100:.2f}% ({summary.get('python_not_executed_correct')}/{summary.get('python_not_executed_count')})")
     print("=" * 65 + "\n")
 
     # Write safe summary if requested
@@ -570,8 +685,7 @@ def evaluate_predictions(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate agent predictions against local GAIA ground truth.")
     parser.add_argument("--level", type=int, default=1, help="Benchmark level (1, 2, or 3)")
-    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1"], help="Agent version (default: v1)")
-    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2"], help="Agent version (default: v1)")
+    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2", "v3"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution; default: v1)")
     parser.add_argument("--predictions", type=str, default=None, help="Path to predictions JSONL file")
     parser.add_argument("--data", type=str, default=None, help="Path to local ground-truth dataset")
     parser.add_argument("--summary-output", type=str, default=None, help="Output path for safe public summary JSON")

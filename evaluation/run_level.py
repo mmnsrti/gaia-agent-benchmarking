@@ -1,4 +1,4 @@
-"""Benchmark level runner for the tool-free v0 baseline.
+"""Benchmark level runner for GAIA baselines (v0, v1, v2, v3).
 
 Runs tasks sequentially for a specific GAIA level, supports resuming,
 and triggers automatic evaluation with official scoring.
@@ -36,8 +36,7 @@ def _safe_str(val: Optional[str], max_len: int = 80) -> str:
         return snippet.encode("ascii", errors="backslashreplace").decode("ascii")
 
 
-from agent import GAIAAgent, GAIAWebAgent, LLMClient
-from agent import GAIAAgent, GAIAWebAgent, GAIAFileAgent, LLMClient
+from agent import GAIAAgent, GAIAWebAgent, GAIAFileAgent, GAIAPythonAgent, LLMClient
 from evaluation.dataset import load_gaia_tasks, EXPECTED_VALIDATION_COUNTS
 from evaluation.runner import execute_task
 from evaluation.experiment_logger import ExperimentLogger
@@ -57,7 +56,7 @@ def run_level(
     version: str = "v1",
     agent: Optional[Any] = None,
 ) -> str:
-    """Runs the specified baseline (v0, v1, or v2) on all tasks for a specified GAIA level.
+    """Runs the specified baseline (v0, v1, v2, or v3) on all tasks for a specified GAIA level.
 
     Stores complete experiment records and never submits to Hugging Face.
     """
@@ -76,7 +75,9 @@ def run_level(
     expected_tasks = EXPECTED_VALIDATION_COUNTS.get(level)
     is_partial = bool(limit or (expected_tasks and total_tasks < expected_tasks))
     run_tag = f"PARTIAL RUN (--limit {limit})" if limit else ("PARTIAL RUN" if is_partial else "COMPLETE BENCHMARK RUN")
-    if version == "v2":
+    if version == "v3":
+        version_desc = "v3 (Controlled single-shot Python execution + V2 capabilities)"
+    elif version == "v2":
         version_desc = "v2 (File/attachment + web baseline)"
     elif version == "v1":
         version_desc = "v1 (Web retrieval baseline)"
@@ -134,7 +135,9 @@ def run_level(
     # Initialize client & agent once
     llm = LLMClient()
     if agent is None:
-        if version == "v2":
+        if version == "v3":
+            agent = GAIAPythonAgent(llm_client=llm)
+        elif version == "v2":
             agent = GAIAFileAgent(llm_client=llm)
         elif version == "v1":
             agent = GAIAWebAgent(llm_client=llm)
@@ -215,7 +218,7 @@ def run_level(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run GAIA benchmark tasks for a specific level.")
     parser.add_argument("--level", type=int, required=True, choices=[1, 2, 3], help="GAIA level to run (1, 2, or 3)")
-    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2"], help="Agent version to evaluate (v0: baseline, v1: web search, v2: file attachments; required)")
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3"], help="Agent version to evaluate (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution; required)")
     parser.add_argument("--data", type=str, default=None, help="Path to local GAIA dataset file")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of tasks to execute")
     parser.add_argument("--task-id", type=str, default=None, help="Run single specific task ID")

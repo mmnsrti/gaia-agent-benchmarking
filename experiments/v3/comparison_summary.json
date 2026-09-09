@@ -1,0 +1,54 @@
+{
+  "version": "v3",
+  "control_baseline": "matched_v2",
+  "total_tasks": 165,
+  "overall_accuracy": {
+    "matched_v2": 0.3939,
+    "v3": 0.2909,
+    "delta_pp": -10.3
+  },
+  "by_level": {
+    "level_1": {
+      "matched_v2_accuracy": 0.5849,
+      "v3_accuracy": 0.4528
+    },
+    "level_2": {
+      "matched_v2_accuracy": 0.3488,
+      "v3_accuracy": 0.2674
+    },
+    "level_3": {
+      "matched_v2_accuracy": 0.1538,
+      "v3_accuracy": 0.0385
+    }
+  },
+  "attachment_accuracy": {
+    "matched_v2": 0.4211,
+    "v3": 0.2105,
+    "delta_pp": -21.05
+  },
+  "non_attachment_accuracy": {
+    "matched_v2": 0.3858,
+    "v3": 0.315,
+    "delta_pp": -7.09
+  },
+  "completion_rate": {
+    "matched_v2": 0.6545,
+    "v3": 0.7818,
+    "delta_pp": 12.73
+  },
+  "task_transitions": {
+    "total": 165,
+    "improvement": 8,
+    "regression": 25,
+    "stable_correct": 40,
+    "stable_failure": 92,
+    "net_gain": -17
+  },
+  "python_execution_summary": {
+    "python_executed_count": 95,
+    "python_executed_rate": 0.5758,
+    "python_success_count": 26,
+    "python_failure_count": 69
+  },
+  "completion_vs_accuracy_finding": "V3 produced usable/non-empty outputs more often while producing fewer correct answers overall."
+}

@@ -1,0 +1,196 @@
+{
+  "version": "v3",
+  "level": 1,
+  "total_tasks": 53,
+  "correct_tasks": 24,
+  "failed_tasks": 29,
+  "accuracy": 0.4528,
+  "operational_metrics": {
+    "completion_failures": 7,
+    "completion_rate": 0.8679,
+    "python_executed_count": 25,
+    "python_success_count": 7,
+    "python_failure_count": 18
+  },
+  "taxonomy": {
+    "provider_response_anomaly": 7,
+    "python_policy_rejection": 1,
+    "python_dependency_failure": 0,
+    "python_runtime_failure": 0,
+    "python_missing_final_marker": 17,
+    "python_timeout": 0,
+    "python_success_wrong_answer": 3,
+    "direct_incomplete_generation": 0,
+    "direct_reasoning_or_retrieval_failure": 1,
+    "formatting_failure": 0,
+    "unsupported_attachment_path_failure": 0,
+    "other": 0
+  },
+  "error_counts": {
+    "provider_response_anomaly": 7,
+    "python_policy_rejection": 1,
+    "python_missing_final_marker": 17,
+    "python_success_wrong_answer": 3,
+    "direct_reasoning_or_retrieval_failure": 1
+  },
+  "error_percentages": {
+    "provider_response_anomaly": 24.14,
+    "python_policy_rejection": 3.45,
+    "python_dependency_failure": 0.0,
+    "python_runtime_failure": 0.0,
+    "python_missing_final_marker": 58.62,
+    "python_timeout": 0.0,
+    "python_success_wrong_answer": 10.34,
+    "direct_incomplete_generation": 0.0,
+    "direct_reasoning_or_retrieval_failure": 3.45,
+    "formatting_failure": 0.0,
+    "unsupported_attachment_path_failure": 0.0,
+    "other": 0.0
+  },
+  "confidence_summary": {
+    "high_confidence_metadata_count": 28,
+    "low_confidence_heuristic_count": 1,
+    "high_confidence_percentage": 96.55,
+    "low_confidence_percentage": 3.45
+  },
+  "taxonomy_metadata": {
+    "mutually_exclusive": true,
+    "deterministic_categories": [
+      "provider_response_anomaly",
+      "python_policy_rejection",
+      "python_dependency_failure",
+      "python_runtime_failure",
+      "python_missing_final_marker",
+      "python_timeout",
+      "python_success_wrong_answer",
+      "direct_incomplete_generation"
+    ],
+    "heuristic_categories": [
+      "direct_reasoning_or_retrieval_failure",
+      "formatting_failure",
+      "unsupported_attachment_path_failure",
+      "other"
+    ],
+    "policy_note": "Deterministic categories are directly supported by execution metadata (response finish reasons, Python exit codes, error types, or timeout flags) and carry high confidence. Completed non-python failures are classified into direct_reasoning_or_retrieval_failure or formatting_failure using heuristic signals and carry low confidence."
+  },
+  "category_breakdown": {
+    "provider_response_anomaly": {
+      "count": 7,
+      "percentage": 24.14,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "5cfb274c-0207-4aa7-9575-6ac0bd95d9b2",
+        "cca530fc-4052-43b2-b130-b30968d8aa44",
+        "65afbc8a-89ca-4ad5-8d62-355bb401f61d",
+        "f918266a-b3e0-4914-865d-4faa564f1aef",
+        "50ec8903-b81f-4257-9450-1085afd2c319",
+        "cf106601-ab4f-4af9-b045-5295fe67b37d",
+        "7bd855d8-463d-4ed5-93ca-5fe35145f733"
+      ]
+    },
+    "python_policy_rejection": {
+      "count": 1,
+      "percentage": 3.45,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "c365c1c7-a3db-4d5e-a9a1-66f56eae7865"
+      ]
+    },
+    "python_dependency_failure": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": []
+    },
+    "python_runtime_failure": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": []
+    },
+    "python_missing_final_marker": {
+      "count": 17,
+      "percentage": 58.62,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "ec09fa32-d03f-4bf8-84b0-1f16922c3ae4",
+        "4b6bb5f7-f634-410e-815d-e673ab7f8632",
+        "cffe0e32-c9a6-4c52-9877-78ceb4aaa9fb",
+        "27d5d136-8563-469e-92bf-fd103c28b57c",
+        "dc28cf18-6431-458b-83ef-64b3ce566c10",
+        "72e110e7-464c-453c-a309-90a95aed6538",
+        "b415aba4-4b68-4fc6-9b89-2c812e55a3e1",
+        "389793a7-ca17-4e82-81cb-2b3a2391b4b9",
+        "a3fbeb63-0e8c-4a11-bff6-0e3b484c3e9c",
+        "c714ab3a-da30-4603-bacd-d008800188b9",
+        "d0633230-7067-47a9-9dbf-ee11e0a2cdd6",
+        "e142056d-56ab-4352-b091-b56054bd1359",
+        "7673d772-ef80-4f0f-a602-1bf4485c9b43",
+        "7d4a7d1d-cac6-44a8-96e8-ea9584a70825",
+        "dc22a632-937f-4e6a-b72f-ba0ff3f5ff97",
+        "1f975693-876d-457b-a649-393859e79bf3",
+        "5a0c1adf-205e-4841-a666-7c3ef95def9d"
+      ]
+    },
+    "python_timeout": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": []
+    },
+    "python_success_wrong_answer": {
+      "count": 3,
+      "percentage": 10.34,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": [
+        "e1fc63a2-da7a-432f-be78-7c4a95598703",
+        "9318445f-fe6a-4e1b-acbf-c68228c9906a",
+        "3f57289b-8c60-48be-bd80-01f8099ca449"
+      ]
+    },
+    "direct_incomplete_generation": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "high",
+      "classification_basis": "metadata",
+      "task_ids": []
+    },
+    "direct_reasoning_or_retrieval_failure": {
+      "count": 1,
+      "percentage": 3.45,
+      "classification_confidence": "low",
+      "classification_basis": "heuristic",
+      "task_ids": [
+        "305ac316-eef6-4446-960a-92d80d542f82"
+      ]
+    },
+    "formatting_failure": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "low",
+      "classification_basis": "heuristic",
+      "task_ids": []
+    },
+    "unsupported_attachment_path_failure": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "low",
+      "classification_basis": "heuristic",
+      "task_ids": []
+    },
+    "other": {
+      "count": 0,
+      "percentage": 0.0,
+      "classification_confidence": "low",
+      "classification_basis": "heuristic",
+      "task_ids": []
+    }
+  }
+}

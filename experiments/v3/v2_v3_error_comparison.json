@@ -1,0 +1,375 @@
+{
+  "matched_v2_baseline": {
+    "total_tasks": 165,
+    "correct_tasks": 65,
+    "failed_tasks": 100,
+    "accuracy": 0.3939,
+    "completion_rate": 0.6545,
+    "attachment_accuracy": 0.4211,
+    "non_attachment_accuracy": 0.3858,
+    "average_latency_seconds": 23.59,
+    "average_tokens": 3066.8
+  },
+  "v3_canonical": {
+    "total_tasks": 165,
+    "correct_tasks": 48,
+    "failed_tasks": 117,
+    "accuracy": 0.2909,
+    "completion_rate": 0.7818,
+    "attachment_accuracy": 0.2105,
+    "non_attachment_accuracy": 0.315,
+    "average_latency_seconds": 21.69,
+    "average_tokens": 3020.9
+  },
+  "controlled_deltas_percentage_points": {
+    "overall_accuracy_delta": -10.3,
+    "attachment_accuracy_delta": -21.05,
+    "non_attachment_accuracy_delta": -7.09,
+    "completion_rate_delta": 12.73,
+    "net_solved_tasks": -17,
+    "net_reduced_failures": -17
+  },
+  "task_transitions": {
+    "overall": {
+      "total": 165,
+      "improvement": 8,
+      "regression": 25,
+      "stable_correct": 40,
+      "stable_failure": 92,
+      "net_gain": -17
+    },
+    "attachment_tasks": {
+      "total": 38,
+      "improvement": 0,
+      "regression": 8,
+      "stable_correct": 8,
+      "stable_failure": 22,
+      "net_gain": -8
+    },
+    "non_attachment_tasks": {
+      "total": 127,
+      "improvement": 8,
+      "regression": 17,
+      "stable_correct": 32,
+      "stable_failure": 70,
+      "net_gain": -9
+    },
+    "by_level": {
+      "level_1": {
+        "total": 53,
+        "improvement": 1,
+        "regression": 8,
+        "stable_correct": 23,
+        "stable_failure": 21,
+        "net_gain": -7
+      },
+      "level_2": {
+        "total": 86,
+        "improvement": 7,
+        "regression": 14,
+        "stable_correct": 16,
+        "stable_failure": 49,
+        "net_gain": -7
+      },
+      "level_3": {
+        "total": 26,
+        "improvement": 0,
+        "regression": 3,
+        "stable_correct": 1,
+        "stable_failure": 22,
+        "net_gain": -3
+      }
+    },
+    "by_python_path": {
+      "python_executed": {
+        "total": 95,
+        "improvement": 3,
+        "regression": 15,
+        "stable_correct": 9,
+        "stable_failure": 68,
+        "net_gain": -12,
+        "by_outcome": {
+          "python_success": {
+            "stable_failure": 11,
+            "stable_correct": 9,
+            "regression": 3,
+            "improvement": 3
+          },
+          "python_failure": {
+            "stable_failure": 57,
+            "regression": 12
+          }
+        }
+      },
+      "python_not_executed": {
+        "total": 70,
+        "improvement": 5,
+        "regression": 10,
+        "stable_correct": 31,
+        "stable_failure": 24,
+        "net_gain": -5
+      }
+    }
+  },
+  "regression_analysis": {
+    "total_regressions": 25,
+    "by_status": {
+      "executed_python_failed": 12,
+      "provider_response_anomaly": 10,
+      "executed_python_successfully_wrong_answer": 3
+    },
+    "by_level": {
+      "level_1": 8,
+      "level_2": 14,
+      "level_3": 3
+    },
+    "by_attachment_status": {
+      "attachment": 8,
+      "non_attachment": 17
+    },
+    "by_extension": {
+      ".docx": 1,
+      ".pptx": 1,
+      ".py": 1,
+      ".mp3": 1,
+      ".xlsx": 3,
+      ".png": 1
+    },
+    "regression_task_ids": [
+      "cffe0e32-c9a6-4c52-9877-78ceb4aaa9fb",
+      "a3fbeb63-0e8c-4a11-bff6-0e3b484c3e9c",
+      "c714ab3a-da30-4603-bacd-d008800188b9",
+      "f918266a-b3e0-4914-865d-4faa564f1aef",
+      "7673d772-ef80-4f0f-a602-1bf4485c9b43",
+      "1f975693-876d-457b-a649-393859e79bf3",
+      "cf106601-ab4f-4af9-b045-5295fe67b37d",
+      "5a0c1adf-205e-4841-a666-7c3ef95def9d",
+      "c61d22de-5f6c-4958-a7f6-5e9707bd3466",
+      "32102e3e-d12a-4209-9163-7b3a104efe5d",
+      "87c610df-bef7-4932-b950-1d83ef4e282b",
+      "dd3c7503-f62a-4bd0-9f67-1b63b94194cc",
+      "f0f46385-fc03-4599-b5d3-f56496c3e69f",
+      "6b078778-0b90-464d-83f6-59511c811b01",
+      "7b5377b0-3f38-4103-8ad2-90fe89864c04",
+      "f3917a3d-1d17-4ee2-90c5-683b072218fe",
+      "0b260a57-3f3a-4405-9f29-6d7a1012dbfb",
+      "ed58682d-bc52-4baa-9eb0-4eb81e1edacc",
+      "b7f857e4-d8aa-4387-af2a-0e844df5b9d8",
+      "4d51c4bf-4b0e-4f3d-897b-3f6687a7d9f2",
+      "3ff6b7a9-a5bd-4412-ad92-0cd0d45c0fee",
+      "4d0aa727-86b1-406b-9b33-f870dd14a4a5",
+      "00d579ea-0889-4fd9-a771-2c8d79835c8d",
+      "e961a717-6b25-4175-8a68-874d28190ee4",
+      "50f58759-7bd6-406f-9b0d-5692beb2a926"
+    ]
+  },
+  "improvement_analysis": {
+    "total_improvements": 8,
+    "by_level": {
+      "level_1": 1,
+      "level_2": 7
+    },
+    "by_attachment_status": {
+      "non_attachment": 8
+    },
+    "by_python_path": {
+      "python_not_executed": 5,
+      "python_executed_success": 3
+    },
+    "improvement_task_ids": [
+      "5d0080cb-90d7-4712-bc33-848150e917d3",
+      "14569e28-c88c-43e4-8c32-097d35b9a67d",
+      "f46b4380-207e-4434-820b-f32ce04ae2a4",
+      "544b7f0c-173a-4377-8d56-57b36eb26ddf",
+      "08cae58d-4084-4616-b6dd-dd6534e4825b",
+      "d700d50d-c707-4dca-90dc-4528cddd0c80",
+      "20194330-9976-4043-8632-f8485c6c71b2",
+      "65da0822-a48a-4a68-bbad-8ed1b835a834"
+    ]
+  },
+  "extension_analysis": {
+    ".xlsx": {
+      "task_count": 13,
+      "v2_correct": 6,
+      "v2_accuracy": 0.4615,
+      "v3_correct": 3,
+      "v3_accuracy": 0.2308,
+      "controlled_accuracy_delta_pp": -23.07,
+      "file_processing_success_count": 13,
+      "python_executed_count": 7,
+      "python_success_count": 3
+    },
+    ".png": {
+      "task_count": 8,
+      "v2_correct": 1,
+      "v2_accuracy": 0.125,
+      "v3_correct": 0,
+      "v3_accuracy": 0.0,
+      "controlled_accuracy_delta_pp": -12.5,
+      "file_processing_success_count": 8,
+      "python_executed_count": 7,
+      "python_success_count": 3
+    },
+    ".mp3": {
+      "task_count": 3,
+      "v2_correct": 2,
+      "v2_accuracy": 0.6667,
+      "v3_correct": 1,
+      "v3_accuracy": 0.3333,
+      "controlled_accuracy_delta_pp": -33.34,
+      "file_processing_success_count": 3,
+      "python_executed_count": 3,
+      "python_success_count": 1
+    },
+    ".pdf": {
+      "task_count": 3,
+      "v2_correct": 3,
+      "v2_accuracy": 1.0,
+      "v3_correct": 3,
+      "v3_accuracy": 1.0,
+      "controlled_accuracy_delta_pp": 0.0,
+      "file_processing_success_count": 3,
+      "python_executed_count": 2,
+      "python_success_count": 2
+    },
+    ".zip": {
+      "task_count": 2,
+      "v2_correct": 0,
+      "v2_accuracy": 0.0,
+      "v3_correct": 0,
+      "v3_accuracy": 0.0,
+      "controlled_accuracy_delta_pp": 0.0,
+      "file_processing_success_count": 0,
+      "python_executed_count": 0,
+      "python_success_count": 0
+    },
+    ".jpg": {
+      "task_count": 2,
+      "v2_correct": 1,
+      "v2_accuracy": 0.5,
+      "v3_correct": 1,
+      "v3_accuracy": 0.5,
+      "controlled_accuracy_delta_pp": 0.0,
+      "file_processing_success_count": 2,
+      "python_executed_count": 1,
+      "python_success_count": 1
+    },
+    ".docx": {
+      "task_count": 1,
+      "v2_correct": 1,
+      "v2_accuracy": 1.0,
+      "v3_correct": 0,
+      "v3_accuracy": 0.0,
+      "controlled_accuracy_delta_pp": -100.0,
+      "file_processing_success_count": 1,
+      "python_executed_count": 1,
+      "python_success_count": 0
+    },
+    ".txt": {
+      "task_count": 1,
+      "v2_correct": 0,
+      "v2_accuracy": 0.0,
+      "v3_correct": 0,
+      "v3_accuracy": 0.0,
+      "controlled_accuracy_delta_pp": 0.0,
+      "file_processing_success_count": 1,
+      "python_executed_count": 1,
+      "python_success_count": 0
+    },
+    ".pptx": {
+      "task_count": 1,
+      "v2_correct": 1,
+      "v2_accuracy": 1.0,
+      "v3_correct": 0,
+      "v3_accuracy": 0.0,
+      "controlled_accuracy_delta_pp": -100.0,
+      "file_processing_success_count": 1,
+      "python_executed_count": 1,
+      "python_success_count": 0
+    },
+    ".py": {
+      "task_count": 1,
+      "v2_correct": 1,
+      "v2_accuracy": 1.0,
+      "v3_correct": 0,
+      "v3_accuracy": 0.0,
+      "controlled_accuracy_delta_pp": -100.0,
+      "file_processing_success_count": 1,
+      "python_executed_count": 0,
+      "python_success_count": 0
+    },
+    ".pdb": {
+      "task_count": 1,
+      "v2_correct": 0,
+      "v2_accuracy": 0.0,
+      "v3_correct": 0,
+      "v3_accuracy": 0.0,
+      "controlled_accuracy_delta_pp": 0.0,
+      "file_processing_success_count": 0,
+      "python_executed_count": 1,
+      "python_success_count": 0
+    },
+    ".jsonld": {
+      "task_count": 1,
+      "v2_correct": 0,
+      "v2_accuracy": 0.0,
+      "v3_correct": 0,
+      "v3_accuracy": 0.0,
+      "controlled_accuracy_delta_pp": 0.0,
+      "file_processing_success_count": 0,
+      "python_executed_count": 0,
+      "python_success_count": 0
+    },
+    ".csv": {
+      "task_count": 1,
+      "v2_correct": 0,
+      "v2_accuracy": 0.0,
+      "v3_correct": 0,
+      "v3_accuracy": 0.0,
+      "controlled_accuracy_delta_pp": 0.0,
+      "file_processing_success_count": 1,
+      "python_executed_count": 1,
+      "python_success_count": 0
+    }
+  },
+  "completion_vs_accuracy": {
+    "matched_v2": {
+      "total": 165,
+      "correct": 65,
+      "completed": 108,
+      "completed_but_wrong": 43,
+      "incomplete": 57,
+      "completed_but_wrong_rate": 26.06,
+      "incomplete_rate": 34.55
+    },
+    "v3_canonical": {
+      "total": 165,
+      "correct": 48,
+      "completed": 129,
+      "completed_but_wrong": 81,
+      "incomplete": 36,
+      "completed_but_wrong_rate": 49.09,
+      "incomplete_rate": 21.82
+    },
+    "delta": {
+      "completed_but_wrong_delta": 38,
+      "incomplete_delta": -21
+    },
+    "finding_statement": "V3 produced usable/non-empty outputs more often while producing fewer correct answers overall."
+  },
+  "token_and_latency_analysis": {
+    "average_latency_seconds": {
+      "matched_v2": 23.59,
+      "v3_canonical": 21.69,
+      "absolute_delta": -1.9,
+      "percentage_delta": -8.05
+    },
+    "average_tokens": {
+      "matched_v2": 3066.8,
+      "v3_canonical": 3020.9,
+      "absolute_delta": -45.9,
+      "percentage_delta": -1.5
+    },
+    "attribution_note": "Total latency reflects Tavily search, Gemini generation, file reading, and Python execution. The observed -1.90s latency difference cannot be attributed solely to PythonTool, as it also reflects stochastic provider response times and execution branching."
+  }
+}

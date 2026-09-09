@@ -238,6 +238,78 @@ Final Answer
 
 ---
 
+## v3 — Controlled Single-Shot Python Execution Baseline
+
+**Status: FROZEN** (Branch: `v3-python-execution`)
+
+See [`experiments/v3/FROZEN.md`](experiments/v3/FROZEN.md) for full configuration manifest, controlled benchmark results, transition analysis, regression mechanism audit, and research summary.
+
+### Research Definition
+```text
+V3 = V2 + controlled single-shot local Python execution
+```
+
+The research question evaluated by V3 is:
+> **How much does adding controlled local Python execution improve GAIA performance beyond single-shot web retrieval and direct attachment access?**
+
+### Execution Flow & Invariants
+```text
+GAIA Question + Optional Attachment File
+     ↓
+ONE Tavily Search (Original Question as Query)
+     ↓
+FileTool (Deterministic local extraction inherited from V2)
+     ↓
+Single Prompt (`python-execution-v1`)
+     ↓
+Single Gemini Generation (`llm_generation_count == 1`)
+     ↓
+[Option A: Direct Answer]       [Option B: Python Code Block]
+     ↓                                   ↓
+Deterministic Answer Extraction     PythonTool Subprocess (`-I`, Ephemeral Dir, Timeout 15s)
+                                         ↓
+                                    [Success: stdout contains FINAL_ANSWER: <ans>]
+                                    Extract <ans> deterministically
+                                         ↓
+                                    [Failure / Missing Marker / Security Rejection]
+                                    Deterministic fallback to model direct text (no second LLM call, no retry)
+```
+
+### Frozen Invariants Preserved
+- `llm_generation_count == 1` for every task (strictly no second synthesis turn)
+- `python_execution_count in {0, 1}` for every task (maximum 1 execution)
+- No Python execution retries or debugging turns
+- No autonomous planner or routing agent
+- Gemini tools explicitly disabled (`mode="NONE"`)
+- Best-effort research execution isolation (`-I` isolated subprocess mode, ephemeral temp directory, read-only attachments, static AST policy)
+
+### Canonical Results (GAIA 2023 Validation Set, 165 Tasks)
+
+| Metric | Matched V2 Control | Canonical V3 | Controlled Delta |
+| :--- | :---: | :---: | :---: |
+| **Overall Accuracy** | **39.39%** (65 / 165) | **29.09%** (48 / 165) | **-10.30 pp** |
+| Level 1 Accuracy | 58.49% (31 / 53) | 45.28% (24 / 53) | -13.21 pp |
+| Level 2 Accuracy | 34.88% (30 / 86) | 26.74% (23 / 86) | -8.14 pp |
+| Level 3 Accuracy | 15.38% (4 / 26) | 3.85% (1 / 26) | -11.53 pp |
+| **Attachment Tasks** | **42.11%** (16 / 38) | **21.05%** (8 / 38) | **-21.05 pp** |
+| **Non-Attachment Tasks** | **38.58%** (49 / 127) | **31.50%** (40 / 127) | **-7.09 pp** |
+| **Completion Rate** | **65.45%** (108 / 165) | **78.18%** (129 / 165) | **+12.73 pp** |
+
+### Key Research Findings
+1. **Experimental Result**: Under the frozen single-generation V3 policy, adding controlled Python execution reduced matched GAIA accuracy from 39.39% to 29.09% (-10.30 percentage points), while completion increased from 65.45% to 78.18%.
+2. **Mechanism Finding**: Most observed regressions (22 / 25 = 88.0%) were associated with Python execution failures (12) or provider-response anomalies (10) rather than incorrect outputs following successful Python execution (3).
+3. **Successful-Python Subset**: On the 26 tasks where Python execution completed successfully, V3 and matched V2 each solved 12 tasks, with 3 improvements and 3 regressions. *(Note: This subgroup comparison is descriptive because Python routing is endogenous.)*
+4. **Main Reliability Finding**: 60 of 69 Python execution failures (86.96%) were clean process executions that failed the required `FINAL_ANSWER:` extraction contract.
+
+### Freeze Rule
+V3 is frozen as the immutable research baseline for controlled single-shot local Python execution:
+```text
+V3 = V2 + controlled single-shot local Python execution
+```
+Future work must not alter V3 results or configuration. Any subsequent planner/router work belongs to V4.
+
+---
+
 ## Getting Started
 
 ### 1. Installation
@@ -311,6 +383,9 @@ Each experiment record captures:
 ### 1. Run One Development Question (Debug / Smoke Test)
 Run a single question locally without submitting:
 ```bash
+# Run with V3 controlled Python execution baseline
+python evaluation/run_one.py --version v3 -i 0
+
 # Run with V2 file attachment + web baseline
 python evaluation/run_one.py --version v2 -i 0
 
@@ -324,6 +399,9 @@ python evaluation/run_one.py --version v0 -i 0
 ### 2. Run a Complete Benchmark Level
 Run tasks for a specific GAIA benchmark level from local data:
 ```bash
+# Run V3 controlled Python execution baseline
+python -m evaluation.run_level --version v3 --level 1
+
 # Run V2 file attachment + web retrieval baseline
 python -m evaluation.run_level --version v2 --level 1
 
@@ -343,6 +421,9 @@ Useful arguments:
 ### 3. Evaluate Predictions Locally
 Compute metrics (accuracy, token usage, latency, attachment breakdown, file metrics, search metrics) against local ground truth without calling Hugging Face:
 ```bash
+# Evaluate V3 predictions
+python -m evaluation.evaluate --version v3 --level 1
+
 # Evaluate V2 predictions
 python -m evaluation.evaluate --version v2 --level 1
 
