@@ -1,0 +1,105 @@
+{
+  "project_version": "v2",
+  "git_commit": "abcd2d765868303f587bba6d2bf8f2d8dc613667",
+  "git_branch": "v3-python-execution",
+  "git_dirty": false,
+  "dataset_name": "GAIA",
+  "dataset_version": "2023",
+  "dataset_split": "validation",
+  "level": 1,
+  "scorer_name": "official-gaia-leaderboard",
+  "scorer_version": "9f133d71362e77b3539f1514f31b9c101a545fec",
+  "model": "gemini-3.5-flash-lite",
+  "model_version": "gemini-3.5-flash-lite",
+  "prompt_version": "file-search-v1 / web-search-v1",
+  "primary_prompt_version": "file-search-v1 / web-search-v1",
+  "fallback_prompt_version": "web-search-v1 / baseline-v1",
+  "prompt_version_counts": {
+    "web-search-v1": 42,
+    "file-search-v1": 11
+  },
+  "total_tasks": 53,
+  "selected_task_count": 53,
+  "expected_task_count": 53,
+  "is_complete_benchmark": true,
+  "completed_tasks": 43,
+  "completion_rate": 0.8113,
+  "correct_tasks": 31,
+  "accuracy": 0.5849,
+  "request_failures": 0,
+  "completion_failures": 10,
+  "average_latency_seconds": 25.85,
+  "median_latency_seconds": 9.45,
+  "total_input_tokens": 121222,
+  "total_output_tokens": 817,
+  "total_thinking_tokens": 41646,
+  "total_tokens": 163685,
+  "average_input_tokens": 2287.2,
+  "average_output_tokens": 15.4,
+  "average_thinking_tokens": 816.6,
+  "average_total_tokens": 3088.4,
+  "attachment_task_count": 11,
+  "attachment_accuracy": 0.4545,
+  "non_attachment_task_count": 42,
+  "non_attachment_accuracy": 0.619,
+  "search_enabled": true,
+  "search_provider": "tavily",
+  "total_search_calls": 53,
+  "successful_search_calls": 53,
+  "search_success_rate": 1.0,
+  "average_search_latency_seconds": 0.39,
+  "average_results_per_search": 4.96,
+  "search_fallback_count": 0,
+  "search_query_truncated_count": 1,
+  "file_enabled": true,
+  "file_processing_attempts": 11,
+  "successful_file_processing_count": 11,
+  "file_processing_success_rate": 1.0,
+  "average_file_processing_latency_seconds": 0.04,
+  "file_fallback_count": 0,
+  "file_content_truncated_count": 0,
+  "extension_breakdown": {
+    ".docx": {
+      "total": 1,
+      "correct": 1,
+      "accuracy": 1.0,
+      "processing_success_rate": 1.0
+    },
+    ".mp3": {
+      "total": 2,
+      "correct": 2,
+      "accuracy": 1.0,
+      "processing_success_rate": 1.0
+    },
+    ".png": {
+      "total": 2,
+      "correct": 0,
+      "accuracy": 0.0,
+      "processing_success_rate": 1.0
+    },
+    ".pptx": {
+      "total": 1,
+      "correct": 1,
+      "accuracy": 1.0,
+      "processing_success_rate": 1.0
+    },
+    ".py": {
+      "total": 1,
+      "correct": 1,
+      "accuracy": 1.0,
+      "processing_success_rate": 1.0
+    },
+    ".txt": {
+      "total": 1,
+      "correct": 0,
+      "accuracy": 0.0,
+      "processing_success_rate": 1.0
+    },
+    ".xlsx": {
+      "total": 3,
+      "correct": 0,
+      "accuracy": 0.0,
+      "processing_success_rate": 1.0
+    }
+  }
+}
