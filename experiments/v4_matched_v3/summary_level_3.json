@@ -1,8 +1,8 @@
 {
   "project_version": "v3",
-  "git_commit": "d73c1641077fbb9ca63465c1b940b17714297f38",
+  "git_commit": "34736752f3a46a9fa627b13045eb7b7817e8be78",
   "git_branch": "v4-planner-router",
-  "git_dirty": true,
+  "git_dirty": false,
   "dataset_name": "GAIA",
   "dataset_version": "2023",
   "dataset_split": "validation",
