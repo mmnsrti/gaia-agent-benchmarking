@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-from agent import GAIAAgent, GAIAWebAgent, GAIAFileAgent, GAIAPythonAgent, LLMClient
+from agent import GAIAAgent, GAIAWebAgent, GAIAFileAgent, GAIAPythonAgent, GAIARouterAgent, LLMClient
 from prompts.baseline import PROMPT_VERSION
 from evaluation.experiment_logger import get_git_metadata
 
@@ -87,7 +87,9 @@ def execute_task(
     if llm is None:
         llm = LLMClient()
     if agent is None:
-        if project_version == "v3":
+        if project_version == "v4":
+            agent = GAIARouterAgent(llm_client=llm)
+        elif project_version == "v3":
             agent = GAIAPythonAgent(llm_client=llm)
         elif project_version == "v2":
             agent = GAIAFileAgent(llm_client=llm)
@@ -96,7 +98,9 @@ def execute_task(
         else:
             agent = GAIAAgent(llm_client=llm)
 
-    if isinstance(agent, GAIAPythonAgent) and project_version in ("v0", "v1", "v2"):
+    if isinstance(agent, GAIARouterAgent) and project_version in ("v0", "v1", "v2", "v3"):
+        project_version = "v4"
+    elif isinstance(agent, GAIAPythonAgent) and project_version in ("v0", "v1", "v2"):
         project_version = "v3"
     elif isinstance(agent, GAIAFileAgent) and project_version in ("v0", "v1"):
         project_version = "v2"
@@ -145,7 +149,7 @@ def execute_task(
 
     start_time = time.time()
     try:
-        if isinstance(agent, (GAIAFileAgent, GAIAPythonAgent)):
+        if isinstance(agent, (GAIAFileAgent, GAIAPythonAgent, GAIARouterAgent)):
             target_path = resolved_file_path or clean_file_path or clean_file_name
             result = agent.run(question, file_path=target_path)
         else:
@@ -192,10 +196,13 @@ def execute_task(
     latency = round(time.time() - start_time, 2)
 
     # Prompt provenance extraction
-    is_v3 = (project_version == "v3") or isinstance(agent, GAIAPythonAgent)
-    file_enabled = ((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3
+    is_v4 = (project_version == "v4") or isinstance(agent, GAIARouterAgent)
+    is_v3 = ((project_version == "v3") or isinstance(agent, GAIAPythonAgent)) and not is_v4
+    file_enabled = ((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3 and not is_v4
     if result is None:
-        if is_v3:
+        if is_v4:
+            prompt_ver = "capability-router-v1"
+        elif is_v3:
             prompt_ver = "python-execution-v1"
         elif file_enabled:
             prompt_ver = "file-search-v1" if has_attachment else "web-search-v1"
@@ -208,7 +215,9 @@ def execute_task(
     fallback_prompt_ver = getattr(result, "fallback_prompt_version", None) if result else None
 
     if primary_prompt_ver is None:
-        if is_v3:
+        if is_v4:
+            primary_prompt_ver = "capability-router-v1"
+        elif is_v3:
             primary_prompt_ver = "python-execution-v1"
         elif file_enabled:
             primary_prompt_ver = "file-search-v1" if has_attachment else "web-search-v1"
@@ -218,7 +227,9 @@ def execute_task(
             primary_prompt_ver = prompt_ver or "baseline-v1"
 
     if fallback_prompt_ver is None:
-        if is_v3:
+        if is_v4:
+            fallback_prompt_ver = "router-direct-worker-v1" if getattr(result, "router_fallback", False) else None
+        elif is_v3:
             fallback_prompt_ver = None
         elif file_enabled:
             fallback_prompt_ver = "web-search-v1" if has_attachment else "baseline-v1"
@@ -326,9 +337,50 @@ def execute_task(
     python_fallback = getattr(result, "python_fallback", False) if result else False
     python_execution_count = 1 if python_executed else 0
     assert python_execution_count in (0, 1), f"Execution count {python_execution_count} not in {0, 1}"
-    llm_generation_count = getattr(result, "llm_generation_count", 1) if result else 1
-    assert llm_generation_count == 1, f"LLM generation count {llm_generation_count} != 1"
+    if is_v4:
+        llm_generation_attempts = getattr(result, "llm_generation_attempts", 2 if completion_success else 1) if result else (2 if completion_success else 1)
+        assert llm_generation_attempts in (1, 2), f"LLM generation attempts {llm_generation_attempts} not in (1, 2)"
+        llm_generation_count = llm_generation_attempts
+    else:
+        llm_generation_count = getattr(result, "llm_generation_count", 1) if result else 1
+        assert llm_generation_count == 1, f"LLM generation count {llm_generation_count} != 1"
+        llm_generation_attempts = llm_generation_count
     python_prompt_version = getattr(result, "python_prompt_version", None) if result else None
+
+    # Router metadata (V4)
+    router_decision = getattr(result, "router_decision", None) if result else None
+    router_success = getattr(result, "router_success", False) if result else False
+    router_fallback = getattr(result, "router_fallback", False) if result else False
+    router_error_type = getattr(result, "router_error_type", None) if result else None
+    router_prompt_version = getattr(result, "router_prompt_version", "capability-router-v1" if is_v4 else None) if result else ("capability-router-v1" if is_v4 else None)
+    router_prompt = getattr(result, "router_prompt", None) if result else None
+    router_raw_response = getattr(result, "router_raw_response", None) if result else None
+    router_latency_seconds = getattr(result, "router_latency_seconds", None) if result else None
+    router_input_tokens = getattr(result, "router_input_tokens", None) if result else None
+    router_output_tokens = getattr(result, "router_output_tokens", None) if result else None
+    router_thinking_tokens = getattr(result, "router_thinking_tokens", None) if result else None
+    router_generation_attempts = getattr(result, "router_generation_attempts", 1 if is_v4 else 0) if result else (1 if is_v4 else 0)
+    router_generation_success = getattr(result, "router_generation_success", False) if result else False
+
+    # Worker metadata (V4)
+    worker_mode = getattr(result, "worker_mode", None) if result else None
+    worker_success = getattr(result, "worker_success", False) if result else False
+    worker_error_type = getattr(result, "worker_error_type", None) if result else None
+    worker_prompt_version = getattr(result, "worker_prompt_version", None) if result else None
+    worker_prompt = getattr(result, "worker_prompt", None) if result else None
+    worker_raw_response = getattr(result, "worker_raw_response", None) if result else None
+    worker_latency_seconds = getattr(result, "worker_latency_seconds", None) if result else None
+    worker_input_tokens = getattr(result, "worker_input_tokens", None) if result else None
+    worker_output_tokens = getattr(result, "worker_output_tokens", None) if result else None
+    worker_thinking_tokens = getattr(result, "worker_thinking_tokens", None) if result else None
+    worker_generation_attempts = getattr(result, "worker_generation_attempts", 1 if is_v4 else 0) if result else (1 if is_v4 else 0)
+    worker_generation_success = getattr(result, "worker_generation_success", False) if result else False
+
+    llm_generation_success_count = getattr(
+        result,
+        "llm_generation_success_count",
+        (1 if router_generation_success else 0) + (1 if worker_generation_success else 0) if is_v4 else (1 if completion_success else 0),
+    ) if result else 0
 
     if py_result is not None:
         python_success = py_result.success
@@ -349,8 +401,10 @@ def execute_task(
         python_stderr_length = 0
         python_output_truncated = False
 
+    resolved_schema_version = 3 if is_v4 and schema_version == 2 else schema_version
+
     return {
-        "schema_version": schema_version,
+        "schema_version": resolved_schema_version,
         "run_id": run_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
 
@@ -447,5 +501,39 @@ def execute_task(
         "python_output_truncated": python_output_truncated,
         "python_fallback": python_fallback,
         "llm_generation_count": llm_generation_count,
+
+        # Router metadata (V4)
+        "router_requested": True if is_v4 else False,
+        "router_decision": router_decision,
+        "router_success": router_success,
+        "router_fallback": router_fallback,
+        "router_error_type": router_error_type,
+        "router_prompt_version": router_prompt_version,
+        "router_prompt": router_prompt,
+        "router_raw_response": router_raw_response,
+        "router_latency_seconds": router_latency_seconds,
+        "router_input_tokens": router_input_tokens,
+        "router_output_tokens": router_output_tokens,
+        "router_thinking_tokens": router_thinking_tokens,
+        "router_generation_attempts": router_generation_attempts,
+        "router_generation_success": router_generation_success,
+
+        # Worker metadata (V4)
+        "worker_mode": worker_mode,
+        "worker_success": worker_success,
+        "worker_error_type": worker_error_type,
+        "worker_prompt_version": worker_prompt_version,
+        "worker_prompt": worker_prompt,
+        "worker_raw_response": worker_raw_response,
+        "worker_latency_seconds": worker_latency_seconds,
+        "worker_input_tokens": worker_input_tokens,
+        "worker_output_tokens": worker_output_tokens,
+        "worker_thinking_tokens": worker_thinking_tokens,
+        "worker_generation_attempts": worker_generation_attempts,
+        "worker_generation_success": worker_generation_success,
+
+        # Generation counts (V4)
+        "llm_generation_attempts": llm_generation_attempts,
+        "llm_generation_success_count": llm_generation_success_count,
     }
 

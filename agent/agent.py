@@ -6,6 +6,14 @@ from prompts.baseline import build_baseline_prompt, PROMPT_VERSION
 from prompts.web_search import build_web_search_prompt, WEB_SEARCH_PROMPT_VERSION
 from prompts.file_search import build_file_search_prompt, FILE_SEARCH_PROMPT_VERSION
 from prompts.python_execution import build_python_execution_prompt, PYTHON_EXECUTION_PROMPT_VERSION
+from prompts.router import (
+    ROUTER_PROMPT_VERSION,
+    ROUTER_DIRECT_WORKER_PROMPT_VERSION,
+    ROUTER_PYTHON_WORKER_PROMPT_VERSION,
+    build_router_prompt,
+    build_direct_worker_prompt,
+    build_python_worker_prompt,
+)
 from tools.web_search import TavilySearchTool, WebSearchResult
 from tools.file_tool import FileTool, FileResult
 from tools.python_tool import PythonTool, PythonResult
@@ -35,6 +43,35 @@ class AgentResult:
     python_prompt_version: Optional[str] = None
     python_prompt: Optional[str] = None
     llm_generation_count: int = 1
+    # Router & Worker metadata (V4)
+    router_requested: bool = False
+    router_decision: Optional[str] = None
+    router_success: bool = False
+    router_fallback: bool = False
+    router_error_type: Optional[str] = None
+    router_prompt_version: Optional[str] = None
+    router_prompt: Optional[str] = None
+    router_raw_response: Optional[str] = None
+    router_latency_seconds: Optional[float] = None
+    router_input_tokens: Optional[int] = None
+    router_output_tokens: Optional[int] = None
+    router_thinking_tokens: Optional[int] = None
+    router_generation_attempts: int = 0
+    router_generation_success: bool = False
+    worker_mode: Optional[str] = None
+    worker_success: bool = False
+    worker_error_type: Optional[str] = None
+    worker_prompt_version: Optional[str] = None
+    worker_prompt: Optional[str] = None
+    worker_raw_response: Optional[str] = None
+    worker_latency_seconds: Optional[float] = None
+    worker_input_tokens: Optional[int] = None
+    worker_output_tokens: Optional[int] = None
+    worker_thinking_tokens: Optional[int] = None
+    worker_generation_attempts: int = 0
+    worker_generation_success: bool = False
+    llm_generation_attempts: int = 1
+    llm_generation_success_count: int = 1
 
     @property
     def python_analysis_prompt(self) -> Optional[str]:
@@ -50,6 +87,18 @@ class AgentResult:
     def python_final_prompt(self) -> Optional[str]:
         """Deprecated: V3 uses single-generation prompt (python_prompt)."""
         return self.python_prompt
+
+    @property
+    def python_success(self) -> bool:
+        return self.python_result.success if self.python_result else False
+
+    @property
+    def python_execution_count(self) -> int:
+        return 1 if self.python_executed else 0
+
+    @property
+    def python_exit_code(self) -> Optional[int]:
+        return self.python_result.exit_code if self.python_result else None
 
 
 class GAIAAgent:
@@ -480,6 +529,336 @@ class GAIAPythonAgent(GAIAFileAgent):
             python_prompt_version=self.prompt_version,
             python_prompt=prompt,
             llm_generation_count=1,
+        )
+
+    def __call__(self, question: str, file_path: Optional[str] = None) -> str:
+        return self.run(question, file_path=file_path).final_answer
+
+
+def parse_router_decision(raw_text: Optional[str]) -> Optional[str]:
+    """Parses router output text for 'ROUTE: DIRECT' or 'ROUTE: PYTHON'.
+
+    Returns 'DIRECT', 'PYTHON', or None if ambiguous, malformed, or missing.
+    """
+    if not raw_text or not str(raw_text).strip():
+        return None
+    pattern = r"\bROUTE\s*:\s*(DIRECT|PYTHON)\b"
+    matches = re.findall(pattern, str(raw_text), flags=re.IGNORECASE)
+    if not matches:
+        return None
+    normalized = {m.upper() for m in matches}
+    if len(normalized) == 1:
+        return normalized.pop()
+    return None
+
+
+class GAIARouterAgent(GAIAFileAgent):
+    """V4 GAIA agent with explicit two-stage capability-routing architecture.
+
+    Stage 1 (Router): Evaluates question, web evidence, and attachment evidence
+    to explicitly select ROUTE: DIRECT or ROUTE: PYTHON.
+    Stage 2 (Worker): Executes the selected route using a specialized, single-purpose
+    worker prompt (router-direct-worker-v1 or router-python-worker-v1).
+    Python execution is only permitted when routed to PYTHON.
+    Deterministic fallback to DIRECT if router fails or produces ambiguous output.
+    Zero router retries, zero worker retries, zero Python retries, and NO third LLM generation.
+    """
+
+    def __init__(
+        self,
+        llm_client: Any,
+        search_tool: Optional[Any] = None,
+        file_tool: Optional[Any] = None,
+        python_tool: Optional[Any] = None,
+    ):
+        super().__init__(llm_client=llm_client, search_tool=search_tool, file_tool=file_tool)
+        self.python_tool = python_tool if python_tool is not None else PythonTool()
+        self.prompt_version = ROUTER_PROMPT_VERSION
+        self.primary_prompt_version = ROUTER_PROMPT_VERSION
+        self.fallback_prompt_version = None
+
+    def run(self, question: str, file_path: Optional[str] = None) -> AgentResult:
+        """Runs the V4 two-stage capability-routing pipeline."""
+        import time
+
+        # 1. Execute exactly one search with original GAIA question
+        search_res = self.search_tool.search(question)
+        web_evidence = search_res.format_evidence_block() if search_res.success else ""
+        search_fallback = not search_res.success
+
+        # 2. Process file attachment if provided
+        file_res: Optional[FileResult] = None
+        file_fallback = False
+        attachment_parts = None
+        file_evidence = ""
+        attachment_filename = ""
+
+        if file_path:
+            attachment_filename = os.path.basename(file_path)
+            file_res = self.file_tool.process(file_path)
+            if file_res.success:
+                if file_res.content_mode == "native_multimodal" and file_res.native_bytes:
+                    try:
+                        from google.genai import types
+                        mime = file_res.mime_type or "application/octet-stream"
+                        part = types.Part.from_bytes(data=file_res.native_bytes, mime_type=mime)
+                        attachment_parts = [part]
+                        file_evidence = f"[Attached file provided as native multimodal input: {file_res.file_name} ({mime})]"
+                    except Exception as e:
+                        file_res.success = False
+                        file_res.error_type = type(e).__name__
+                        file_res.error_message = f"Failed to create multimodal part: {e}"
+                        file_fallback = True
+                if not file_fallback:
+                    file_evidence = file_res.text_content or f"[Attached file: {file_res.file_name}]"
+            else:
+                file_fallback = True
+        else:
+            file_fallback = False
+
+        # 3. Stage 1: Router Generation (Generation #1)
+        router_prompt = build_router_prompt(
+            question=question,
+            web_evidence=web_evidence if search_res.success else "[Web search unavailable]",
+            file_evidence=file_evidence,
+            attachment_filename=attachment_filename,
+        )
+
+        router_generation_attempts = 1
+        router_generation_success = False
+        router_llm_resp = None
+        router_raw_response = None
+        router_error_type = None
+        router_start = time.time()
+
+        try:
+            router_llm_resp = self.llm.generate(router_prompt, attachment_parts=attachment_parts)
+            router_generation_success = True
+            if isinstance(router_llm_resp, LLMResponse):
+                router_raw_response = router_llm_resp.raw_text if router_llm_resp.raw_text else router_llm_resp.text
+                if router_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
+                    router_error_type = "malformed_function_call_finish_reason"
+            else:
+                router_raw_response = str(router_llm_resp)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "timeout" in err_str or "deadline" in err_str:
+                router_error_type = "provider_timeout"
+            elif "malformed_function_call" in err_str:
+                router_error_type = "malformed_function_call_finish_reason"
+            else:
+                router_error_type = "provider_api_error"
+            router_raw_response = None
+
+        router_latency = round(time.time() - router_start, 2)
+
+        # Parse router decision
+        if router_error_type is not None:
+            router_decision = "DIRECT"
+            router_success = False
+            router_fallback = True
+        elif router_raw_response is None or not router_raw_response.strip():
+            router_decision = "DIRECT"
+            router_success = False
+            router_fallback = True
+            router_error_type = "empty_provider_response"
+        else:
+            parsed_route = parse_router_decision(router_raw_response)
+            if parsed_route is not None:
+                router_decision = parsed_route
+                router_success = True
+                router_fallback = False
+                router_error_type = None
+            else:
+                router_decision = "DIRECT"
+                router_success = False
+                router_fallback = True
+                pattern = r"\bROUTE\s*:\s*(DIRECT|PYTHON)\b"
+                matches = re.findall(pattern, router_raw_response, flags=re.IGNORECASE)
+                if len(set(m.upper() for m in matches)) > 1:
+                    router_error_type = "ambiguous_route_text"
+                elif "route" in router_raw_response.lower():
+                    router_error_type = "malformed_router_text"
+                else:
+                    router_error_type = "missing_route_marker"
+
+        router_input_tokens = getattr(router_llm_resp, "input_tokens", None) if router_llm_resp else None
+        router_output_tokens = getattr(router_llm_resp, "output_tokens", None) if router_llm_resp else None
+        router_thinking_tokens = getattr(router_llm_resp, "thinking_tokens", None) if router_llm_resp else None
+
+        # 4. Stage 2: Route-Specific Worker Generation (Generation #2)
+        # INFORMATION FIREWALL: Worker receives ONLY question, web evidence, file evidence, and attachment filename.
+        # Router output is never passed to worker prompt.
+        worker_mode = router_decision
+        if worker_mode == "DIRECT":
+            worker_prompt_ver = ROUTER_DIRECT_WORKER_PROMPT_VERSION
+            worker_prompt = build_direct_worker_prompt(
+                question=question,
+                web_evidence=web_evidence if search_res.success else "[Web search unavailable]",
+                file_evidence=file_evidence,
+                attachment_filename=attachment_filename,
+            )
+        else:
+            worker_prompt_ver = ROUTER_PYTHON_WORKER_PROMPT_VERSION
+            worker_prompt = build_python_worker_prompt(
+                question=question,
+                web_evidence=web_evidence if search_res.success else "[Web search unavailable]",
+                file_evidence=file_evidence,
+                attachment_filename=attachment_filename,
+            )
+
+        worker_generation_attempts = 1
+        worker_generation_success = False
+        worker_llm_resp = None
+        worker_raw_response = None
+        worker_error_type = None
+        worker_start = time.time()
+
+        try:
+            worker_llm_resp = self.llm.generate(worker_prompt, attachment_parts=attachment_parts)
+            worker_generation_success = True
+            if isinstance(worker_llm_resp, LLMResponse):
+                worker_raw_response = worker_llm_resp.raw_text if worker_llm_resp.raw_text else worker_llm_resp.text
+                if worker_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
+                    worker_error_type = "malformed_function_call_finish_reason"
+            else:
+                worker_raw_response = str(worker_llm_resp)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "timeout" in err_str or "deadline" in err_str:
+                worker_error_type = "provider_timeout"
+            elif "malformed_function_call" in err_str:
+                worker_error_type = "malformed_function_call_finish_reason"
+            else:
+                worker_error_type = "provider_api_error"
+            worker_raw_response = None
+
+        worker_latency = round(time.time() - worker_start, 2)
+
+        if worker_error_type is None and (worker_raw_response is None or not worker_raw_response.strip()):
+            worker_error_type = "empty_worker_response"
+
+        worker_input_tokens = getattr(worker_llm_resp, "input_tokens", None) if worker_llm_resp else None
+        worker_output_tokens = getattr(worker_llm_resp, "output_tokens", None) if worker_llm_resp else None
+        worker_thinking_tokens = getattr(worker_llm_resp, "thinking_tokens", None) if worker_llm_resp else None
+
+        # 5. Extract Answer / Execute Python
+        py_result: Optional[PythonResult] = None
+        python_requested = False
+        python_executed = False
+        python_fallback = False
+        final_answer = ""
+        worker_success = False
+
+        if worker_mode == "DIRECT":
+            python_requested = False
+            python_executed = False
+            python_fallback = False
+            final_answer = self.clean_answer(extract_direct_answer(worker_raw_response or ""))
+            worker_success = bool(final_answer and not worker_error_type)
+        else:
+            # PYTHON worker mode
+            code = extract_python_code(worker_raw_response or "")
+            python_requested = bool(code)
+            if code:
+                python_executed = True
+                py_result = self.python_tool.execute(code, attachment_path=file_path)
+
+                if py_result.success:
+                    extracted_ans = extract_python_final_answer(py_result.stdout)
+                    if extracted_ans is not None:
+                        final_answer = self.clean_answer(extracted_ans)
+                        python_fallback = False
+                        worker_success = True
+                    else:
+                        python_fallback = True
+                        py_result.success = False
+                        py_result.error_type = py_result.error_type or "MissingFinalAnswerMarker"
+                        py_result.error_message = (
+                            py_result.error_message
+                            or "Python execution succeeded but stdout did not contain 'FINAL_ANSWER:' marker"
+                        )
+                        final_answer = (
+                            self.clean_answer(extract_direct_answer(worker_raw_response))
+                            if worker_raw_response and "FINAL:" in worker_raw_response
+                            else ""
+                        )
+                        worker_success = False
+                else:
+                    python_fallback = True
+                    final_answer = (
+                        self.clean_answer(extract_direct_answer(worker_raw_response))
+                        if worker_raw_response and "FINAL:" in worker_raw_response
+                        else ""
+                    )
+                    worker_success = False
+            else:
+                python_requested = False
+                python_executed = False
+                python_fallback = True
+                final_answer = (
+                    self.clean_answer(extract_direct_answer(worker_raw_response or ""))
+                    if worker_raw_response and "FINAL:" in worker_raw_response
+                    else ""
+                )
+                worker_success = False
+
+        llm_generation_attempts = router_generation_attempts + worker_generation_attempts
+        llm_generation_success_count = (1 if router_generation_success else 0) + (1 if worker_generation_success else 0)
+
+        raw_resp = worker_raw_response or ""
+        norm_resp = raw_resp.strip()
+
+        fallback_pv = ROUTER_DIRECT_WORKER_PROMPT_VERSION if router_fallback else None
+
+        return AgentResult(
+            raw_response=raw_resp,
+            normalized_response=norm_resp,
+            final_answer=final_answer,
+            llm_response=worker_llm_resp if isinstance(worker_llm_resp, LLMResponse) else None,
+            prompt=worker_prompt,
+            prompt_version=ROUTER_PROMPT_VERSION,
+            primary_prompt_version=ROUTER_PROMPT_VERSION,
+            fallback_prompt_version=fallback_pv,
+            search_result=search_res,
+            search_fallback=search_fallback,
+            file_result=file_res,
+            file_fallback=file_fallback,
+            python_result=py_result,
+            python_requested=python_requested,
+            python_executed=python_executed,
+            python_fallback=python_fallback,
+            python_prompt_version=ROUTER_PYTHON_WORKER_PROMPT_VERSION if worker_mode == "PYTHON" else None,
+            python_prompt=worker_prompt if worker_mode == "PYTHON" else None,
+            llm_generation_count=llm_generation_attempts,
+            router_requested=True,
+            router_decision=router_decision,
+            router_success=router_success,
+            router_fallback=router_fallback,
+            router_error_type=router_error_type,
+            router_prompt_version=ROUTER_PROMPT_VERSION,
+            router_prompt=router_prompt,
+            router_raw_response=router_raw_response,
+            router_latency_seconds=router_latency,
+            router_input_tokens=router_input_tokens,
+            router_output_tokens=router_output_tokens,
+            router_thinking_tokens=router_thinking_tokens,
+            router_generation_attempts=router_generation_attempts,
+            router_generation_success=router_generation_success,
+            worker_mode=worker_mode,
+            worker_success=worker_success,
+            worker_error_type=worker_error_type,
+            worker_prompt_version=worker_prompt_ver,
+            worker_prompt=worker_prompt,
+            worker_raw_response=worker_raw_response,
+            worker_latency_seconds=worker_latency,
+            worker_input_tokens=worker_input_tokens,
+            worker_output_tokens=worker_output_tokens,
+            worker_thinking_tokens=worker_thinking_tokens,
+            worker_generation_attempts=worker_generation_attempts,
+            worker_generation_success=worker_generation_success,
+            llm_generation_attempts=llm_generation_attempts,
+            llm_generation_success_count=llm_generation_success_count,
         )
 
     def __call__(self, question: str, file_path: Optional[str] = None) -> str:
