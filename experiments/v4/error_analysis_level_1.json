@@ -1,0 +1,23 @@
+{
+  "level": 1,
+  "total_tasks": 53,
+  "correct_tasks": 28,
+  "incorrect_tasks": 25,
+  "accuracy": 0.5283,
+  "failure_taxonomy_distribution": {
+    "Python route unfulfilled due provider anomaly": 13,
+    "direct reasoning/retrieval failure": 7,
+    "Python route unfulfilled due MAX_TOKENS": 2,
+    "Python runtime failure": 1,
+    "direct incomplete generation (MAX_TOKENS)": 1,
+    "Python missing final marker": 1
+  },
+  "failure_confidence": {
+    "Python route unfulfilled due provider anomaly": "high",
+    "Python runtime failure": "high",
+    "direct reasoning/retrieval failure": "high",
+    "Python route unfulfilled due MAX_TOKENS": "high",
+    "direct incomplete generation (MAX_TOKENS)": "high",
+    "Python missing final marker": "high"
+  }
+}

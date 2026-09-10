@@ -1,0 +1,97 @@
+{
+  "total_tasks": 165,
+  "v3_anomalies_by_level": {
+    "1": {
+      "MALFORMED_FUNCTION_CALL": 7,
+      "MAX_TOKENS": 3,
+      "API_Error": 0,
+      "total": 10
+    },
+    "2": {
+      "MALFORMED_FUNCTION_CALL": 18,
+      "MAX_TOKENS": 4,
+      "API_Error": 0,
+      "total": 22
+    },
+    "3": {
+      "MALFORMED_FUNCTION_CALL": 4,
+      "MAX_TOKENS": 0,
+      "API_Error": 1,
+      "total": 5
+    },
+    "overall": {
+      "MALFORMED_FUNCTION_CALL": 29,
+      "MAX_TOKENS": 7,
+      "API_Error": 1,
+      "total": 37
+    }
+  },
+  "v4_router_anomalies_by_level": {
+    "1": {
+      "MALFORMED_FUNCTION_CALL": 0,
+      "MAX_TOKENS": 0,
+      "API_Error": 0,
+      "total": 0
+    },
+    "2": {
+      "MALFORMED_FUNCTION_CALL": 1,
+      "MAX_TOKENS": 0,
+      "API_Error": 2,
+      "total": 3
+    },
+    "3": {
+      "MALFORMED_FUNCTION_CALL": 0,
+      "MAX_TOKENS": 0,
+      "API_Error": 1,
+      "total": 1
+    },
+    "overall": {
+      "MALFORMED_FUNCTION_CALL": 1,
+      "MAX_TOKENS": 0,
+      "API_Error": 3,
+      "total": 4
+    }
+  },
+  "v4_worker_anomalies_by_level": {
+    "1": {
+      "MALFORMED_FUNCTION_CALL": 12,
+      "MAX_TOKENS": 3,
+      "Empty_Response": 1,
+      "API_Error": 0,
+      "total": 16
+    },
+    "2": {
+      "MALFORMED_FUNCTION_CALL": 40,
+      "MAX_TOKENS": 5,
+      "Empty_Response": 0,
+      "API_Error": 1,
+      "total": 46
+    },
+    "3": {
+      "MALFORMED_FUNCTION_CALL": 19,
+      "MAX_TOKENS": 1,
+      "Empty_Response": 0,
+      "API_Error": 1,
+      "total": 21
+    },
+    "overall": {
+      "MALFORMED_FUNCTION_CALL": 71,
+      "MAX_TOKENS": 9,
+      "Empty_Response": 1,
+      "API_Error": 2,
+      "total": 83
+    }
+  },
+  "completion_failures_association": {
+    "v4_completion_failures": 83,
+    "associated_with_worker_anomalies": 83,
+    "associated_with_worker_mfc": 71,
+    "percentage_worker_anomalies": 100.0,
+    "percentage_worker_mfc": 85.54
+  },
+  "regressions_association": {
+    "v4_regressions": 10,
+    "associated_with_provider_anomalies": 10,
+    "percentage_provider_anomalies": 100.0
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "total_tasks": 165,
+  "router_distribution": {
+    "direct_count": 74,
+    "python_count": 91,
+    "direct_rate": 0.4485,
+    "python_rate": 0.5515,
+    "fallback_count": 4,
+    "fallback_rate": 0.0242
+  },
+  "by_level": {
+    "1": {
+      "direct": 32,
+      "python": 21,
+      "fallback": 0
+    },
+    "2": {
+      "direct": 34,
+      "python": 52,
+      "fallback": 3
+    },
+    "3": {
+      "direct": 8,
+      "python": 18,
+      "fallback": 1
+    }
+  },
+  "python_routing_funnel": {
+    "router_python_routed": 91,
+    "python_executed": 18,
+    "python_route_to_execution_rate": 0.1978,
+    "python_success": 11,
+    "python_execution_success_rate": 0.6111,
+    "python_failure": 7,
+    "python_route_unfulfilled": 73,
+    "python_fallbacks_total": 80,
+    "reconciliation_identity": "73 unfulfilled + 7 failures = 80 fallbacks",
+    "identity_verified_task_by_task": true
+  },
+  "unfulfilled_route_reasons": {
+    "worker_MALFORMED_FUNCTION_CALL": 68,
+    "MAX_TOKENS_unclosed_fence": 2,
+    "MAX_TOKENS_budget_exhaustion": 1,
+    "empty_worker_response": 1,
+    "worker_provider_api_error": 1,
+    "parser_implementation_defect": 0
+  },
+  "v3_comparison_profile": {
+    "v3_executed_count": 91,
+    "v4_routed_python_count": 91,
+    "overlap_v3_exec_v4_route": 61,
+    "jaccard_similarity": 0.5041,
+    "overlap_v4_exec_v3_exec": 10
+  }
+}

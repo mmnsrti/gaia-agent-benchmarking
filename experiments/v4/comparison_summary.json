@@ -1,0 +1,67 @@
+{
+  "project_version": "v4",
+  "control_version": "matched_v3",
+  "total_tasks": 165,
+  "level_1": {
+    "total": 53,
+    "v4_correct": 28,
+    "v3_correct": 25,
+    "delta_solved": 3,
+    "v4_accuracy": 0.5283,
+    "v3_accuracy": 0.4717,
+    "delta_accuracy_pp": 5.66,
+    "v4_completed": 37,
+    "v3_completed": 43
+  },
+  "level_2": {
+    "total": 86,
+    "v4_correct": 21,
+    "v3_correct": 21,
+    "delta_solved": 0,
+    "v4_accuracy": 0.2442,
+    "v3_accuracy": 0.2442,
+    "delta_accuracy_pp": 0.0,
+    "v4_completed": 40,
+    "v3_completed": 64
+  },
+  "level_3": {
+    "total": 26,
+    "v4_correct": 3,
+    "v3_correct": 3,
+    "delta_solved": 0,
+    "v4_accuracy": 0.1154,
+    "v3_accuracy": 0.1154,
+    "delta_accuracy_pp": 0.0,
+    "v4_completed": 5,
+    "v3_completed": 21
+  },
+  "overall": {
+    "total": 165,
+    "v4_correct": 52,
+    "v3_correct": 49,
+    "net_solved_delta": 3,
+    "v4_accuracy": 0.3152,
+    "v3_accuracy": 0.297,
+    "delta_accuracy_pp": 1.82,
+    "v4_completed": 82,
+    "v3_completed": 128,
+    "completion_delta_pp": -27.88,
+    "attachment_v4_accuracy": 0.1579,
+    "attachment_v3_accuracy": 0.1842,
+    "attachment_delta_pp": -2.63,
+    "non_attachment_v4_accuracy": 0.3622,
+    "non_attachment_v3_accuracy": 0.3307,
+    "non_attachment_delta_pp": 3.15,
+    "v4_average_latency_seconds": 10.62,
+    "v3_average_latency_seconds": 5.35,
+    "v4_average_total_tokens": 3152.3,
+    "v3_average_total_tokens": 3044.5
+  },
+  "operational_caveats": {
+    "level_2_matched_v3_interrupted_resumed_quota": true,
+    "level_3_matched_v3_interrupted_resumed_quota": true,
+    "level_3_matched_v3_final_task_403_request_failure": true,
+    "privacy_policy_compliance": true,
+    "unit_tests_passing": "226/226"
+  }
+}

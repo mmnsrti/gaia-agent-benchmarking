@@ -1,0 +1,21 @@
+{
+  "level": 3,
+  "total_tasks": 26,
+  "correct_tasks": 3,
+  "incorrect_tasks": 23,
+  "accuracy": 0.1154,
+  "failure_taxonomy_distribution": {
+    "Python route unfulfilled due provider anomaly": 18,
+    "direct reasoning/retrieval failure": 2,
+    "router fallback direct incomplete (worker anomaly)": 1,
+    "worker provider anomaly (DIRECT route)": 1,
+    "direct incomplete generation (MAX_TOKENS)": 1
+  },
+  "failure_confidence": {
+    "Python route unfulfilled due provider anomaly": "high",
+    "router fallback direct incomplete (worker anomaly)": "high",
+    "worker provider anomaly (DIRECT route)": "high",
+    "direct incomplete generation (MAX_TOKENS)": "high",
+    "direct reasoning/retrieval failure": "high"
+  }
+}

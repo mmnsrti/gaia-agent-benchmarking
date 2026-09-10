@@ -1,0 +1,33 @@
+{
+  "level": 2,
+  "total_tasks": 86,
+  "correct_tasks": 21,
+  "incorrect_tasks": 65,
+  "accuracy": 0.2442,
+  "failure_taxonomy_distribution": {
+    "Python route unfulfilled due provider anomaly": 39,
+    "direct reasoning/retrieval failure": 14,
+    "Python missing final marker": 3,
+    "Python success wrong answer": 2,
+    "Python syntax/AST rejection": 1,
+    "Python runtime failure": 1,
+    "router fallback direct wrong": 1,
+    "direct incomplete generation (MAX_TOKENS)": 1,
+    "worker provider anomaly (DIRECT route)": 1,
+    "Python route unfulfilled due MAX_TOKENS": 1,
+    "router fallback direct incomplete (worker anomaly)": 1
+  },
+  "failure_confidence": {
+    "Python route unfulfilled due provider anomaly": "high",
+    "Python syntax/AST rejection": "high",
+    "Python runtime failure": "high",
+    "direct reasoning/retrieval failure": "high",
+    "router fallback direct wrong": "high",
+    "Python missing final marker": "high",
+    "direct incomplete generation (MAX_TOKENS)": "high",
+    "Python success wrong answer": "high",
+    "worker provider anomaly (DIRECT route)": "high",
+    "Python route unfulfilled due MAX_TOKENS": "high",
+    "router fallback direct incomplete (worker anomaly)": "high"
+  }
+}

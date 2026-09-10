@@ -1,0 +1,87 @@
+{
+  "total_tasks": 165,
+  "summary": {
+    "improvements": 13,
+    "regressions": 10,
+    "stable_correct": 39,
+    "stable_failure": 103,
+    "net_solved_delta": 3
+  },
+  "by_level": {
+    "1": {
+      "improvements": 5,
+      "regressions": 2,
+      "stable_correct": 23,
+      "stable_failure": 23,
+      "total": 53
+    },
+    "2": {
+      "improvements": 7,
+      "regressions": 7,
+      "stable_correct": 14,
+      "stable_failure": 58,
+      "total": 86
+    },
+    "3": {
+      "improvements": 1,
+      "regressions": 1,
+      "stable_correct": 2,
+      "stable_failure": 22,
+      "total": 26
+    }
+  },
+  "by_attachment": {
+    "attachment": {
+      "improvements": 3,
+      "regressions": 4,
+      "stable_correct": 3,
+      "stable_failure": 28,
+      "total": 38
+    },
+    "non_attachment": {
+      "improvements": 10,
+      "regressions": 6,
+      "stable_correct": 36,
+      "stable_failure": 75,
+      "total": 127
+    }
+  },
+  "regression_mechanisms": {
+    "router decision PYTHON but worker provider anomaly": 8,
+    "worker MAX_TOKENS during Python generation": 1,
+    "successful Python but MAX_TOKENS truncation on answer": 1
+  },
+  "improvement_mechanisms": {
+    "DIRECT route avoiding prior V3 Python failure": 5,
+    "DIRECT route overcoming prior V3 provider anomaly": 3,
+    "DIRECT route overcoming prior V3 failure (other)": 1,
+    "ordinary DIRECT answer difference": 1,
+    "router fallback DIRECT overcoming prior V3 failure": 1,
+    "successful Python overcoming prior V3 Python execution failure": 1,
+    "successful Python overcoming prior V3 provider anomaly": 1
+  },
+  "transitions_by_v4_category": {
+    "improvements": {
+      "DIRECT": 10,
+      "PYTHON Executed Success": 2,
+      "Router Fallback (DIRECT)": 1
+    },
+    "regressions": {
+      "PYTHON Non-Exec (Provider Anomaly)": 8,
+      "PYTHON Executed Failure": 1,
+      "PYTHON Executed Success": 1
+    },
+    "stable_correct": {
+      "DIRECT": 32,
+      "PYTHON Executed Success": 7
+    },
+    "stable_failure": {
+      "PYTHON Non-Exec (Provider Anomaly)": 60,
+      "DIRECT": 28,
+      "PYTHON Executed Failure": 6,
+      "PYTHON Non-Exec (Other)": 5,
+      "Router Fallback (DIRECT)": 3,
+      "PYTHON Executed Success": 1
+    }
+  }
+}
