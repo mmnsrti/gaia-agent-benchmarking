@@ -83,15 +83,27 @@
     }
   },
   "completion_failures_association": {
-    "v4_completion_failures": 83,
-    "associated_with_worker_anomalies": 83,
-    "associated_with_worker_mfc": 71,
-    "percentage_worker_anomalies": 100.0,
-    "percentage_worker_mfc": 85.54
+    "total_v4_completion_failures": 83,
+    "strict_provider_anomaly_associated": 74,
+    "strict_provider_anomaly_rate": 0.8916,
+    "token_budget_truncation_associated": 9,
+    "token_budget_truncation_rate": 0.1084,
+    "umbrella_worker_anomaly_or_truncation_associated": 83,
+    "umbrella_rate": 1.0
   },
   "regressions_association": {
-    "v4_regressions": 10,
-    "associated_with_provider_anomalies": 10,
-    "percentage_provider_anomalies": 100.0
+    "total_regressions": 10,
+    "strict_provider_anomaly_associated": 8,
+    "strict_provider_anomaly_rate": 0.8,
+    "token_budget_truncation_associated": 2,
+    "token_budget_truncation_rate": 0.2,
+    "umbrella_worker_anomaly_or_truncation_associated": 10,
+    "umbrella_rate": 1.0,
+    "completed_worker_wrong_answer_associated": 0
+  },
+  "methodological_definitions": {
+    "strict_provider_anomaly": "Encompasses external provider failures and protocol-level anomalies: MALFORMED_FUNCTION_CALL, provider API errors, provider timeouts, and empty provider responses under HTTP 200.",
+    "token_budget_truncation": "MAX_TOKENS finish reason where output reached the frozen 2048 token limit before completing generation or answer marking. Considered a configuration/budget exhaustion event rather than an external provider defect.",
+    "worker_generation_anomaly_or_truncation": "Umbrella category encompassing both strict provider anomalies and token budget truncations occurring during worker generation."
   }
 }

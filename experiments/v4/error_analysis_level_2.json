@@ -4,9 +4,14 @@
   "correct_tasks": 21,
   "incorrect_tasks": 65,
   "accuracy": 0.2442,
+  "confidence_summary": {
+    "high_confidence_count": 51,
+    "low_confidence_count": 14,
+    "high_confidence_rate": 0.7846
+  },
   "failure_taxonomy_distribution": {
     "Python route unfulfilled due provider anomaly": 39,
-    "direct reasoning/retrieval failure": 14,
+    "completed_direct_wrong_answer": 14,
     "Python missing final marker": 3,
     "Python success wrong answer": 2,
     "Python syntax/AST rejection": 1,
@@ -21,7 +26,7 @@
     "Python route unfulfilled due provider anomaly": "high",
     "Python syntax/AST rejection": "high",
     "Python runtime failure": "high",
-    "direct reasoning/retrieval failure": "high",
+    "completed_direct_wrong_answer": "low",
     "router fallback direct wrong": "high",
     "Python missing final marker": "high",
     "direct incomplete generation (MAX_TOKENS)": "high",
@@ -29,5 +34,8 @@
     "worker provider anomaly (DIRECT route)": "high",
     "Python route unfulfilled due MAX_TOKENS": "high",
     "router fallback direct incomplete (worker anomaly)": "high"
+  },
+  "methodological_notes": {
+    "completed_direct_wrong_answer": "Classified as low confidence (heuristic). Direct telemetry records only that the DIRECT worker completed generation and the extracted answer was incorrect; the specific underlying mechanism (reasoning error, insufficient search evidence, evidence misinterpretation, or unmodeled format deviation) is not directly observable in telemetry."
   }
 }
