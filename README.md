@@ -327,10 +327,11 @@ The research question evaluated by V4 is:
 ### System-Level Intervention Bundle Definition
 The primary comparison between V4 and contemporaneous matched V3 evaluates the **controlled system-level effect of introducing an explicit two-stage capability-routing architecture**, which bundles:
 1. **Explicit Router Generation**: An upfront Gemini call classifying the question into `DIRECT` or `PYTHON`.
-2. **Additional LLM Inference Turn**: Exactly two sequential LLM generations per task instead of one (`llm_generation_count == 2`).
+2. **Additional LLM Inference Turn**: Standard and recoverable V4 execution uses two LLM generation attempts: one router attempt and one worker attempt. If a fatal exception prevents worker dispatch, telemetry records the actual number of attempts rather than forcing the count to two.
 3. **Route-Specific Worker Prompting**: Specialized system prompts tailored to direct answer synthesis (`router-direct-worker-v1`) or code generation (`router-python-worker-v1`).
 4. **Deterministic Route Enforcement**: Hard architectural enforcement ensuring DIRECT routes cannot invoke Python and cannot be exposed to tool-calling failure modes.
-5. **Changed Exposure to Provider Stochasticity**: Differential sensitivity to upstream provider function-calling parsing and token budget dynamics.
+5. **Native Function Calling Disabled**: Router and both workers use Gemini with native function calling disabled (`mode="NONE"`). Python execution is orchestrated locally and deterministically after extracting a Python code block.
+6. **Changed Exposure to Provider Stochasticity**: Differential sensitivity to upstream provider `MALFORMED_FUNCTION_CALL` finish-reason anomalies and token budget dynamics.
 
 *(Note: These bundled components cannot be cleanly separated by the primary V3 → V4 comparison alone; V4 does not estimate the pure causal effect of routing in isolation.)*
 
@@ -342,7 +343,7 @@ ONE Tavily Search (Original Question as Query, Capped at 1,500 Chars)
      ↓
 FileTool (Deterministic local extraction inherited from frozen V2/V3)
      ↓
-Stage 1: Router Generation (`capability-router-v1`, tools disabled, `mode="NONE"`)
+Stage 1: Router Generation (`capability-router-v1`, native function calling disabled, `mode="NONE"`)
      ↓
 Deterministic Route Parser (Case-insensitive regex, strict validation, deterministic fallback to DIRECT)
      ↓
@@ -352,7 +353,7 @@ Stage 2: Deterministic Route Enforcement & Route-Specific Worker Dispatch
      │        ↓
      │   Worker Prompt: `router-direct-worker-v1`
      │        ↓
-     │   Gemini Generation with Tools Disabled (`mode="NONE"`)
+     │   Gemini worker generation with native function calling disabled (`mode="NONE"`)
      │        ↓
      │   Deterministic Final Answer Extraction (`FINAL: <answer>`)
      │   (Python execution strictly disabled; 0 execution attempts)
@@ -361,7 +362,8 @@ Stage 2: Deterministic Route Enforcement & Route-Specific Worker Dispatch
               ↓
          Worker Prompt: `router-python-worker-v1`
               ↓
-         Gemini Generation with Python Function Calling Enabled
+         Gemini worker generation with native function calling disabled (`mode="NONE"`);
+         Python execution is orchestrated locally and deterministically after extracting a Python code block
               ↓
          [Worker emits ```python code block]
               ↓
@@ -378,12 +380,11 @@ Stage 2: Deterministic Route Enforcement & Route-Specific Worker Dispatch
 ```
 
 ### Frozen Invariants Preserved
-- `llm_generation_count == 2` for every task (1 router call + 1 worker call)
-- `python_execution_count in {0, 1}` for every task (maximum 1 execution)
+- Standard and recoverable V4 execution uses two LLM generation attempts: one router attempt and one worker attempt. If a fatal exception prevents worker dispatch, telemetry records the actual number of attempts rather than forcing the count to two.
+- Maximum one Python execution per task (`python_execution_count in {0, 1}`)
+- Router and both workers use Gemini with native function calling disabled (`mode="NONE"`)
 - If routed to `DIRECT`, Python execution is structurally prohibited
-- No second LLM synthesis turn after Python execution
-- No retry or self-correction turn on execution failure
-- No autonomous tool loops or multi-turn planner loops
+- No third LLM generation, no retry, no repair turn, and no verification loop
 - Best-effort research execution isolation (`-I` isolated subprocess mode, ephemeral temp directory, read-only attachments, static AST policy)
 
 ### Canonical Results (GAIA 2023 Validation Set, 165 Tasks)
@@ -394,16 +395,22 @@ Stage 2: Deterministic Route Enforcement & Route-Specific Worker Dispatch
 | Level 1 Accuracy | 45.28% (24 / 53) | 47.17% (25 / 53) | 52.83% (28 / 53) | +5.66 pp (+3 tasks) |
 | Level 2 Accuracy | 26.74% (23 / 86) | 24.42% (21 / 86) | 24.42% (21 / 86) | +0.00 pp (0 tasks) |
 | Level 3 Accuracy | 3.85% (1 / 26) | 11.54% (3 / 26) | 11.54% (3 / 26) | +0.00 pp (0 tasks) |
-| **Attachment Tasks** | **21.05%** (8 / 38) | **23.68%** (9 / 38) | **21.05%** (8 / 38) | **-2.63 pp (-1 task)** |
-| **Non-Attachment Tasks** | **31.50%** (40 / 127) | **31.50%** (40 / 127) | **34.65%** (44 / 127) | **+3.15 pp (+4 tasks)** |
+| **Attachment Tasks** | **21.05%** (8 / 38) | **18.42%** (7 / 38) | **15.79%** (6 / 38) | **-2.63 pp (-1 task)** |
+| **Non-Attachment Tasks** | **31.50%** (40 / 127) | **33.07%** (42 / 127) | **36.22%** (46 / 127) | **+3.15 pp (+4 tasks)** |
 | **Completion Rate** | **78.18%** (129 / 165) | **77.58%** (128 / 165) | **49.70%** (82 / 165) | **-27.88 pp (-46 tasks)** |
 
 ### Key Research Findings
 1. **Accuracy Gain**: Under the frozen two-stage capability-routing architecture, V4 solved 52/165 tasks (31.52%) versus 49/165 (29.70%) for the contemporaneous matched V3 control, an observed gain of +3 tasks (+1.82 pp), with improvements concentrated in Level 1 (+5.66 pp).
-2. **Completion Rate Collapse**: V4 completion rate dropped sharply from 77.58% to 49.70% (-27.88 pp). This collapse was driven by worker-side `MALFORMED_FUNCTION_CALL` provider anomalies (63 tasks) and token budget exhaustion (14 tasks) during Python route generation.
+2. **Completion Rate Reduction**: V4 completion rate dropped from 77.58% to 49.70% (-27.88 pp). The completion reduction was associated primarily with worker-generation `MALFORMED_FUNCTION_CALL` finish-reason anomalies and, to a smaller extent, MAX_TOKENS truncation and other generation failures.
 3. **Audited Regression Mechanism**: 10 of 10 regressions (100%) from matched V3 were associated with worker provider anomalies (8) or token budget truncation (2); 0 regressions resulted from calculation errors following successful Python execution.
-4. **Successful-Python Subset**: On the 11 tasks where Python executed cleanly with valid answer extraction, V4 solved 9/11 (81.82%) vs. 8/11 (72.73%) for matched V3. *(Note: This comparison is descriptive only; routing is endogenous and does not represent an isolated causal estimate.)*
-5. **Operational Latency & Resource Tradeoffs**: V4 doubled LLM inference turns (2 vs 1) and roughly doubled average wall-clock latency (10.62s vs 5.35s).
+4. **Successful-Python Subset**: On the 11 tasks where Python executed cleanly with valid answer extraction, V4 solved 9/11 (81.82%) vs. 8/11 (72.73%) for matched V3. *(Note: This comparison is descriptive only; routing is endogenous and does not represent an isolated causal estimate or proof of Python effectiveness in isolation.)*
+5. **Operational Funnel & Failure Taxonomy**:
+   - Final DIRECT worker dispatches: `74` (including 4 originating from router fallback)
+   - Final PYTHON worker dispatches: `91`
+   - Check: `74 + 91 = 165`
+   - Python executions: `18` (11 successes, 7 failures, 73 unfulfilled, 80 fallbacks; `73 + 7 = 80`)
+   - Executed Python failures: 4 MissingFinalAnswerMarker, 2 runtime failure, 1 syntax/AST rejection (total 7).
+6. **Operational Latency & Resource Tradeoffs**: V4 increased standard LLM inference attempts per task (2 vs 1) and roughly doubled average wall-clock latency (10.62s vs 5.35s).
 
 ### Freeze Rule
 V4 is frozen as the immutable research baseline for explicit two-stage capability routing:

@@ -102,8 +102,11 @@
   },
   "worker_configuration": {
     "generation_attempts": 1,
+    "tools_mode": "NONE",
+    "native_function_calling_enabled": false,
     "direct_output_contract": "FINAL: <answer>",
     "python_output_contract": "```python ... ``` printing FINAL_ANSWER: <answer>",
+    "python_orchestration": "local deterministic extraction and subprocess execution after generation",
     "retries_permitted": 0,
     "second_llm_synthesis": false
   },
@@ -111,7 +114,7 @@
     "router_generation_attempts": 1,
     "worker_generation_attempts": 1,
     "llm_generation_count_target": 2,
-    "llm_generation_count_status": "verified_canonical_invariant",
+    "llm_generation_count_status": "Standard and recoverable V4 execution uses two LLM generation attempts: one router attempt and one worker attempt. If a fatal exception prevents worker dispatch, telemetry records the actual number of attempts rather than forcing the count to two.",
     "python_execution_count_range": [
       0,
       1
@@ -160,6 +163,18 @@
     "matched_v3_accuracy": "49/165 = 29.70%",
     "delta": "+3 tasks (+1.82 pp)",
     "v4_completion": "82/165 = 49.70%",
-    "matched_v3_completion": "128/165 = 77.58%"
+    "matched_v3_completion": "128/165 = 77.58%",
+    "attachment": {
+      "historical_frozen_v3": "8/38 = 21.05%",
+      "matched_v3": "7/38 = 18.42%",
+      "v4": "6/38 = 15.79%",
+      "delta": "-1 task (-2.63 pp)"
+    },
+    "non_attachment": {
+      "historical_frozen_v3": "40/127 = 31.50%",
+      "matched_v3": "42/127 = 33.07%",
+      "v4": "46/127 = 36.22%",
+      "delta": "+4 tasks (+3.15 pp)"
+    }
   }
 }
