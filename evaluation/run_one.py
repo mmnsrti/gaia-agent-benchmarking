@@ -58,6 +58,8 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
             print("Note: v2 processes local file attachments.")
         elif version == "v3":
             print("Note: v3 processes local file attachments and supports controlled Python execution.")
+        elif version == "v4":
+            print("Note: v4 evaluates question and attachments using explicit capability routing (DIRECT vs PYTHON).")
     print("-" * 80)
 
     record = execute_task(
@@ -79,6 +81,19 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
         print(f"Primary Prompt Version: {record['primary_prompt_version']}")
     if record.get("fallback_prompt_version"):
         print(f"Fallback Prompt Version: {record['fallback_prompt_version']}")
+    if record.get("router_requested"):
+        print(f"Router Decision: {record.get('router_decision')}")
+        print(f"Router Success: {record.get('router_success')}")
+        print(f"Router Fallback: {record.get('router_fallback')}")
+        if record.get("router_error_type"):
+            print(f"Router Error: {record.get('router_error_type')}")
+        print(f"Router Latency: {record.get('router_latency_seconds')}s")
+        print(f"Worker Mode: {record.get('worker_mode')}")
+        print(f"Worker Success: {record.get('worker_success')}")
+        if record.get("worker_error_type"):
+            print(f"Worker Error: {record.get('worker_error_type')}")
+        print(f"Worker Latency: {record.get('worker_latency_seconds')}s")
+        print(f"LLM Generation Attempts: {record.get('llm_generation_attempts')}")
     if record.get("search_enabled"):
         print(f"Search Provider: {record['search_provider']}")
         print(f"Search Success: {record['search_success']}")
@@ -132,7 +147,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run GAIA baseline on one question with completion-aware tracking.")
     parser.add_argument("-i", "--index", type=int, default=0, help="Question index to run (0 to 19, default: 0)")
     parser.add_argument("-t", "--task-id", type=str, default=None, help="Specific task ID to run")
-    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution; required)")
+    # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing; required)")
     parser.add_argument("--no-log", action="store_true", help="Do not write record to experiments/runs.jsonl")
     args = parser.parse_args()
 

@@ -310,6 +310,117 @@ Future work must not alter V3 results or configuration. Any subsequent planner/r
 
 ---
 
+## v4 — Explicit Two-Stage Capability Router
+
+**Status: FROZEN** (Branch: `v4-planner-router`)
+
+See [`experiments/v4/FROZEN.md`](experiments/v4/FROZEN.md) for full configuration manifest, controlled benchmark results, transition analysis, regression mechanism audit, failure taxonomy with confidence tiers, and research summary.
+
+### Research Definition
+```text
+V4 = frozen V3 + explicit two-stage DIRECT/PYTHON capability-routing architecture
+```
+
+The research question evaluated by V4 is:
+> **How does adding an explicit capability-routing stage affect GAIA performance, completion, reliability, latency, and tool utilization relative to frozen V3?**
+
+### System-Level Intervention Bundle Definition
+The primary comparison between V4 and contemporaneous matched V3 evaluates the **controlled system-level effect of introducing an explicit two-stage capability-routing architecture**, which bundles:
+1. **Explicit Router Generation**: An upfront Gemini call classifying the question into `DIRECT` or `PYTHON`.
+2. **Additional LLM Inference Turn**: Standard and recoverable V4 execution uses two LLM generation attempts: one router attempt and one worker attempt. If a fatal exception prevents worker dispatch, telemetry records the actual number of attempts rather than forcing the count to two.
+3. **Route-Specific Worker Prompting**: Specialized system prompts tailored to direct answer synthesis (`router-direct-worker-v1`) or code generation (`router-python-worker-v1`).
+4. **Deterministic Route Enforcement**: Hard architectural enforcement ensuring DIRECT routes cannot invoke Python and cannot be exposed to tool-calling failure modes.
+5. **Native Function Calling Disabled**: Router and both workers use Gemini with native function calling disabled (`mode="NONE"`). Python execution is orchestrated locally and deterministically after extracting a Python code block.
+6. **Changed Exposure to Provider Stochasticity**: Differential sensitivity to upstream provider `MALFORMED_FUNCTION_CALL` finish-reason anomalies and token budget dynamics.
+
+*(Note: These bundled components cannot be cleanly separated by the primary V3 → V4 comparison alone; V4 does not estimate the pure causal effect of routing in isolation.)*
+
+### Execution Flow & Invariants
+```text
+GAIA Question + Optional Attachment File
+     ↓
+ONE Tavily Search (Original Question as Query, Capped at 1,500 Chars)
+     ↓
+FileTool (Deterministic local extraction inherited from frozen V2/V3)
+     ↓
+Stage 1: Router Generation (`capability-router-v1`, native function calling disabled, `mode="NONE"`)
+     ↓
+Deterministic Route Parser (Case-insensitive regex, strict validation, deterministic fallback to DIRECT)
+     ↓
+Stage 2: Deterministic Route Enforcement & Route-Specific Worker Dispatch
+     │
+     ├── [Route == DIRECT]
+     │        ↓
+     │   Worker Prompt: `router-direct-worker-v1`
+     │        ↓
+     │   Gemini worker generation with native function calling disabled (`mode="NONE"`)
+     │        ↓
+     │   Deterministic Final Answer Extraction (`FINAL: <answer>`)
+     │   (Python execution strictly disabled; 0 execution attempts)
+     │
+     └── [Route == PYTHON]
+              ↓
+         Worker Prompt: `router-python-worker-v1`
+              ↓
+         Gemini worker generation with native function calling disabled (`mode="NONE"`);
+         Python execution is orchestrated locally and deterministically after extracting a Python code block
+              ↓
+         [Worker emits ```python code block]
+              ↓
+         PythonTool Subprocess (`-I`, Ephemeral Dir, Timeout 15.0s, Cap 20k chars, Static AST Validation)
+              ↓
+         ├── [Success: stdout contains 'FINAL_ANSWER: <ans>']
+         │        ↓
+         │   Extract <ans> deterministically
+         │
+         └── [Failure / Missing Marker / AST Rejection / Timeout / Non-execution]
+                  ↓
+             Deterministic fallback to model direct text if available
+             (Strictly no second LLM synthesis call, no retry, no debugging turn)
+```
+
+### Frozen Invariants Preserved
+- Standard and recoverable V4 execution uses two LLM generation attempts: one router attempt and one worker attempt. If a fatal exception prevents worker dispatch, telemetry records the actual number of attempts rather than forcing the count to two.
+- Maximum one Python execution per task (`python_execution_count in {0, 1}`)
+- Router and both workers use Gemini with native function calling disabled (`mode="NONE"`)
+- If routed to `DIRECT`, Python execution is structurally prohibited
+- No third LLM generation, no retry, no repair turn, and no verification loop
+- Best-effort research execution isolation (`-I` isolated subprocess mode, ephemeral temp directory, read-only attachments, static AST policy)
+
+### Canonical Results (GAIA 2023 Validation Set, 165 Tasks)
+
+| Metric | Historical Frozen V3 | Matched V3 Control | Canonical V4 | Controlled Delta (vs Matched V3) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Overall Accuracy** | **29.09%** (48 / 165) | **29.70%** (49 / 165) | **31.52%** (52 / 165) | **+1.82 pp (+3 tasks)** |
+| Level 1 Accuracy | 45.28% (24 / 53) | 47.17% (25 / 53) | 52.83% (28 / 53) | +5.66 pp (+3 tasks) |
+| Level 2 Accuracy | 26.74% (23 / 86) | 24.42% (21 / 86) | 24.42% (21 / 86) | +0.00 pp (0 tasks) |
+| Level 3 Accuracy | 3.85% (1 / 26) | 11.54% (3 / 26) | 11.54% (3 / 26) | +0.00 pp (0 tasks) |
+| **Attachment Tasks** | **21.05%** (8 / 38) | **18.42%** (7 / 38) | **15.79%** (6 / 38) | **-2.63 pp (-1 task)** |
+| **Non-Attachment Tasks** | **31.50%** (40 / 127) | **33.07%** (42 / 127) | **36.22%** (46 / 127) | **+3.15 pp (+4 tasks)** |
+| **Completion Rate** | **78.18%** (129 / 165) | **77.58%** (128 / 165) | **49.70%** (82 / 165) | **-27.88 pp (-46 tasks)** |
+
+### Key Research Findings
+1. **Accuracy Gain**: Under the frozen two-stage capability-routing architecture, V4 solved 52/165 tasks (31.52%) versus 49/165 (29.70%) for the contemporaneous matched V3 control, an observed gain of +3 tasks (+1.82 pp), with improvements concentrated in Level 1 (+5.66 pp).
+2. **Completion Rate Reduction**: V4 completion rate dropped from 77.58% to 49.70% (-27.88 pp). The completion reduction was associated primarily with worker-generation `MALFORMED_FUNCTION_CALL` finish-reason anomalies and, to a smaller extent, MAX_TOKENS truncation and other generation failures.
+3. **Audited Regression Mechanism**: 10 of 10 regressions (100%) from matched V3 were associated with worker provider anomalies (8) or token budget truncation (2); 0 regressions resulted from calculation errors following successful Python execution.
+4. **Successful-Python Subset**: On the 11 tasks where Python executed cleanly with valid answer extraction, V4 solved 9/11 (81.82%) vs. 8/11 (72.73%) for matched V3. *(Note: This comparison is descriptive only; routing is endogenous and does not represent an isolated causal estimate or proof of Python effectiveness in isolation.)*
+5. **Operational Funnel & Failure Taxonomy**:
+   - Final DIRECT worker dispatches: `74` (including 4 originating from router fallback)
+   - Final PYTHON worker dispatches: `91`
+   - Check: `74 + 91 = 165`
+   - Python executions: `18` (11 successes, 7 failures, 73 unfulfilled, 80 fallbacks; `73 + 7 = 80`)
+   - Executed Python failures: 4 MissingFinalAnswerMarker, 2 runtime failure, 1 syntax/AST rejection (total 7).
+6. **Operational Latency & Resource Tradeoffs**: V4 increased standard LLM inference attempts per task (2 vs 1) and roughly doubled average wall-clock latency (10.62s vs 5.35s).
+
+### Freeze Rule
+V4 is frozen as the immutable research baseline for explicit two-stage capability routing:
+```text
+V4 = frozen V3 + explicit two-stage DIRECT/PYTHON capability-routing architecture
+```
+Future work must not alter V4 results or configuration. Any subsequent multi-turn agent, repair loop, or reflection work belongs to V5+.
+
+---
+
 ## Getting Started
 
 ### 1. Installation
@@ -383,6 +494,9 @@ Each experiment record captures:
 ### 1. Run One Development Question (Debug / Smoke Test)
 Run a single question locally without submitting:
 ```bash
+# Run with V4 explicit two-stage capability router
+python evaluation/run_one.py --version v4 -i 0
+
 # Run with V3 controlled Python execution baseline
 python evaluation/run_one.py --version v3 -i 0
 
@@ -399,6 +513,9 @@ python evaluation/run_one.py --version v0 -i 0
 ### 2. Run a Complete Benchmark Level
 Run tasks for a specific GAIA benchmark level from local data:
 ```bash
+# Run V4 explicit two-stage capability router
+python -m evaluation.run_level --version v4 --level 1
+
 # Run V3 controlled Python execution baseline
 python -m evaluation.run_level --version v3 --level 1
 
@@ -421,6 +538,9 @@ Useful arguments:
 ### 3. Evaluate Predictions Locally
 Compute metrics (accuracy, token usage, latency, attachment breakdown, file metrics, search metrics) against local ground truth without calling Hugging Face:
 ```bash
+# Evaluate V4 predictions
+python -m evaluation.evaluate --version v4 --level 1
+
 # Evaluate V3 predictions
 python -m evaluation.evaluate --version v3 --level 1
 

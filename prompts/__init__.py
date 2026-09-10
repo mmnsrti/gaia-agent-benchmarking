@@ -14,6 +14,17 @@ from .python_execution import (
     PYTHON_EXECUTION_PROMPT_VERSION,
     build_python_execution_prompt,
 )
+from .router import (
+    ROUTER_PROMPT_VERSION,
+    ROUTER_DIRECT_WORKER_PROMPT_VERSION,
+    ROUTER_PYTHON_WORKER_PROMPT_VERSION,
+    CAPABILITY_ROUTER_SYSTEM_PROMPT,
+    ROUTER_DIRECT_WORKER_SYSTEM_PROMPT,
+    ROUTER_PYTHON_WORKER_SYSTEM_PROMPT,
+    build_router_prompt,
+    build_direct_worker_prompt,
+    build_python_worker_prompt,
+)
 
 __all__ = [
     "BASELINE_SYSTEM_PROMPT",
@@ -28,4 +39,13 @@ __all__ = [
     "PYTHON_EXECUTION_SYSTEM_PROMPT",
     "PYTHON_EXECUTION_PROMPT_VERSION",
     "build_python_execution_prompt",
+    "ROUTER_PROMPT_VERSION",
+    "ROUTER_DIRECT_WORKER_PROMPT_VERSION",
+    "ROUTER_PYTHON_WORKER_PROMPT_VERSION",
+    "CAPABILITY_ROUTER_SYSTEM_PROMPT",
+    "ROUTER_DIRECT_WORKER_SYSTEM_PROMPT",
+    "ROUTER_PYTHON_WORKER_SYSTEM_PROMPT",
+    "build_router_prompt",
+    "build_direct_worker_prompt",
+    "build_python_worker_prompt",
 ]

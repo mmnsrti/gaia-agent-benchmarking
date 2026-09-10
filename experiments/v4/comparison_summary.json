@@ -1,0 +1,74 @@
+{
+  "project_version": "v4",
+  "control_version": "matched_v3",
+  "total_tasks": 165,
+  "level_1": {
+    "total": 53,
+    "v4_correct": 28,
+    "v3_correct": 25,
+    "delta_solved": 3,
+    "v4_accuracy": 0.5283,
+    "v3_accuracy": 0.4717,
+    "delta_accuracy_pp": 5.66,
+    "v4_completed": 37,
+    "v3_completed": 43
+  },
+  "level_2": {
+    "total": 86,
+    "v4_correct": 21,
+    "v3_correct": 21,
+    "delta_solved": 0,
+    "v4_accuracy": 0.2442,
+    "v3_accuracy": 0.2442,
+    "delta_accuracy_pp": 0.0,
+    "v4_completed": 40,
+    "v3_completed": 64
+  },
+  "level_3": {
+    "total": 26,
+    "v4_correct": 3,
+    "v3_correct": 3,
+    "delta_solved": 0,
+    "v4_accuracy": 0.1154,
+    "v3_accuracy": 0.1154,
+    "delta_accuracy_pp": 0.0,
+    "v4_completed": 5,
+    "v3_completed": 21
+  },
+  "overall": {
+    "total": 165,
+    "v4_correct": 52,
+    "v3_correct": 49,
+    "net_solved_delta": 3,
+    "v4_accuracy": 0.3152,
+    "v3_accuracy": 0.297,
+    "delta_accuracy_pp": 1.82,
+    "v4_completed": 82,
+    "v3_completed": 128,
+    "completion_delta_pp": -27.88,
+    "attachment_v4_accuracy": 0.1579,
+    "attachment_v3_accuracy": 0.1842,
+    "attachment_delta_pp": -2.63,
+    "non_attachment_v4_accuracy": 0.3622,
+    "non_attachment_v3_accuracy": 0.3307,
+    "non_attachment_delta_pp": 3.15,
+    "v4_average_latency_seconds": 10.62,
+    "v3_average_latency_seconds": 5.35,
+    "v4_average_total_tokens": 3152.3,
+    "v3_average_total_tokens": 3044.5
+  },
+  "operational_caveats": {
+    "level_2_matched_v3_interrupted_resumed_quota": true,
+    "level_3_matched_v3_interrupted_resumed_quota": true,
+    "level_3_matched_v3_final_task_403_request_failure": true,
+    "search_success_telemetry_caveat": "Matched V3 summary reports 164/165 search successes because task 0bdb7c40 threw an unhandled 403 exception during LLM generation, causing runner exception handler to default search_success=False. Tavily search was actually executed upon entry; the reported search failure is a metadata synthesis artifact of the subsequent LLM request exception.",
+    "privacy_policy_compliance": true,
+    "unit_tests_passing": "226/226"
+  },
+  "scientific_conclusions": {
+    "headline": "Under the frozen V4 two-stage routing architecture, V4 solved 52/165 GAIA validation tasks (31.52%) versus 49/165 (29.70%) for the contemporaneous matched V3 control, an observed gain of 3 tasks (+1.82 percentage points). This gain coincided with a substantial reduction in completion from 77.58% to 49.70%.",
+    "system_bundle_caveat": "The V4 intervention bundles explicit routing, an additional model generation, route-specific prompting, deterministic route enforcement, and altered exposure to provider stochasticity; therefore the comparison does not isolate a pure causal effect of routing.",
+    "successful_python_subset": "On the endogenously selected 11-task subset where V4 Python execution succeeded, V4 solved 9 tasks and matched V3 solved 8. This is descriptive only and does not estimate a causal effect.",
+    "matched_v3_final_task_sensitivity": "The final matched V3 task experienced a control-side provider failure and is therefore an operational asymmetry/caveat. The same task was incorrect in V4, so the observed +3-task advantage is not created solely by this task. If matched V3 hypothetically solved this one task, the observed V4 advantage would decrease from +3 to +2 tasks rather than reverse direction."
+  }
+}
