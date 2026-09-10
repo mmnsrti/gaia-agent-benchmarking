@@ -718,6 +718,58 @@ class TestRunnerAndEvaluationIntegrationV4(unittest.TestCase):
         args = parser.parse_args(["--version", "v4"])
         self.assertEqual(args.version, "v4")
 
+    # 30: Router repeated identical markers and conflicting markers
+    def test_router_repeated_identical_and_conflicting_markers(self):
+        self.assertEqual(parse_router_decision("ROUTE: DIRECT ... ROUTE: DIRECT"), "DIRECT")
+        self.assertEqual(parse_router_decision("ROUTE: PYTHON ... ROUTE: PYTHON"), "PYTHON")
+        self.assertIsNone(parse_router_decision("ROUTE: DIRECT ... ROUTE: PYTHON"))
+        self.assertIsNone(parse_router_decision("I will direct the python worker."))
+
+    # 31: Information firewall sentinel isolation
+    def test_router_information_firewall_sentinel_isolation(self):
+        sentinel = "SENTINEL_ROUTER_SECRET_8472"
+        resp_router = LLMResponse(text=f"ROUTE: DIRECT {sentinel} - router internal notes", finish_reason="STOP")
+        resp_worker = LLMResponse(text="FINAL: safe_ans", finish_reason="STOP")
+        llm = MockMultiTurnLLMClient([resp_router, resp_worker])
+        agent = GAIARouterAgent(llm_client=llm)
+
+        agent.run("Firewall test")
+        worker_call = llm.call_history[1]
+        worker_prompt = worker_call[0]
+        self.assertNotIn(sentinel, worker_prompt)
+        self.assertNotIn("router internal notes", worker_prompt)
+        self.assertNotIn("ROUTE: DIRECT", worker_prompt)
+
+    # 32: DIRECT route locks out Python execution even if worker produces code
+    def test_direct_worker_cannot_trigger_python_execution(self):
+        resp_router = LLMResponse(text="ROUTE: DIRECT", finish_reason="STOP")
+        worker_code = "```python\nprint('malicious')\n```\nFINAL: locked_out"
+        resp_worker = LLMResponse(text=worker_code, finish_reason="STOP")
+        llm = MockMultiTurnLLMClient([resp_router, resp_worker])
+        agent = GAIARouterAgent(llm_client=llm)
+
+        result = agent.run("Code on direct test")
+        self.assertFalse(result.python_executed)
+        self.assertEqual(result.python_execution_count, 0)
+        self.assertEqual(result.final_answer, "locked_out")
+
+    # 33: PYTHON route handles AST security policy rejection with zero retries
+    def test_python_worker_policy_rejection_single_shot(self):
+        resp_router = LLMResponse(text="ROUTE: PYTHON", finish_reason="STOP")
+        worker_code = "```python\nimport subprocess\nsubprocess.run(['ls'])\nprint('FINAL_ANSWER: done')\n```\nFINAL: fallback_val"
+        resp_worker = LLMResponse(text=worker_code, finish_reason="STOP")
+        llm = MockMultiTurnLLMClient([resp_router, resp_worker])
+        agent = GAIARouterAgent(llm_client=llm)
+
+        result = agent.run("Security policy test")
+        self.assertTrue(result.python_executed)
+        self.assertFalse(result.python_success)
+        self.assertTrue(result.python_fallback)
+        self.assertEqual(result.python_result.error_type, "SecurityPolicyError")
+        self.assertEqual(result.final_answer, "fallback_val")
+        self.assertEqual(result.llm_generation_attempts, 2)
+        self.assertEqual(len(llm.call_history), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
