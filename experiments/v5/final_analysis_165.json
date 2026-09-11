@@ -1,0 +1,529 @@
+{
+  "metadata": {
+    "benchmark": "GAIA",
+    "split": "validation",
+    "total_tasks": 165,
+    "version": "v5",
+    "baseline_version": "v4_matched",
+    "scorer_name": "official-gaia-leaderboard",
+    "scorer_commit": "9f133d71362e77b3539f1514f31b9c101a545fec",
+    "analysis_date": "2026-09-11",
+    "methodology_definition": "V5 = frozen V4 + one-shot post-answer verification/revision"
+  },
+  "overall_summary": {
+    "v5": {
+      "total_tasks": 165,
+      "correct_tasks": 53,
+      "accuracy_pct": 32.12,
+      "completed_tasks": 78,
+      "completion_rate_pct": 47.27
+    },
+    "matched_v4": {
+      "total_tasks": 165,
+      "correct_tasks": 57,
+      "accuracy_pct": 34.55,
+      "completed_tasks": 85,
+      "completion_rate_pct": 51.52
+    },
+    "observed_delta": {
+      "task_delta": -4,
+      "accuracy_pp_delta": -2.43,
+      "completed_delta": -7,
+      "completion_rate_pp_delta": -4.25
+    }
+  },
+  "per_level_summary": {
+    "level_1": {
+      "total_tasks": 53,
+      "v5": {
+        "correct": 28,
+        "accuracy_pct": 52.83,
+        "completed": 31,
+        "completion_rate_pct": 58.49
+      },
+      "matched_v4": {
+        "correct": 29,
+        "accuracy_pct": 54.72,
+        "completed": 39,
+        "completion_rate_pct": 73.58
+      },
+      "observed_delta": {
+        "task_delta": -1,
+        "accuracy_pp_delta": -1.89,
+        "completed_delta": -8,
+        "completion_rate_pp_delta": -15.09
+      }
+    },
+    "level_2": {
+      "total_tasks": 86,
+      "v5": {
+        "correct": 20,
+        "accuracy_pct": 23.26,
+        "completed": 37,
+        "completion_rate_pct": 43.02
+      },
+      "matched_v4": {
+        "correct": 24,
+        "accuracy_pct": 27.91,
+        "completed": 38,
+        "completion_rate_pct": 44.19
+      },
+      "observed_delta": {
+        "task_delta": -4,
+        "accuracy_pp_delta": -4.65,
+        "completed_delta": -1,
+        "completion_rate_pp_delta": -1.17
+      }
+    },
+    "level_3": {
+      "total_tasks": 26,
+      "v5": {
+        "correct": 5,
+        "accuracy_pct": 19.23,
+        "completed": 10,
+        "completion_rate_pct": 38.46
+      },
+      "matched_v4": {
+        "correct": 4,
+        "accuracy_pct": 15.38,
+        "completed": 8,
+        "completion_rate_pct": 30.77
+      },
+      "observed_delta": {
+        "task_delta": 1,
+        "accuracy_pp_delta": 3.85,
+        "completed_delta": 2,
+        "completion_rate_pp_delta": 7.69
+      }
+    }
+  },
+  "attachment_analysis": {
+    "attachment_tasks": {
+      "count": 38,
+      "v5_correct": 6,
+      "v5_accuracy_pct": 15.79,
+      "v4_correct": 7,
+      "v4_accuracy_pct": 18.42,
+      "task_delta": -1,
+      "pp_delta": -2.63
+    },
+    "non_attachment_tasks": {
+      "count": 127,
+      "v5_correct": 47,
+      "v5_accuracy_pct": 37.01,
+      "v4_correct": 50,
+      "v4_accuracy_pct": 39.37,
+      "task_delta": -3,
+      "pp_delta": -2.36
+    },
+    "per_level": {
+      "Level 1": {
+        "att_count": 11,
+        "v5_att_correct": 2,
+        "v4_att_correct": 3,
+        "non_att_count": 42,
+        "v5_non_att_correct": 26,
+        "v4_non_att_correct": 26
+      },
+      "Level 2": {
+        "att_count": 20,
+        "v5_att_correct": 4,
+        "v4_att_correct": 4,
+        "non_att_count": 66,
+        "v5_non_att_correct": 16,
+        "v4_non_att_correct": 20
+      },
+      "Level 3": {
+        "att_count": 7,
+        "v5_att_correct": 0,
+        "v4_att_correct": 0,
+        "non_att_count": 19,
+        "v5_non_att_correct": 5,
+        "v4_non_att_correct": 4
+      }
+    }
+  },
+  "router_analysis": {
+    "v5": {
+      "direct_count": 72,
+      "direct_correct": 43,
+      "direct_accuracy_pct": 59.72,
+      "python_count": 93,
+      "python_correct": 10,
+      "python_accuracy_pct": 10.75,
+      "fallback_count": 1,
+      "fallback_rate_pct": 0.61,
+      "fallback_correct": 0
+    },
+    "matched_v4": {
+      "direct_count": 66,
+      "direct_correct": 42,
+      "direct_accuracy_pct": 63.64,
+      "python_count": 99,
+      "python_correct": 15,
+      "python_accuracy_pct": 15.15,
+      "fallback_count": 1,
+      "fallback_rate_pct": 0.61,
+      "fallback_correct": 0
+    },
+    "route_transitions": {
+      "PYTHON->PYTHON": 83,
+      "DIRECT->DIRECT": 56,
+      "DIRECT->PYTHON": 10,
+      "PYTHON->DIRECT": 16
+    },
+    "route_transition_correctness": {
+      "PYTHON->PYTHON": {
+        "total": 83,
+        "v4_correct": 12,
+        "v5_correct": 10
+      },
+      "DIRECT->DIRECT": {
+        "total": 56,
+        "v4_correct": 39,
+        "v5_correct": 35
+      },
+      "DIRECT->PYTHON": {
+        "total": 10,
+        "v4_correct": 3,
+        "v5_correct": 0
+      },
+      "PYTHON->DIRECT": {
+        "total": 16,
+        "v4_correct": 3,
+        "v5_correct": 8
+      }
+    }
+  },
+  "python_execution_funnel": {
+    "v5": {
+      "python_routed": 93,
+      "python_executed": 14,
+      "route_to_execution_rate_pct": 15.05,
+      "python_successes": 12,
+      "python_failures": 2,
+      "python_fallbacks": 81,
+      "execution_success_rate_pct": 85.71,
+      "executed_correct": 10,
+      "executed_accuracy_pct": 71.43,
+      "routed_non_executed_count": 79,
+      "routed_non_executed_correct": 0,
+      "routed_non_executed_accuracy_pct": 0.0,
+      "non_python_count": 72,
+      "non_python_correct": 43,
+      "non_python_accuracy_pct": 59.72,
+      "python_error_breakdown": {
+        "SecurityPolicyError": 1,
+        "MissingFinalAnswerMarker": 1
+      },
+      "routed_worker_error_breakdown": {
+        "malformed_function_call_finish_reason": 73,
+        "empty_worker_response": 2
+      }
+    },
+    "matched_v4": {
+      "python_routed": 99,
+      "python_executed": 25,
+      "route_to_execution_rate_pct": 25.25,
+      "python_successes": 19,
+      "python_failures": 6,
+      "python_fallbacks": 80,
+      "execution_success_rate_pct": 76.0,
+      "executed_correct": 15,
+      "executed_accuracy_pct": 60.0,
+      "routed_non_executed_count": 74,
+      "routed_non_executed_correct": 0,
+      "routed_non_executed_accuracy_pct": 0.0,
+      "non_python_count": 66,
+      "non_python_correct": 42,
+      "non_python_accuracy_pct": 63.64,
+      "python_error_breakdown": {
+        "NonZeroExitCode": 2,
+        "MissingFinalAnswerMarker": 4
+      },
+      "routed_worker_error_breakdown": {
+        "malformed_function_call_finish_reason": 63,
+        "empty_worker_response": 2
+      }
+    }
+  },
+  "tools_summary": {
+    "v5": {
+      "search_calls": 165,
+      "search_successes": 165,
+      "search_fallbacks": 0,
+      "search_success_rate_pct": 100.0,
+      "average_search_latency": 2.56,
+      "average_results_per_search": 4.75,
+      "query_truncations": 1,
+      "file_attempts": 38,
+      "file_successes": 34,
+      "file_fallbacks": 4,
+      "file_success_rate_pct": 89.47,
+      "file_truncations": 0,
+      "file_extensions": {
+        ".docx": 1,
+        ".xlsx": 13,
+        ".png": 8,
+        ".txt": 1,
+        ".pptx": 1,
+        ".mp3": 3,
+        ".py": 1,
+        ".pdb": 1,
+        ".zip": 2,
+        ".pdf": 3,
+        ".jpg": 2,
+        ".jsonld": 1,
+        ".csv": 1
+      }
+    },
+    "matched_v4": {
+      "search_calls": 165,
+      "search_successes": 165,
+      "search_fallbacks": 0,
+      "search_success_rate_pct": 100.0,
+      "average_search_latency": 3.15,
+      "average_results_per_search": 4.66,
+      "query_truncations": 1,
+      "file_attempts": 38,
+      "file_successes": 34,
+      "file_fallbacks": 4,
+      "file_success_rate_pct": 89.47,
+      "file_truncations": 0,
+      "file_extensions": {
+        ".docx": 1,
+        ".xlsx": 13,
+        ".png": 8,
+        ".txt": 1,
+        ".pptx": 1,
+        ".mp3": 3,
+        ".py": 1,
+        ".pdb": 1,
+        ".zip": 2,
+        ".pdf": 3,
+        ".jpg": 2,
+        ".jsonld": 1,
+        ".csv": 1
+      }
+    }
+  },
+  "latency_and_tokens": {
+    "v5": {
+      "avg_latency": 28.28,
+      "median_latency": 15.87,
+      "avg_input_tokens": 2399.2,
+      "avg_output_tokens": 190.9,
+      "avg_thinking_tokens": 666.4,
+      "avg_total_tokens": 3246.1,
+      "avg_router_latency": 9.43,
+      "avg_worker_latency": 12.78,
+      "avg_python_latency": 0.1,
+      "avg_verifier_latency": 7.13,
+      "verifier_tokens": {
+        "avg_input": 2298.3,
+        "avg_output": 4.4,
+        "avg_thinking": 373.1,
+        "avg_total": 2671.2
+      }
+    },
+    "matched_v4": {
+      "avg_latency": 22.63,
+      "median_latency": 13.26,
+      "avg_input_tokens": 2317.2,
+      "avg_output_tokens": 181.6,
+      "avg_thinking_tokens": 646.1,
+      "avg_total_tokens": 3143.7,
+      "avg_router_latency": 7.97,
+      "avg_worker_latency": 11.47,
+      "avg_python_latency": 0.24
+    }
+  },
+  "primary_verifier_mechanism_within_v5": {
+    "eligibility_funnel": {
+      "total_tasks": 165,
+      "candidate_available": 81,
+      "candidate_empty": 84,
+      "verifier_attempted": 81,
+      "verifier_bypassed_on_empty": 84
+    },
+    "verdicts": {
+      "keep": 78,
+      "revise": 3,
+      "fallback": 0
+    },
+    "accuracy_and_transitions": {
+      "pre_verification_correct": 53,
+      "pre_verification_accuracy_pct": 32.12,
+      "post_verification_correct": 53,
+      "post_verification_accuracy_pct": 32.12,
+      "net_verifier_task_delta": 0,
+      "net_verifier_pp_delta": 0.0,
+      "improvements": 0,
+      "regressions": 0,
+      "stable_correct": 53,
+      "stable_failure": 112
+    },
+    "per_level_verifier_transitions": {
+      "level_1": {
+        "task_count": 53,
+        "pre_correct": 28,
+        "pre_accuracy_pct": 52.83,
+        "post_correct": 28,
+        "post_accuracy_pct": 52.83,
+        "net_task_delta": 0,
+        "net_pp_delta": 0.0,
+        "improvements": 0,
+        "regressions": 0,
+        "stable_correct": 28,
+        "stable_failure": 25,
+        "eligible": 32,
+        "ineligible": 21,
+        "attempted": 32,
+        "generation_success": 32,
+        "keep_count": 30,
+        "revise_count": 2,
+        "fallback_count": 0
+      },
+      "level_2": {
+        "task_count": 86,
+        "pre_correct": 20,
+        "pre_accuracy_pct": 23.26,
+        "post_correct": 20,
+        "post_accuracy_pct": 23.26,
+        "net_task_delta": 0,
+        "net_pp_delta": 0.0,
+        "improvements": 0,
+        "regressions": 0,
+        "stable_correct": 20,
+        "stable_failure": 66,
+        "eligible": 38,
+        "ineligible": 48,
+        "attempted": 38,
+        "generation_success": 38,
+        "keep_count": 37,
+        "revise_count": 1,
+        "fallback_count": 0
+      },
+      "level_3": {
+        "task_count": 26,
+        "pre_correct": 5,
+        "pre_accuracy_pct": 19.23,
+        "post_correct": 5,
+        "post_accuracy_pct": 19.23,
+        "net_task_delta": 0,
+        "net_pp_delta": 0.0,
+        "improvements": 0,
+        "regressions": 0,
+        "stable_correct": 5,
+        "stable_failure": 21,
+        "eligible": 11,
+        "ineligible": 15,
+        "attempted": 11,
+        "generation_success": 11,
+        "keep_count": 11,
+        "revise_count": 0,
+        "fallback_count": 0
+      }
+    },
+    "revised_task_records": [
+      {
+        "task_id": "99c9cc74-fdc8-46c6-8f8d-3ce2d3bfeea3",
+        "level": 1,
+        "pre_correct": true,
+        "post_correct": true,
+        "transition": "stable_correct",
+        "answer_changed": false,
+        "revision_class": "list/item_formatting_change"
+      },
+      {
+        "task_id": "7673d772-ef80-4f0f-a602-1bf4485c9b43",
+        "level": 1,
+        "pre_correct": false,
+        "post_correct": false,
+        "transition": "stable_failure",
+        "answer_changed": true,
+        "revision_class": "numeric/unit_change"
+      },
+      {
+        "task_id": "e4e91f1c-1dcd-439e-9fdd-cb976f5293fd",
+        "level": 2,
+        "pre_correct": false,
+        "post_correct": false,
+        "transition": "stable_failure",
+        "answer_changed": true,
+        "revision_class": "list/item_formatting_change"
+      }
+    ]
+  },
+  "matched_system_transitions": {
+    "system_improvements_v4_wrong_to_v5_correct": 11,
+    "system_regressions_v4_correct_to_v5_wrong": 15,
+    "both_correct": 42,
+    "both_wrong": 97,
+    "net_system_task_delta": -4,
+    "per_level_transitions": {
+      "Level 1": {
+        "both_correct": 24,
+        "both_wrong": 20,
+        "v4_wrong_v5_correct": 4,
+        "v4_correct_v5_wrong": 5
+      },
+      "Level 2": {
+        "both_correct": 14,
+        "both_wrong": 56,
+        "v4_correct_v5_wrong": 10,
+        "v4_wrong_v5_correct": 6
+      },
+      "Level 3": {
+        "both_wrong": 21,
+        "both_correct": 4,
+        "v4_wrong_v5_correct": 1
+      }
+    },
+    "availability_transitions": {
+      "both_available": 64,
+      "both_unavailable": 68,
+      "v4_only_available": 16,
+      "v5_only_available": 17
+    }
+  },
+  "audit_summary": {
+    "6A_dataset_integrity": {
+      "status": "PASS",
+      "evidence": "165 unique tasks in both V5 and matched V4, zero duplicates, matching task IDs, matching levels and attachments."
+    },
+    "6B_scorer_integrity": {
+      "status": "PASS",
+      "evidence": "All 6 summary files and evals use official-gaia-leaderboard hash 9f133d71362e77b3539f1514f31b9c101a545fec."
+    },
+    "6C_summary_reconciliation": {
+      "status": "PASS",
+      "evidence": "All summary JSON metrics match independently recomputed task-level metrics perfectly."
+    },
+    "6D_verifier_invariants": {
+      "status": "PASS",
+      "evidence": "Zero invariant violations found across 165 tasks."
+    },
+    "6E_generation_count_audit": {
+      "status": "PASS",
+      "evidence": "Maximum LLM generation count is strictly capped at 3; no hidden retries or loops."
+    },
+    "6F_tool_invariants": {
+      "status": "PASS",
+      "evidence": "Tavily searches <= 1, Python executions <= 1, FileTool calls <= 1 across all 165 tasks."
+    },
+    "6G_privacy_audit": {
+      "status": "PASS",
+      "evidence": "No API keys or ground-truth exposures in predictions; task_transitions_165.jsonl strictly sanitized."
+    },
+    "6H_timing_discrepancy": {
+      "status": "LIMITATION",
+      "classification": "NON-BLOCKING COMPARABILITY LIMITATION",
+      "evidence": "V5 Level 2 was executed with default 1.0s delay; matched V4 Level 2 was executed with --delay 5. Inter-task delay is an operational API rate-limit throttling parameter and does not alter agent prompt, model temperature, tools, or routing logic. Telemetry confirms healthy provider execution on both sides (router fallback 1/86 on both sides; search success 86/86 on both sides)."
+    },
+    "6I_provider_health": {
+      "status": "PASS",
+      "evidence": "Router fallback rate: V5 L1=0/53, L2=1/86, L3=0/26 (total 1/165); Matched V4 L1=0/53, L2=1/86, L3=0/26 (total 1/165). No mass provider failure observed."
+    }
+  }
+}

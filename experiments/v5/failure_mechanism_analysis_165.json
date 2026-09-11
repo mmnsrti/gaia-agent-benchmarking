@@ -1,0 +1,93 @@
+{
+  "metadata": {
+    "benchmark": "GAIA",
+    "split": "validation",
+    "total_tasks": 165,
+    "version": "v5",
+    "total_failures": 112,
+    "total_successes": 53,
+    "failure_rate_pct": 67.88,
+    "analysis_date": "2026-09-11"
+  },
+  "failure_taxonomy": {
+    "category_A_no_candidate_upstream_failure": {
+      "count": 84,
+      "pct_of_failures": 75.0,
+      "pct_of_all_tasks": 50.91,
+      "description": "Upstream pipeline failed to produce a non-empty candidate answer. Verifier was bypassed by design to maintain failure safety.",
+      "subcategories": {
+        "worker_malformed_function_call_anomaly": {
+          "count": 76,
+          "pct_of_category_A": 90.48,
+          "description": "Gemini API returned finish_reason='MALFORMED_FUNCTION_CALL' despite native function calling disabled (mode='NONE')."
+        },
+        "python_execution_failure": {
+          "count": 6,
+          "pct_of_category_A": 7.14,
+          "breakdown": {
+            "python_failure_fallback": 4,
+            "python_failure_SecurityPolicyError": 1,
+            "python_failure_MissingFinalAnswerMarker": 1
+          },
+          "description": "Deterministic Python sandbox failed, timed out, or code omitted FINAL_ANSWER marker."
+        },
+        "empty_worker_response": {
+          "count": 2,
+          "pct_of_category_A": 2.38,
+          "description": "Worker LLM returned empty string or whitespace."
+        }
+      }
+    },
+    "category_B_candidate_wrong_completed": {
+      "count": 28,
+      "pct_of_failures": 25.0,
+      "pct_of_all_tasks": 16.97,
+      "description": "Upstream pipeline completed and produced a candidate answer, but candidate was incorrect according to ground truth. Verifier evaluated candidate.",
+      "subcategories": {
+        "keep_preserved_incorrect": {
+          "count": 26,
+          "pct_of_category_B": 92.86,
+          "description": "Verifier issued KEEP, preserving incorrect candidate answer."
+        },
+        "revise_still_incorrect": {
+          "count": 2,
+          "pct_of_category_B": 7.14,
+          "description": "Verifier issued REVISE, but revised answer remained incorrect according to ground truth or had upstream completion failure."
+        },
+        "verifier_fallback_preserved_incorrect": {
+          "count": 0,
+          "pct_of_category_B": 0.0,
+          "description": "Verifier encountered schema/generation error and fell back safely to candidate."
+        }
+      }
+    }
+  },
+  "attachment_failure_breakdown": {
+    "total_attachment_tasks": 38,
+    "attachment_failures": 32,
+    "attachment_failure_rate_pct": 84.21,
+    "failures_by_extension": {
+      ".docx": 1,
+      ".xlsx": 12,
+      ".png": 8,
+      ".txt": 1,
+      ".pptx": 1,
+      ".mp3": 2,
+      ".pdb": 1,
+      ".zip": 2,
+      ".jpg": 2,
+      ".jsonld": 1,
+      ".csv": 1
+    }
+  },
+  "provider_anomalies": {
+    "empty_worker_response": 2
+  },
+  "comparative_failure_shift_vs_v4": {
+    "description": "Analysis of failure shifting between matched V4 and V5 across 165 tasks.",
+    "both_failed": 97,
+    "v4_failed_v5_recovered": 11,
+    "v4_succeeded_v5_failed": 15,
+    "net_shift": -4
+  }
+}
