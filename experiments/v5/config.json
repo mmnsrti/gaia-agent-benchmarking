@@ -1,0 +1,201 @@
+{
+  "version": "v5",
+  "status": "FROZEN",
+  "evaluation_schema_version": 4,
+  "research_label": "one_shot_post_answer_verification",
+  "parent_version": "v4",
+  "parent_baseline": "frozen V4 (v4-planner-router-final)",
+  "capability_added": "one_shot_post_answer_verification",
+  "experimental_characterization": {
+    "system_level_definition": "The controlled system-level effect of introducing an explicit one-shot post-answer verification and revision stage on top of the frozen V4 capability-routing pipeline, along with its associated verifier generation call, conservative verification prompting, and deterministic answer revision / non-destructive fallback enforcement.",
+    "shorthand_label": "V5 = frozen V4 + one-shot post-answer verification/revision",
+    "confound_bundle": [
+      "one_shot_verification_generation",
+      "conservative_keep_vs_revise_prompting",
+      "deterministic_answer_revision_enforcement",
+      "non_destructive_fallback_policy",
+      "changed_exposure_to_provider_stochasticity"
+    ],
+    "non_separable_warning": "These bundled components cannot be separated by the primary V4->V5 comparison alone."
+  },
+  "research_question": "How does adding an explicit one-shot post-answer verification stage affect GAIA benchmark performance, completion, accuracy transitions (improvements vs regressions), latency, and cost relative to frozen V4?",
+  "secondary_research_question": "Does a conservative KEEP-biased verifier successfully correct superficial formatting/reasoning mistakes without inducing destructive regressions on already-correct candidate answers?",
+  "model_configuration": {
+    "model": "gemini-3.5-flash-lite",
+    "thinking_level": "medium",
+    "max_output_tokens": 2048,
+    "temperature": null,
+    "tools_mode": "NONE",
+    "function_calling_enabled": false
+  },
+  "search_configuration": {
+    "provider": "tavily",
+    "search_depth": "basic",
+    "max_results": 5,
+    "include_answer": false,
+    "include_raw_content": false,
+    "include_images": false,
+    "auto_parameters": false,
+    "max_query_length": 1500,
+    "executions_per_task": 1,
+    "query_used": "original_question",
+    "retries": 0
+  },
+  "file_configuration": {
+    "status": "inherited_from_frozen_v2_v3_v4",
+    "supported_extensions": [
+      ".txt",
+      ".md",
+      ".csv",
+      ".json",
+      ".py",
+      ".docx",
+      ".xlsx",
+      ".pptx",
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".pdf",
+      ".mp3"
+    ],
+    "unsupported_extensions": [
+      ".zip",
+      ".pdb",
+      ".jsonld",
+      ".xls"
+    ],
+    "attached_py_execution_policy": "source_text_only_never_auto_executed"
+  },
+  "python_configuration": {
+    "status": "frozen_v3_v4_semantics_strictly_preserved",
+    "max_executions_per_task": 1,
+    "timeout_seconds": 15.0,
+    "max_output_length": 20000,
+    "isolated_workspace": true,
+    "mode": "python_isolated_mode (-I)",
+    "security_policy": "static_ast_validation_blocking_network_subprocesses_and_system_evasion",
+    "fallback_on_failure": true,
+    "retries_permitted": 0,
+    "isolation_type": "best_effort_research_execution_isolation",
+    "extraction_contract": "FINAL_ANSWER: <answer>",
+    "known_marker_failure_preserved": true
+  },
+  "router_configuration": {
+    "status": "frozen_v4_semantics_strictly_preserved",
+    "generation_attempts": 1,
+    "output_contract": "ROUTE: DIRECT or ROUTE: PYTHON",
+    "allowed_routes": [
+      "DIRECT",
+      "PYTHON"
+    ],
+    "fallback_policy": "pre_registered_conservative_deterministic_fallback_to_direct_without_python"
+  },
+  "worker_configuration": {
+    "status": "frozen_v4_semantics_strictly_preserved",
+    "generation_attempts": 1,
+    "direct_output_contract": "FINAL: <answer>",
+    "python_output_contract": "```python ... ``` printing FINAL_ANSWER: <answer>"
+  },
+  "verifier_configuration": {
+    "generation_attempts_max": 1,
+    "prompt_version": "answer-verifier-v1",
+    "allowed_verdicts": [
+      "KEEP",
+      "REVISE"
+    ],
+    "output_contract": "VERDICT: KEEP or VERDICT: REVISE with FINAL: <corrected answer>",
+    "eligibility_policy": "candidate_answer and candidate_answer.strip()",
+    "information_firewall": true,
+    "multimodal_bytes_reuse": true,
+    "non_destructive_fallback": true,
+    "allowed_error_types": [
+      "provider_timeout",
+      "provider_api_error",
+      "malformed_function_call_finish_reason",
+      "empty_verifier_response",
+      "missing_verdict",
+      "ambiguous_verdict",
+      "malformed_verifier_text",
+      "revise_missing_final",
+      "revise_empty_final"
+    ]
+  },
+  "frozen_invariants": {
+    "router_generation_attempts": 1,
+    "worker_generation_attempts": 1,
+    "verifier_generation_attempts_range": [
+      0,
+      1
+    ],
+    "llm_generation_attempts_range": [
+      1,
+      3
+    ],
+    "python_execution_count_range": [
+      0,
+      1
+    ],
+    "search_call_count_max": 1,
+    "file_call_count_max": 1,
+    "retries_permitted": 0,
+    "reflection_loop": false,
+    "repair_agent": false,
+    "autonomous_tool_loop": false,
+    "function_calling_enabled": false
+  },
+  "prompt_versions": {
+    "router": "capability-router-v1",
+    "worker_direct": "router-direct-worker-v1",
+    "worker_python": "router-python-worker-v1",
+    "verifier": "answer-verifier-v1"
+  },
+  "dataset": {
+    "name": "GAIA 2023 Validation",
+    "split": "validation",
+    "total_tasks": 165,
+    "level_1_tasks": 53,
+    "level_2_tasks": 86,
+    "level_3_tasks": 26
+  },
+  "scorer": {
+    "name": "official-gaia-leaderboard",
+    "commit": "9f133d71362e77b3539f1514f31b9c101a545fec"
+  },
+  "matched_control_protocol": {
+    "control_version": "v4",
+    "directory": "experiments/v5_matched_v4/",
+    "requirement": "Contemporaneous matched V4 control required for controlled matched comparisons."
+  },
+  "canonical_results": {
+    "v5_accuracy": "53/165 = 32.12%",
+    "matched_v4_accuracy": "57/165 = 34.55%",
+    "delta": "-4 tasks (-2.42 pp)",
+    "within_v5_verifier": {
+      "pre_verification_correct": "53/165 = 32.12%",
+      "post_verification_correct": "53/165 = 32.12%",
+      "net_verifier_delta": "0 tasks (0.00 pp)",
+      "improvements": 0,
+      "regressions": 0,
+      "stable_correct": 53,
+      "stable_failure": 112,
+      "eligible_candidates": 81,
+      "keep_verdicts": 78,
+      "revise_verdicts": 3,
+      "verifier_fallbacks": 0
+    },
+    "v5_completion": "78/165 = 47.27%",
+    "matched_v4_completion": "85/165 = 51.52%",
+    "attachment": {
+      "total": 38,
+      "v5": "6/38 = 15.79%",
+      "matched_v4": "7/38 = 18.42%",
+      "delta": "-1 task (-2.63 pp)"
+    },
+    "non_attachment": {
+      "total": 127,
+      "v5": "47/127 = 37.01%",
+      "matched_v4": "50/127 = 39.37%",
+      "delta": "-3 tasks (-2.36 pp)"
+    }
+  }
+}
