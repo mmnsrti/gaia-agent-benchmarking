@@ -197,7 +197,7 @@ All 3 revised tasks resulted in net-neutral correctness transitions:
 
 It is vital to distinguish between two separate V4 results documented in this repository:
 1. **Historical Frozen V4 Canonical Result**: **52 / 165 (31.52%)**, established during the V4 freeze (`experiments/v4/`).
-2. **Contemporaneous Matched V4 Control**: **57 / 165 (34.55%)**, executed alongside V5 under identical environment conditions during the V5 experimental campaign (`experiments/v5_matched_v4/`).
+2. **Contemporaneous Matched V4 Control**: **57 / 165 (34.55%)**, executed as the contemporaneous comparison baseline using the frozen V4 architecture. The runs were comparable in benchmark and scoring setup but were not identical in every operational condition.
 
 The 57/165 matched control does **NOT** replace the historical frozen V4 canonical baseline. It serves as the contemporaneous control for the V5 campaign.
 
@@ -244,7 +244,7 @@ Telemetry across the separate benchmark executions:
 | **Mean Verifier Tokens (when invoked)** | 2,671.2 | N/A | N/A |
 | **Maximum LLM Calls per Task** | 3 | 2 | +1 call |
 
-Adding the verifier increased average end-to-end latency by +5.65 seconds across the full 165 tasks. On the 81 tasks where the verifier was invoked, the verification call averaged 7.13 seconds and 2,671.2 tokens.
+Observed mean end-to-end latency was 28.28s for V5 versus 22.63s for the matched V4 control, an observed system-level difference of +5.65s across separate runs. This difference should not be interpreted as the exact causal cost of the verifier. The verifier stage itself averaged 7.13s on tasks where it was invoked.
 
 ---
 

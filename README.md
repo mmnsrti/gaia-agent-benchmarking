@@ -528,7 +528,7 @@ The within-V5 verifier effect was 0 tasks / 0.00 pp under the official scorer. T
 3. **High KEEP Rate on Incorrect Candidates**: The verifier accepted 92.86% of incorrect candidate answers that reached it (26 / 28), reflecting high acceptance of plausible-sounding candidates.
 4. **Upstream Candidate Starvation**: 84 of 112 failures (75.00%) occurred upstream of the verifier, primarily driven by provider-reported `MALFORMED_FUNCTION_CALL` finish-reason anomalies (76 tasks) on Python workers.
 5. **Matched System-Level Comparison**: The observed -4 task difference between V5 (53) and matched V4 (57) occurred across separate stochastic runs and should not be attributed to any single mechanism without stronger causal evidence.
-6. **Operational Cost**: Adding the verifier increased end-to-end latency by +5.65 seconds on average across all 165 tasks (averaging 7.13 seconds when invoked).
+6. **Operational Cost**: V5 showed an observed +5.65s mean end-to-end latency difference versus the matched V4 control across separate runs; this is not an isolated causal measurement of verifier overhead. The verifier stage averaged 7.13s when invoked.
 
 ### Limitations
 - The comparison between V5 and matched V4 was conducted across separate stochastic runs under the provider-default sampling configuration (temperature not explicitly fixed).
