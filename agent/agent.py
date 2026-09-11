@@ -1,5 +1,6 @@
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Optional
 from prompts.baseline import build_baseline_prompt, PROMPT_VERSION
@@ -14,10 +15,17 @@ from prompts.router import (
     build_direct_worker_prompt,
     build_python_worker_prompt,
 )
+from prompts.verification import (
+    VERIFICATION_PROMPT_VERSION,
+    build_verifier_prompt,
+    parse_verifier_result,
+    VerifierParseResult,
+)
 from tools.web_search import TavilySearchTool, WebSearchResult
 from tools.file_tool import FileTool, FileResult
 from tools.python_tool import PythonTool, PythonResult
 from .llm import LLMResponse
+
 
 
 @dataclass
@@ -72,6 +80,27 @@ class AgentResult:
     worker_generation_success: bool = False
     llm_generation_attempts: int = 1
     llm_generation_success_count: int = 1
+    # Verifier metadata (V5)
+    pre_verification_answer: Optional[str] = None
+    post_verification_answer: Optional[str] = None
+    verifier_eligible: bool = False
+    verifier_attempted: bool = False
+    verifier_generation_attempts: int = 0
+    verifier_generation_success: bool = False
+    verifier_finish_reason: Optional[str] = None
+    verifier_error_type: Optional[str] = None
+    verifier_verdict: Optional[str] = None
+    verifier_revised: bool = False
+    verifier_fallback: bool = False
+    verifier_latency_seconds: Optional[float] = None
+    verifier_input_tokens: Optional[int] = None
+    verifier_output_tokens: Optional[int] = None
+    verifier_thinking_tokens: Optional[int] = None
+    verifier_total_tokens: Optional[int] = None
+    verifier_prompt_version: Optional[str] = None
+    verifier_prompt: Optional[str] = None
+    verifier_raw_response: Optional[str] = None
+
 
     @property
     def python_analysis_prompt(self) -> Optional[str]:
@@ -863,3 +892,210 @@ class GAIARouterAgent(GAIAFileAgent):
 
     def __call__(self, question: str, file_path: Optional[str] = None) -> str:
         return self.run(question, file_path=file_path).final_answer
+
+
+class GAIAVerificationAgent(GAIARouterAgent):
+    """V5 One-Shot Post-Answer Verification Agent.
+
+    Inherits the exact frozen V4 pipeline:
+    Tavily search -> FileTool -> Router LLM -> Worker LLM -> optional Python execution -> candidate answer.
+
+    Then executes at most one conservative post-answer verification call:
+    - Candidate empty: verifier skipped, final answer remains empty.
+    - Candidate non-empty: verifier LLM called (with mode="NONE").
+    - Verifier returns KEEP: keep candidate answer.
+    - Verifier returns REVISE: adopt revised answer.
+    - Verifier returns INVALID / error / timeout: fallback to candidate answer non-destructively.
+    """
+
+    def __init__(
+        self,
+        llm_client: Any,
+        search_tool: Optional[Any] = None,
+        file_tool: Optional[Any] = None,
+        python_tool: Optional[Any] = None,
+        tavily_tool: Optional[Any] = None,
+    ):
+        st = search_tool or tavily_tool
+        super().__init__(llm_client=llm_client, search_tool=st, file_tool=file_tool, python_tool=python_tool)
+
+    def run(self, question: str, file_path: Optional[str] = None) -> AgentResult:
+        # 1. Execute frozen V4 pipeline via super()
+        v4_result = super().run(question, file_path=file_path)
+
+        pre_verification_answer = v4_result.final_answer
+        verifier_eligible = bool(pre_verification_answer and pre_verification_answer.strip())
+
+        if not verifier_eligible:
+            # Skip verifier completely
+            v4_result.pre_verification_answer = pre_verification_answer
+            v4_result.post_verification_answer = pre_verification_answer
+            v4_result.verifier_eligible = False
+            v4_result.verifier_attempted = False
+            v4_result.verifier_generation_attempts = 0
+            v4_result.verifier_generation_success = False
+            v4_result.verifier_finish_reason = None
+            v4_result.verifier_error_type = None
+            v4_result.verifier_verdict = None
+            v4_result.verifier_revised = False
+            v4_result.verifier_fallback = False
+            v4_result.verifier_latency_seconds = None
+            v4_result.verifier_input_tokens = None
+            v4_result.verifier_output_tokens = None
+            v4_result.verifier_thinking_tokens = None
+            v4_result.verifier_total_tokens = None
+            v4_result.verifier_prompt_version = None
+            v4_result.verifier_prompt = None
+            v4_result.verifier_raw_response = None
+            return v4_result
+
+        # 2. Candidate is non-empty -> Attempt one-shot verification
+        # Information Firewall: Verifier receives ONLY question, candidate answer,
+        # already-retrieved web evidence, already-processed file evidence, and attachment filename.
+        # No raw router/worker reasoning, ground truth, code, or stdout/stderr.
+
+        search_res = v4_result.search_result
+        if search_res and getattr(search_res, "success", False):
+            if hasattr(search_res, "format_evidence_block"):
+                web_evidence = search_res.format_evidence_block()
+            elif hasattr(search_res, "formatted_snippets"):
+                web_evidence = search_res.formatted_snippets
+            else:
+                web_evidence = str(search_res)
+        else:
+            web_evidence = "[Web search unavailable]"
+
+        file_res = v4_result.file_result
+        file_evidence = None
+        attachment_filename = None
+        attachment_parts = None
+
+        if file_res and not v4_result.file_fallback:
+            attachment_filename = file_res.file_name
+            if (file_res.content_mode in ("native_multimodal", "native") or not file_res.text_content) and file_res.native_bytes:
+                try:
+                    from google.genai import types
+                    mime = file_res.mime_type or "application/octet-stream"
+                    part = types.Part.from_bytes(data=file_res.native_bytes, mime_type=mime)
+                    attachment_parts = [part]
+                    file_evidence = f"[Attached file provided as native multimodal input: {file_res.file_name} ({mime})]"
+                except Exception:
+                    file_evidence = f"[Attached file: {file_res.file_name}]"
+            else:
+                file_evidence = file_res.text_content or f"[Attached file: {file_res.file_name}]"
+
+        verifier_prompt = build_verifier_prompt(
+            question=question,
+            candidate_answer=pre_verification_answer,
+            web_evidence=web_evidence,
+            file_evidence=file_evidence,
+            attachment_filename=attachment_filename,
+        )
+
+        verifier_generation_attempts = 1
+        verifier_generation_success = False
+        verifier_llm_resp = None
+        verifier_raw_response = None
+        verifier_error_type = None
+        verifier_start = time.time()
+
+        try:
+            verifier_llm_resp = self.llm.generate(verifier_prompt, attachment_parts=attachment_parts)
+            verifier_generation_success = True
+            if isinstance(verifier_llm_resp, LLMResponse):
+                verifier_raw_response = verifier_llm_resp.raw_text if verifier_llm_resp.raw_text else verifier_llm_resp.text
+                if verifier_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
+                    verifier_error_type = "malformed_function_call_finish_reason"
+            else:
+                verifier_raw_response = str(verifier_llm_resp)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "timeout" in err_str or "deadline" in err_str:
+                verifier_error_type = "provider_timeout"
+            elif "malformed_function_call" in err_str:
+                verifier_error_type = "malformed_function_call_finish_reason"
+            else:
+                verifier_error_type = "provider_api_error"
+            verifier_raw_response = None
+
+        verifier_latency = round(time.time() - verifier_start, 2)
+
+        verifier_finish_reason = getattr(verifier_llm_resp, "finish_reason", None) if verifier_llm_resp else None
+        verifier_input_tokens = getattr(verifier_llm_resp, "input_tokens", None) if verifier_llm_resp else None
+        verifier_output_tokens = getattr(verifier_llm_resp, "output_tokens", None) if verifier_llm_resp else None
+        verifier_thinking_tokens = getattr(verifier_llm_resp, "thinking_tokens", None) if verifier_llm_resp else None
+        verifier_total_tokens = getattr(verifier_llm_resp, "total_tokens", None) if verifier_llm_resp else None
+        if verifier_total_tokens is None and verifier_input_tokens is not None and verifier_output_tokens is not None:
+            verifier_total_tokens = verifier_input_tokens + verifier_output_tokens
+
+        # 3. Parse verifier response and apply non-destructive policy
+        post_verification_answer = pre_verification_answer
+        verifier_verdict = None
+        verifier_revised = False
+        verifier_fallback = False
+
+        if verifier_error_type is not None:
+            verifier_fallback = True
+        else:
+            parse_result = parse_verifier_result(verifier_raw_response)
+            if parse_result.is_valid:
+                if parse_result.verdict == "KEEP":
+                    verifier_verdict = "KEEP"
+                    verifier_revised = False
+                    verifier_fallback = False
+                    post_verification_answer = pre_verification_answer
+                elif parse_result.verdict == "REVISE":
+                    cleaned = self.clean_answer(parse_result.revised_answer or "")
+                    if cleaned:
+                        verifier_verdict = "REVISE"
+                        verifier_revised = True
+                        verifier_fallback = False
+                        post_verification_answer = cleaned
+                    else:
+                        verifier_verdict = None
+                        verifier_revised = False
+                        verifier_fallback = True
+                        verifier_error_type = "revise_empty_final"
+                        post_verification_answer = pre_verification_answer
+            else:
+                verifier_verdict = None
+                verifier_revised = False
+                verifier_fallback = True
+                verifier_error_type = parse_result.error_type
+                post_verification_answer = pre_verification_answer
+
+        # Total generations accounting
+        total_llm_attempts = v4_result.llm_generation_attempts + verifier_generation_attempts
+        total_llm_success = v4_result.llm_generation_success_count + (1 if verifier_generation_success else 0)
+
+        # Update and return result
+        v4_result.pre_verification_answer = pre_verification_answer
+        v4_result.post_verification_answer = post_verification_answer
+        v4_result.final_answer = post_verification_answer
+        v4_result.prompt_version = VERIFICATION_PROMPT_VERSION
+        v4_result.verifier_eligible = True
+        v4_result.verifier_attempted = True
+        v4_result.verifier_generation_attempts = verifier_generation_attempts
+        v4_result.verifier_generation_success = verifier_generation_success
+        v4_result.verifier_finish_reason = verifier_finish_reason
+        v4_result.verifier_error_type = verifier_error_type
+        v4_result.verifier_verdict = verifier_verdict
+        v4_result.verifier_revised = verifier_revised
+        v4_result.verifier_fallback = verifier_fallback
+        v4_result.verifier_latency_seconds = verifier_latency
+        v4_result.verifier_input_tokens = verifier_input_tokens
+        v4_result.verifier_output_tokens = verifier_output_tokens
+        v4_result.verifier_thinking_tokens = verifier_thinking_tokens
+        v4_result.verifier_total_tokens = verifier_total_tokens
+        v4_result.verifier_prompt_version = VERIFICATION_PROMPT_VERSION
+        v4_result.verifier_prompt = verifier_prompt
+        v4_result.verifier_raw_response = verifier_raw_response
+        v4_result.llm_generation_attempts = total_llm_attempts
+        v4_result.llm_generation_count = total_llm_attempts
+        v4_result.llm_generation_success_count = total_llm_success
+
+        return v4_result
+
+    def __call__(self, question: str, file_path: Optional[str] = None) -> str:
+        return self.run(question, file_path=file_path).final_answer
+

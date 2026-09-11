@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-from agent import GAIAAgent, GAIAWebAgent, GAIAFileAgent, GAIAPythonAgent, GAIARouterAgent, LLMClient
+from agent import GAIAAgent, GAIAWebAgent, GAIAFileAgent, GAIAPythonAgent, GAIARouterAgent, GAIAVerificationAgent, LLMClient
 from prompts.baseline import PROMPT_VERSION
 from evaluation.experiment_logger import get_git_metadata
 
@@ -87,7 +87,9 @@ def execute_task(
     if llm is None:
         llm = LLMClient()
     if agent is None:
-        if project_version == "v4":
+        if project_version == "v5":
+            agent = GAIAVerificationAgent(llm_client=llm)
+        elif project_version == "v4":
             agent = GAIARouterAgent(llm_client=llm)
         elif project_version == "v3":
             agent = GAIAPythonAgent(llm_client=llm)
@@ -98,7 +100,9 @@ def execute_task(
         else:
             agent = GAIAAgent(llm_client=llm)
 
-    if isinstance(agent, GAIARouterAgent) and project_version in ("v0", "v1", "v2", "v3"):
+    if isinstance(agent, GAIAVerificationAgent) and project_version in ("v0", "v1", "v2", "v3", "v4"):
+        project_version = "v5"
+    elif isinstance(agent, GAIARouterAgent) and project_version in ("v0", "v1", "v2", "v3"):
         project_version = "v4"
     elif isinstance(agent, GAIAPythonAgent) and project_version in ("v0", "v1", "v2"):
         project_version = "v3"
@@ -149,7 +153,7 @@ def execute_task(
 
     start_time = time.time()
     try:
-        if isinstance(agent, (GAIAFileAgent, GAIAPythonAgent, GAIARouterAgent)):
+        if isinstance(agent, (GAIAFileAgent, GAIAPythonAgent, GAIARouterAgent, GAIAVerificationAgent)):
             target_path = resolved_file_path or clean_file_path or clean_file_name
             result = agent.run(question, file_path=target_path)
         else:
@@ -196,11 +200,14 @@ def execute_task(
     latency = round(time.time() - start_time, 2)
 
     # Prompt provenance extraction
-    is_v4 = (project_version == "v4") or isinstance(agent, GAIARouterAgent)
-    is_v3 = ((project_version == "v3") or isinstance(agent, GAIAPythonAgent)) and not is_v4
-    file_enabled = ((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3 and not is_v4
+    is_v5 = (project_version == "v5") or isinstance(agent, GAIAVerificationAgent)
+    is_v4 = (((project_version == "v4") or isinstance(agent, GAIARouterAgent)) and not is_v5)
+    is_v3 = (((project_version == "v3") or isinstance(agent, GAIAPythonAgent)) and not is_v4 and not is_v5)
+    file_enabled = (((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3 and not is_v4 and not is_v5)
     if result is None:
-        if is_v4:
+        if is_v5:
+            prompt_ver = "answer-verifier-v1"
+        elif is_v4:
             prompt_ver = "capability-router-v1"
         elif is_v3:
             prompt_ver = "python-execution-v1"
@@ -215,7 +222,7 @@ def execute_task(
     fallback_prompt_ver = getattr(result, "fallback_prompt_version", None) if result else None
 
     if primary_prompt_ver is None:
-        if is_v4:
+        if is_v5 or is_v4:
             primary_prompt_ver = "capability-router-v1"
         elif is_v3:
             primary_prompt_ver = "python-execution-v1"
@@ -227,7 +234,7 @@ def execute_task(
             primary_prompt_ver = prompt_ver or "baseline-v1"
 
     if fallback_prompt_ver is None:
-        if is_v4:
+        if is_v5 or is_v4:
             fallback_prompt_ver = "router-direct-worker-v1" if getattr(result, "router_fallback", False) else None
         elif is_v3:
             fallback_prompt_ver = None
@@ -337,7 +344,11 @@ def execute_task(
     python_fallback = getattr(result, "python_fallback", False) if result else False
     python_execution_count = 1 if python_executed else 0
     assert python_execution_count in (0, 1), f"Execution count {python_execution_count} not in {0, 1}"
-    if is_v4:
+    if is_v5:
+        llm_generation_attempts = getattr(result, "llm_generation_attempts", 3 if completion_success else 1) if result else (3 if completion_success else 1)
+        assert llm_generation_attempts in (1, 2, 3), f"LLM generation attempts {llm_generation_attempts} not in (1, 2, 3)"
+        llm_generation_count = llm_generation_attempts
+    elif is_v4:
         llm_generation_attempts = getattr(result, "llm_generation_attempts", 2 if completion_success else 1) if result else (2 if completion_success else 1)
         assert llm_generation_attempts in (1, 2), f"LLM generation attempts {llm_generation_attempts} not in (1, 2)"
         llm_generation_count = llm_generation_attempts
@@ -347,22 +358,22 @@ def execute_task(
         llm_generation_attempts = llm_generation_count
     python_prompt_version = getattr(result, "python_prompt_version", None) if result else None
 
-    # Router metadata (V4)
+    # Router metadata (V4 & V5)
     router_decision = getattr(result, "router_decision", None) if result else None
     router_success = getattr(result, "router_success", False) if result else False
     router_fallback = getattr(result, "router_fallback", False) if result else False
     router_error_type = getattr(result, "router_error_type", None) if result else None
-    router_prompt_version = getattr(result, "router_prompt_version", "capability-router-v1" if is_v4 else None) if result else ("capability-router-v1" if is_v4 else None)
+    router_prompt_version = getattr(result, "router_prompt_version", "capability-router-v1" if (is_v4 or is_v5) else None) if result else ("capability-router-v1" if (is_v4 or is_v5) else None)
     router_prompt = getattr(result, "router_prompt", None) if result else None
     router_raw_response = getattr(result, "router_raw_response", None) if result else None
     router_latency_seconds = getattr(result, "router_latency_seconds", None) if result else None
     router_input_tokens = getattr(result, "router_input_tokens", None) if result else None
     router_output_tokens = getattr(result, "router_output_tokens", None) if result else None
     router_thinking_tokens = getattr(result, "router_thinking_tokens", None) if result else None
-    router_generation_attempts = getattr(result, "router_generation_attempts", 1 if is_v4 else 0) if result else (1 if is_v4 else 0)
+    router_generation_attempts = getattr(result, "router_generation_attempts", 1 if (is_v4 or is_v5) else 0) if result else (1 if (is_v4 or is_v5) else 0)
     router_generation_success = getattr(result, "router_generation_success", False) if result else False
 
-    # Worker metadata (V4)
+    # Worker metadata (V4 & V5)
     worker_mode = getattr(result, "worker_mode", None) if result else None
     worker_success = getattr(result, "worker_success", False) if result else False
     worker_error_type = getattr(result, "worker_error_type", None) if result else None
@@ -373,14 +384,38 @@ def execute_task(
     worker_input_tokens = getattr(result, "worker_input_tokens", None) if result else None
     worker_output_tokens = getattr(result, "worker_output_tokens", None) if result else None
     worker_thinking_tokens = getattr(result, "worker_thinking_tokens", None) if result else None
-    worker_generation_attempts = getattr(result, "worker_generation_attempts", 1 if is_v4 else 0) if result else (1 if is_v4 else 0)
+    worker_generation_attempts = getattr(result, "worker_generation_attempts", 1 if (is_v4 or is_v5) else 0) if result else (1 if (is_v4 or is_v5) else 0)
     worker_generation_success = getattr(result, "worker_generation_success", False) if result else False
 
-    llm_generation_success_count = getattr(
-        result,
-        "llm_generation_success_count",
-        (1 if router_generation_success else 0) + (1 if worker_generation_success else 0) if is_v4 else (1 if completion_success else 0),
-    ) if result else 0
+    # Verifier metadata (V5)
+    pre_verification_answer = getattr(result, "pre_verification_answer", None) if result else None
+    post_verification_answer = getattr(result, "post_verification_answer", None) if result else None
+    verifier_eligible = getattr(result, "verifier_eligible", False) if result else False
+    verifier_attempted = getattr(result, "verifier_attempted", False) if result else False
+    verifier_generation_attempts = getattr(result, "verifier_generation_attempts", 0) if result else 0
+    verifier_generation_success = getattr(result, "verifier_generation_success", False) if result else False
+    verifier_finish_reason = getattr(result, "verifier_finish_reason", None) if result else None
+    verifier_error_type = getattr(result, "verifier_error_type", None) if result else None
+    verifier_verdict = getattr(result, "verifier_verdict", None) if result else None
+    verifier_revised = getattr(result, "verifier_revised", False) if result else False
+    verifier_fallback = getattr(result, "verifier_fallback", False) if result else False
+    verifier_latency_seconds = getattr(result, "verifier_latency_seconds", None) if result else None
+    verifier_input_tokens = getattr(result, "verifier_input_tokens", None) if result else None
+    verifier_output_tokens = getattr(result, "verifier_output_tokens", None) if result else None
+    verifier_thinking_tokens = getattr(result, "verifier_thinking_tokens", None) if result else None
+    verifier_total_tokens = getattr(result, "verifier_total_tokens", None) if result else None
+    verifier_prompt_version = getattr(result, "verifier_prompt_version", None) if result else None
+    verifier_prompt = getattr(result, "verifier_prompt", None) if result else None
+    verifier_raw_response = getattr(result, "verifier_raw_response", None) if result else None
+
+    default_gen_success = (
+        ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0) + (1 if verifier_generation_success else 0))
+        if is_v5
+        else ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0))
+        if is_v4
+        else (1 if completion_success else 0)
+    )
+    llm_generation_success_count = getattr(result, "llm_generation_success_count", default_gen_success) if result else 0
 
     if py_result is not None:
         python_success = py_result.success
@@ -401,7 +436,12 @@ def execute_task(
         python_stderr_length = 0
         python_output_truncated = False
 
-    resolved_schema_version = 3 if is_v4 and schema_version == 2 else schema_version
+    if is_v5 and schema_version < 4:
+        resolved_schema_version = 4
+    elif is_v4 and schema_version < 3:
+        resolved_schema_version = 3
+    else:
+        resolved_schema_version = schema_version
 
     return {
         "schema_version": resolved_schema_version,
@@ -502,8 +542,8 @@ def execute_task(
         "python_fallback": python_fallback,
         "llm_generation_count": llm_generation_count,
 
-        # Router metadata (V4)
-        "router_requested": True if is_v4 else False,
+        # Router metadata (V4 & V5)
+        "router_requested": True if (is_v4 or is_v5) else False,
         "router_decision": router_decision,
         "router_success": router_success,
         "router_fallback": router_fallback,
@@ -518,7 +558,7 @@ def execute_task(
         "router_generation_attempts": router_generation_attempts,
         "router_generation_success": router_generation_success,
 
-        # Worker metadata (V4)
+        # Worker metadata (V4 & V5)
         "worker_mode": worker_mode,
         "worker_success": worker_success,
         "worker_error_type": worker_error_type,
@@ -532,7 +572,28 @@ def execute_task(
         "worker_generation_attempts": worker_generation_attempts,
         "worker_generation_success": worker_generation_success,
 
-        # Generation counts (V4)
+        # Verifier metadata (V5)
+        "verifier_eligible": verifier_eligible,
+        "verifier_attempted": verifier_attempted,
+        "verifier_generation_attempts": verifier_generation_attempts,
+        "verifier_generation_success": verifier_generation_success,
+        "verifier_finish_reason": verifier_finish_reason,
+        "verifier_error_type": verifier_error_type,
+        "verifier_verdict": verifier_verdict,
+        "verifier_revised": verifier_revised,
+        "verifier_fallback": verifier_fallback,
+        "verifier_latency_seconds": verifier_latency_seconds,
+        "verifier_input_tokens": verifier_input_tokens,
+        "verifier_output_tokens": verifier_output_tokens,
+        "verifier_thinking_tokens": verifier_thinking_tokens,
+        "verifier_total_tokens": verifier_total_tokens,
+        "verifier_prompt_version": verifier_prompt_version,
+        "verifier_prompt": verifier_prompt,
+        "verifier_raw_response": verifier_raw_response,
+        "pre_verification_answer": pre_verification_answer,
+        "post_verification_answer": post_verification_answer,
+
+        # Generation counts
         "llm_generation_attempts": llm_generation_attempts,
         "llm_generation_success_count": llm_generation_success_count,
     }
