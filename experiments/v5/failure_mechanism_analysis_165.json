@@ -19,7 +19,7 @@
         "worker_malformed_function_call_anomaly": {
           "count": 76,
           "pct_of_category_A": 90.48,
-          "description": "Gemini API returned finish_reason='MALFORMED_FUNCTION_CALL' despite native function calling disabled (mode='NONE')."
+          "description": "provider-reported MALFORMED_FUNCTION_CALL finish-reason anomaly despite native function calling being disabled"
         },
         "python_execution_failure": {
           "count": 6,
@@ -42,7 +42,7 @@
       "count": 28,
       "pct_of_failures": 25.0,
       "pct_of_all_tasks": 16.97,
-      "description": "Upstream pipeline completed and produced a candidate answer, but candidate was incorrect according to ground truth. Verifier evaluated candidate.",
+      "description": "Upstream pipeline completed and produced a candidate answer, but candidate was incorrect under official scoring. Verifier evaluated candidate.",
       "subcategories": {
         "keep_preserved_incorrect": {
           "count": 26,
@@ -52,7 +52,7 @@
         "revise_still_incorrect": {
           "count": 2,
           "pct_of_category_B": 7.14,
-          "description": "Verifier issued REVISE, but revised answer remained incorrect according to ground truth or had upstream completion failure."
+          "description": "Verifier issued REVISE, but revised answer remained incorrect under official scoring or had upstream completion failure."
         },
         "verifier_fallback_preserved_incorrect": {
           "count": 0,

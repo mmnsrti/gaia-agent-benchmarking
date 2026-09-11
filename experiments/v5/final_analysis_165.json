@@ -8,7 +8,8 @@
     "scorer_name": "official-gaia-leaderboard",
     "scorer_commit": "9f133d71362e77b3539f1514f31b9c101a545fec",
     "analysis_date": "2026-09-11",
-    "methodology_definition": "V5 = frozen V4 + one-shot post-answer verification/revision"
+    "methodology_definition": "V5 = frozen V4 + one-shot post-answer verification/revision",
+    "sampling_configuration": "provider-default sampling configuration (temperature not explicitly fixed)"
   },
   "overall_summary": {
     "v5": {
@@ -433,7 +434,8 @@
         "post_correct": true,
         "transition": "stable_correct",
         "answer_changed": false,
-        "revision_class": "list/item_formatting_change"
+        "revision_class": "formatting normalization",
+        "sanitized_description": "Candidate answer was already correct under official scoring. Verifier confirmed and preserved normalized answer format."
       },
       {
         "task_id": "7673d772-ef80-4f0f-a602-1bf4485c9b43",
@@ -442,7 +444,8 @@
         "post_correct": false,
         "transition": "stable_failure",
         "answer_changed": true,
-        "revision_class": "numeric/unit_change"
+        "revision_class": "factual/content revision",
+        "sanitized_description": "Upstream candidate was a markdown list. Verifier revised it to a concise term, but the revised answer remained incorrect under the official scorer."
       },
       {
         "task_id": "e4e91f1c-1dcd-439e-9fdd-cb976f5293fd",
@@ -451,7 +454,8 @@
         "post_correct": false,
         "transition": "stable_failure",
         "answer_changed": true,
-        "revision_class": "list/item_formatting_change"
+        "revision_class": "list reduction",
+        "sanitized_description": "Upstream worker encountered token truncation (MAX_TOKENS). Verifier revision produced text compatible with expected answer format/content, but the task remained officially incorrect under the benchmark completion/scoring state."
       }
     ]
   },

@@ -2,20 +2,31 @@
 
 ## 1. Audit Overview
 
-This document constitutes the formal **Post-Benchmark Scientific Audit** of the **V5 (One-Shot Post-Answer Verification)** release of the GAIA Agent Benchmarking framework.
+This document presents the formal **Post-Benchmark Scientific Audit** for **V5 (One-Shot Post-Answer Verification)** within the GAIA Agent Benchmarking framework.
 
 The audit evaluates the empirical validity, architectural adherence, data integrity, and methodological consistency of the canonical benchmark runs executed across all 165 GAIA validation tasks.
 
 ### Canonical Run Identity
 - **Evaluated System**: `V5 — One-Shot Post-Answer Verification`
-- **Control System**: `V4 — Explicit Two-Stage Capability Router (Matched Contemporaneous Control Run)`
+- **Control Baseline**: `V4 — Explicit Two-Stage Capability Router (Matched Contemporaneous Control Run)`
 - **Benchmark Split**: GAIA Validation Set (165 tasks)
 - **Scorer Provenance**: `official-gaia-leaderboard` (Commit `9f133d71362e77b3539f1514f31b9c101a545fec`)
 - **Evaluation Date**: 2026-09-11
 
 ---
 
-## 2. Audit Checklist and Detailed Evidence
+## 2. Corrective Audit History
+
+An initial post-benchmark audit incorrectly marked public-artifact privacy as PASS because its automated scan scope was restricted to `task_transitions_165.jsonl` and excluded human-readable analysis markdown documents. A subsequent manual review identified that public ground-truth answer strings were inadvertently exposed in the human-readable report. 
+
+In this corrective audit pass:
+1. All public analysis and audit documents were sanitized: explicit ground-truth strings, raw model responses, and private answer keys were eliminated.
+2. The privacy audit scope was expanded to recursively inspect all public-facing V5 analysis artifacts, including JSON summaries, JSONL transition files, and markdown documentation.
+3. All empirical metrics, per-level attachment breakdowns, sampling descriptions, and causal formulations were re-evaluated and aligned.
+
+---
+
+## 3. Audit Checklist and Detailed Evidence
 
 | Section | Audit Domain | Status | Classification |
 |---|---|:---:|---|
@@ -25,7 +36,7 @@ The audit evaluates the empirical validity, architectural adherence, data integr
 | **6D** | V5 Verifier Invariants | **PASS** | Architectural Invariant |
 | **6E** | Generation Count Audit | **PASS** | Complexity Bound |
 | **6F** | Tool Invariant Enforcement | **PASS** | Upstream Boundary |
-| **6G** | Public-Artifact Privacy Audit | **PASS** | Compliance Standard |
+| **6G** | Public-Artifact Privacy Audit | **PASS** | Compliance Standard (Corrected) |
 | **6H** | Known Run-Protocol Timing Discrepancy | **LIMITATION** | Non-Blocking Comparability Limitation |
 | **6I** | Provider Health & Stability | **PASS** | Environmental Integrity |
 
@@ -40,7 +51,7 @@ The audit evaluates the empirical validity, architectural adherence, data integr
   - Total tasks: 165 in V5, 165 in matched V4.
   - Duplicate task IDs: **0** in V5, **0** in matched V4.
   - Task ID symmetric difference: $\emptyset$ (100% pairwise match).
-  - Attachment parity: 38 attachment tasks and 127 non-attachment tasks in both runs.
+  - Attachment parity: 38 attachment tasks (Level 1: 11, Level 2: 20, Level 3: 7) and 127 non-attachment tasks in both runs.
 - **Status**: **PASS**
 
 ---
@@ -111,10 +122,9 @@ The audit evaluates the empirical validity, architectural adherence, data integr
 ### Check 6G: Public-Artifact Privacy Audit
 - **Requirement**: Publicly released artifacts must contain no ground-truth answers, question text, prompts, or thinking tokens.
 - **Evidence**:
-  - Inspected `experiments/v5/task_transitions_165.jsonl` (165 rows).
-  - Verified absence of: `ground_truth`, `Final answer`, `Final_answer`, `prompt`, `raw_response`, `question`.
-  - Confirmed only task metadata, categorical transitions, and failure taxonomies are exposed.
-  - Confirmed no API keys or environment secrets are present.
+  - Re-scanned all public V5 analysis artifacts: `experiments/v5/final_analysis_165.json`, `experiments/v5/failure_mechanism_analysis_165.json`, `experiments/v5/task_transitions_165.jsonl`, `docs/V5_FINAL_ANALYSIS.md`, and `docs/V5_POST_BENCHMARK_AUDIT.md`.
+  - Confirmed total absence of: `ground_truth` values, explicit hidden answer keys, raw model prompts, raw verifier prompts, raw reasoning traces, and API secrets.
+  - Verified that all 3 REVISE tasks are described using sanitized categorical classes (`formatting normalization`, `factual/content revision`, `list reduction`) without revealing ground truth.
 - **Status**: **PASS**
 
 ---
@@ -123,8 +133,9 @@ The audit evaluates the empirical validity, architectural adherence, data integr
 - **Audit Findings**:
   - During canonical benchmark execution, V5 Level 2 was run with the default inter-task delay parameter (`delay = 1.0s`), whereas the matched V4 Level 2 run was executed with an explicit throttling delay (`delay = 5.0s`).
 - **Technical Impact Assessment**:
-  - Inter-task delay is purely an external process sleep inserted between sequential benchmark task executions to avoid provider rate limiting (`HTTP 429`).
+  - Inter-task delay is an external process sleep inserted between sequential benchmark task executions to manage rate limits.
   - It does not alter agent prompt construction, LLM parameters, temperature, tool parameters, or verification logic.
+  - No operational degradation attributable to the timing difference is evident in the recorded telemetry; however, the runs were not identical in inter-task throttling.
   - Provider telemetry confirms healthy API execution across both runs:
     - Router fallback rate on Level 2: V5 = 1/86 (1.16%), Matched V4 = 1/86 (1.16%).
     - Search success rate on Level 2: V5 = 86/86 (100%), Matched V4 = 86/86 (100%).
@@ -141,23 +152,20 @@ The audit evaluates the empirical validity, architectural adherence, data integr
   - Router fallback count: 1 in V5 (Level 2), 1 in matched V4 (Level 2).
   - FileTool fallback count: 4 in V5, 4 in matched V4.
   - Search success count: 165/165 (100.0%) in V5, 165/165 (100.0%) in matched V4.
-  - No provider service interruptions were observed during execution.
+  - Provider anomaly: Python workers experienced provider-reported `MALFORMED_FUNCTION_CALL` finish-reason anomalies in 76 tasks in V5 and 63 in V4, despite native function calling being disabled (`mode="NONE"`). Telemetry correctly captured and isolated this behavior.
 - **Status**: **PASS**
 
 ---
 
-## 3. Post-Benchmark Scientific Conclusion
+## 4. Post-Benchmark Scientific Conclusion
 
-The V5 post-benchmark audit establishes four conclusive scientific determinations:
-
-1. **Architectural Faithfulness**: V5 strictly implemented the formal definition $V5 = \text{frozen } V4 + \text{one-shot verification}$. All upstream V4 behaviors were preserved unchanged, and the downstream verifier obeyed all failure-safety and single-generation invariants.
-2. **Measurement Precision**: All benchmark metrics were independently recomputed from task-level logs and reconciled with 100% precision against the official GAIA scoring harness.
-3. **Causal Decoupling**: The within-V5 verifier intervention produced exactly zero net change ($\Delta = 0.00\text{ pp}$; 0 regressions, 0 improvements). The observed -4 task system difference between V5 (53/165) and matched V4 (57/165) is conclusively proven to stem from upstream worker generation variance, not verifier interference.
-4. **Readiness for Freeze**: All compliance, privacy, and integrity checks have passed.
+1. **Within-Run Verification Finding**: In this canonical V5 run, one-shot conservative post-answer verification produced zero improvements and zero regressions under the official GAIA scorer, leaving accuracy unchanged at 53/165. The verifier evaluated 81 eligible candidate answers, issued 78 KEEP verdicts, and revised 3 answers without changing official scorer correctness.
+2. **System-Level Comparison**: V5 as a complete system solved 53/165 tasks (32.12%) versus 57/165 (34.55%) for the matched V4 control, yielding an observed difference of -4 tasks (-2.42 percentage points). Because the verifier within V5 produced zero net accuracy change, the observed -4-task difference across separate stochastic runs reflects differences in upstream routing, worker generation, and completion outcomes rather than a pure verifier effect.
+3. **Architectural Evaluation**: In this V5 configuration, a single conservative text-only post-answer verifier did not improve official GAIA accuracy. Future versions could test whether verification mechanisms with additional evidence-gathering or execution capabilities perform differently.
+4. **Audit Readiness**: Following the corrective privacy scan, attachment reconciliation, and causal calibration, all integrity and compliance standards have been satisfied.
 
 ---
 
-## 4. Final Audit Verdict
+## 5. Final Audit Verdict
 
-**V5 post-benchmark audit passed; V5 is ready for freeze and final documentation.**
-
+V5 post-benchmark audit passed; V5 is ready for freeze and final documentation.
