@@ -60,6 +60,8 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
             print("Note: v3 processes local file attachments and supports controlled Python execution.")
         elif version == "v4":
             print("Note: v4 evaluates question and attachments using explicit capability routing (DIRECT vs PYTHON).")
+        elif version == "v5":
+            print("Note: v5 evaluates question and attachments using capability routing and one-shot verification.")
     print("-" * 80)
 
     record = execute_task(
@@ -94,6 +96,17 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
             print(f"Worker Error: {record.get('worker_error_type')}")
         print(f"Worker Latency: {record.get('worker_latency_seconds')}s")
         print(f"LLM Generation Attempts: {record.get('llm_generation_attempts')}")
+    if record.get("verifier_attempted"):
+        print(f"Verifier Eligible: {record.get('verifier_eligible')}")
+        print(f"Verifier Attempted: {record.get('verifier_attempted')}")
+        print(f"Verifier Verdict: {record.get('verifier_verdict')}")
+        print(f"Verifier Revised: {record.get('verifier_revised')}")
+        print(f"Verifier Fallback: {record.get('verifier_fallback')}")
+        if record.get("verifier_error_type"):
+            print(f"Verifier Error: {record.get('verifier_error_type')}")
+        print(f"Pre-Verification Answer: {record.get('pre_verification_answer')}")
+        print(f"Post-Verification Answer: {record.get('post_verification_answer')}")
+        print(f"Verifier Latency: {record.get('verifier_latency_seconds')}s")
     if record.get("search_enabled"):
         print(f"Search Provider: {record['search_provider']}")
         print(f"Search Success: {record['search_success']}")
@@ -148,7 +161,8 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--index", type=int, default=0, help="Question index to run (0 to 19, default: 0)")
     parser.add_argument("-t", "--task-id", type=str, default=None, help="Specific task ID to run")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
-    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing; required)")
+    # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification; required)")
     parser.add_argument("--no-log", action="store_true", help="Do not write record to experiments/runs.jsonl")
     args = parser.parse_args()
 

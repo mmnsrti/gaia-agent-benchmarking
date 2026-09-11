@@ -117,7 +117,7 @@ def calculate_metrics(
     if predictions and predictions[0].get("project_version"):
         resolved_pv = predictions[0].get("project_version")
 
-    has_python = (resolved_pv in ("v3", "v4")) or any(
+    has_python = (resolved_pv in ("v3", "v4", "v5")) or any(
         pred.get("python_requested") or pred.get("python_executed") or pred.get("python_prompt_version")
         for pred in predictions
     )
@@ -132,7 +132,7 @@ def calculate_metrics(
     python_not_executed_count = 0
     python_not_executed_correct = 0
 
-    has_router = (resolved_pv == "v4") or any(
+    has_router = (resolved_pv in ("v4", "v5")) or any(
         pred.get("router_requested") or pred.get("router_decision")
         for pred in predictions
     )
@@ -146,6 +146,30 @@ def calculate_metrics(
     router_latencies: List[float] = []
     worker_latencies: List[float] = []
     total_llm_generations_list: List[int] = []
+
+    has_verifier = (resolved_pv == "v5") or any(
+        pred.get("verifier_attempted") or pred.get("verifier_eligible") or pred.get("verifier_verdict")
+        for pred in predictions
+    )
+    pre_verification_correct_tasks = 0
+    verifier_eligible_count = 0
+    verifier_attempted_count = 0
+    verifier_keep_count = 0
+    verifier_keep_correct = 0
+    verifier_revise_count = 0
+    verifier_revise_correct = 0
+    verifier_fallback_count = 0
+    verifier_fallback_correct = 0
+    verifier_improvements = 0
+    verifier_regressions = 0
+    verifier_stable_correct = 0
+    verifier_stable_failure = 0
+    verifier_error_breakdown: Dict[str, int] = {}
+    verifier_latencies: List[float] = []
+    verifier_input_tokens_list: List[int] = []
+    verifier_output_tokens_list: List[int] = []
+    verifier_thinking_tokens_list: List[int] = []
+    verifier_total_tokens_list: List[int] = []
 
     for pred in predictions:
         task_id = pred.get("task_id")
@@ -321,6 +345,74 @@ def calculate_metrics(
                 except (ValueError, TypeError):
                     pass
 
+        # Track Verifier metrics for V5
+        pre_ans = pred.get("pre_verification_answer")
+        post_ans = pred.get("post_verification_answer") or final_ans
+        pre_is_correct = False
+        post_is_correct = is_correct
+        transition = "not_applicable"
+
+        if has_verifier or pred.get("verifier_attempted") or pred.get("verifier_eligible"):
+            if comp_success and pre_ans is not None and str(pre_ans).strip():
+                pre_is_correct = gaia_question_scorer(str(pre_ans), gt)
+            else:
+                pre_is_correct = False
+
+            if pre_is_correct:
+                pre_verification_correct_tasks += 1
+
+            if not pre_is_correct and post_is_correct:
+                verifier_improvements += 1
+                transition = "improvement"
+            elif pre_is_correct and not post_is_correct:
+                verifier_regressions += 1
+                transition = "regression"
+            elif pre_is_correct and post_is_correct:
+                verifier_stable_correct += 1
+                transition = "stable_correct"
+            else:
+                verifier_stable_failure += 1
+                transition = "stable_failure"
+
+            if pred.get("verifier_eligible"):
+                verifier_eligible_count += 1
+            if pred.get("verifier_attempted"):
+                verifier_attempted_count += 1
+                v_verdict = pred.get("verifier_verdict")
+                if v_verdict == "KEEP":
+                    verifier_keep_count += 1
+                    if is_correct:
+                        verifier_keep_correct += 1
+                elif v_verdict == "REVISE":
+                    verifier_revise_count += 1
+                    if is_correct:
+                        verifier_revise_correct += 1
+                if pred.get("verifier_fallback"):
+                    verifier_fallback_count += 1
+                    if is_correct:
+                        verifier_fallback_correct += 1
+                v_err = pred.get("verifier_error_type")
+                if v_err:
+                    verifier_error_breakdown[v_err] = verifier_error_breakdown.get(v_err, 0) + 1
+                v_lat = pred.get("verifier_latency_seconds")
+                if v_lat is not None:
+                    try:
+                        verifier_latencies.append(float(v_lat))
+                    except (ValueError, TypeError):
+                        pass
+                for v_k, v_t_list in [
+                    ("verifier_input_tokens", verifier_input_tokens_list),
+                    ("verifier_output_tokens", verifier_output_tokens_list),
+                    ("verifier_thinking_tokens", verifier_thinking_tokens_list),
+                    ("verifier_total_tokens", verifier_total_tokens_list),
+                ]:
+                    v_val = pred.get(v_k)
+                    if v_val is not None:
+                        try:
+                            v_t_list.append(int(v_val))
+                        except (ValueError, TypeError):
+                            pass
+
         detailed_entry = {
             "task_id": task_id,
             "level": pred.get("level", level),
@@ -416,6 +508,29 @@ def calculate_metrics(
                 "llm_generation_attempts": pred.get("llm_generation_attempts", 2),
                 "llm_generation_success_count": pred.get("llm_generation_success_count", 0),
             })
+        if has_verifier or pred.get("verifier_attempted") or pred.get("verifier_eligible"):
+            detailed_entry.update({
+                "pre_verification_answer": pre_ans,
+                "pre_verification_correct": pre_is_correct,
+                "post_verification_answer": post_ans,
+                "post_verification_correct": post_is_correct,
+                "verification_transition": transition,
+                "verifier_eligible": pred.get("verifier_eligible", False),
+                "verifier_attempted": pred.get("verifier_attempted", False),
+                "verifier_generation_attempts": pred.get("verifier_generation_attempts", 0),
+                "verifier_generation_success": pred.get("verifier_generation_success", False),
+                "verifier_finish_reason": pred.get("verifier_finish_reason"),
+                "verifier_error_type": pred.get("verifier_error_type"),
+                "verifier_verdict": pred.get("verifier_verdict"),
+                "verifier_revised": pred.get("verifier_revised", False),
+                "verifier_fallback": pred.get("verifier_fallback", False),
+                "verifier_latency_seconds": pred.get("verifier_latency_seconds"),
+                "verifier_input_tokens": pred.get("verifier_input_tokens"),
+                "verifier_output_tokens": pred.get("verifier_output_tokens"),
+                "verifier_thinking_tokens": pred.get("verifier_thinking_tokens"),
+                "verifier_total_tokens": pred.get("verifier_total_tokens"),
+                "verifier_prompt_version": pred.get("verifier_prompt_version"),
+            })
         detailed_eval.append(detailed_entry)
 
     accuracy = round(correct_tasks / total_tasks, 4) if total_tasks > 0 else 0.0
@@ -456,7 +571,16 @@ def calculate_metrics(
 
     # Determine prompt version provenance
     # Avoid recording entire run as 'baseline-v1' if task 0 experienced search fallback
-    if resolved_pv == "v4" or (has_router and resolved_pv not in ("v0", "v1", "v2", "v3")):
+    if resolved_pv == "v5" or (has_verifier and resolved_pv not in ("v0", "v1", "v2", "v3", "v4")):
+        primary_pv = "capability-router-v1"
+        fallback_pv = "router-direct-worker-v1" if any(p.get("router_fallback") for p in predictions) else None
+        prompt_pv = "answer-verifier-v1"
+        if distinct_primary:
+            if len(distinct_primary) == 1:
+                primary_pv = distinct_primary[0]
+                fallback_pv = distinct_fallback[0] if distinct_fallback else fallback_pv
+                prompt_pv = primary_pv
+    elif resolved_pv == "v4" or (has_router and resolved_pv not in ("v0", "v1", "v2", "v3")):
         primary_pv = "capability-router-v1"
         fallback_pv = "router-direct-worker-v1" if any(p.get("router_fallback") for p in predictions) else None
         prompt_pv = "capability-router-v1"
@@ -641,6 +765,36 @@ def calculate_metrics(
         summary["average_worker_latency_seconds"] = round(statistics.mean(worker_latencies), 2) if worker_latencies else None
         summary["average_total_llm_generations"] = round(statistics.mean(total_llm_generations_list), 2) if total_llm_generations_list else None
 
+    if has_verifier:
+        summary["verifier_enabled"] = True
+        summary["verifier_prompt_version"] = next(
+            (p.get("verifier_prompt_version") for p in predictions if p.get("verifier_prompt_version")),
+            "answer-verifier-v1",
+        )
+        summary["pre_verification_correct_tasks"] = pre_verification_correct_tasks
+        summary["pre_verification_accuracy"] = round(pre_verification_correct_tasks / total_tasks, 4) if total_tasks > 0 else 0.0
+        summary["post_verification_correct_tasks"] = correct_tasks
+        summary["post_verification_accuracy"] = accuracy
+        summary["net_correct_delta"] = correct_tasks - pre_verification_correct_tasks
+        summary["net_accuracy_delta"] = round(accuracy - (pre_verification_correct_tasks / total_tasks), 4) if total_tasks > 0 else 0.0
+        summary["verifier_eligible_count"] = verifier_eligible_count
+        summary["verifier_eligible_rate"] = round(verifier_eligible_count / total_tasks, 4) if total_tasks > 0 else 0.0
+        summary["verifier_attempted_count"] = verifier_attempted_count
+        summary["verifier_attempt_rate"] = round(verifier_attempted_count / total_tasks, 4) if total_tasks > 0 else 0.0
+        summary["verifier_keep_count"] = verifier_keep_count
+        summary["verifier_keep_accuracy"] = round(verifier_keep_correct / verifier_keep_count, 4) if verifier_keep_count > 0 else None
+        summary["verifier_revise_count"] = verifier_revise_count
+        summary["verifier_revise_accuracy"] = round(verifier_revise_correct / verifier_revise_count, 4) if verifier_revise_count > 0 else None
+        summary["verifier_fallback_count"] = verifier_fallback_count
+        summary["verifier_fallback_accuracy"] = round(verifier_fallback_correct / verifier_fallback_count, 4) if verifier_fallback_count > 0 else None
+        summary["verifier_improvements"] = verifier_improvements
+        summary["verifier_regressions"] = verifier_regressions
+        summary["verifier_stable_correct"] = verifier_stable_correct
+        summary["verifier_stable_failure"] = verifier_stable_failure
+        summary["verifier_error_breakdown"] = verifier_error_breakdown
+        summary["average_verifier_latency_seconds"] = round(statistics.mean(verifier_latencies), 2) if verifier_latencies else None
+        summary["average_verifier_total_tokens"] = round(statistics.mean(verifier_total_tokens_list), 1) if verifier_total_tokens_list else None
+
     return {
         "summary": summary,
         "detailed": detailed_eval,
@@ -765,6 +919,28 @@ def evaluate_predictions(
             print(f"Py Executed Acc:     {summary.get('python_executed_accuracy') * 100:.2f}% ({summary.get('python_executed_correct')}/{summary.get('python_execution_count')})")
         if summary.get("python_not_executed_accuracy") is not None:
             print(f"Py Non-Exec Acc:     {summary.get('python_not_executed_accuracy') * 100:.2f}% ({summary.get('python_not_executed_correct')}/{summary.get('python_not_executed_count')})")
+    if summary.get("router_enabled"):
+        print(f"Router Prompt Ver:   {summary.get('router_prompt_version')}")
+        print(f"Router DIRECT:       {summary.get('router_direct_count')}/{summary.get('total_tasks')}")
+        print(f"Router PYTHON:       {summary.get('router_python_count')}/{summary.get('total_tasks')} ({summary.get('router_python_routing_rate', 0.0) * 100:.1f}%)")
+        print(f"Router Fallbacks:    {summary.get('router_fallback_count')} ({summary.get('router_fallback_rate', 0.0) * 100:.1f}%)")
+        if summary.get("average_router_latency_seconds") is not None:
+            print(f"Avg Router Latency:  {summary.get('average_router_latency_seconds')}s")
+        if summary.get("router_direct_accuracy") is not None:
+            print(f"Router DIRECT Acc:   {summary.get('router_direct_accuracy') * 100:.2f}%")
+        if summary.get("router_python_accuracy") is not None:
+            print(f"Router PYTHON Acc:   {summary.get('router_python_accuracy') * 100:.2f}%")
+    if summary.get("verifier_enabled"):
+        print(f"Verifier Prompt Ver: {summary.get('verifier_prompt_version')}")
+        print(f"Verifier Eligible:   {summary.get('verifier_eligible_count')}/{summary.get('total_tasks')} ({summary.get('verifier_eligible_rate', 0.0) * 100:.1f}%)")
+        print(f"Verifier Attempted:  {summary.get('verifier_attempted_count')}/{summary.get('total_tasks')} ({summary.get('verifier_attempt_rate', 0.0) * 100:.1f}%)")
+        print(f"Verifier KEEP:       {summary.get('verifier_keep_count')} (Acc: {summary.get('verifier_keep_accuracy') * 100 if summary.get('verifier_keep_accuracy') is not None else 0.0:.1f}%)")
+        print(f"Verifier REVISE:     {summary.get('verifier_revise_count')} (Acc: {summary.get('verifier_revise_accuracy') * 100 if summary.get('verifier_revise_accuracy') is not None else 0.0:.1f}%)")
+        print(f"Verifier Fallbacks:  {summary.get('verifier_fallback_count')} (Acc: {summary.get('verifier_fallback_accuracy') * 100 if summary.get('verifier_fallback_accuracy') is not None else 0.0:.1f}%)")
+        print(f"Transitions:         +{summary.get('verifier_improvements')} improvements, -{summary.get('verifier_regressions')} regressions (stable correct: {summary.get('verifier_stable_correct')}, stable failure: {summary.get('verifier_stable_failure')})")
+        print(f"Pre-Ver Accuracy:    {summary.get('pre_verification_accuracy', 0.0) * 100:.2f}% ({summary.get('pre_verification_correct_tasks')}/{summary.get('total_tasks')})")
+        print(f"Post-Ver Accuracy:   {summary.get('post_verification_accuracy', 0.0) * 100:.2f}% ({summary.get('post_verification_correct_tasks')}/{summary.get('total_tasks')})")
+        print(f"Net Delta:           {summary.get('net_correct_delta'):+d} tasks ({summary.get('net_accuracy_delta', 0.0) * 100:+.2f} pp)")
     print("=" * 65 + "\n")
 
     # Write safe summary if requested
@@ -789,7 +965,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate agent predictions against local GAIA ground truth.")
     parser.add_argument("--level", type=int, default=1, help="Benchmark level (1, 2, or 3)")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
-    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2", "v3", "v4"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing; default: v1)")
+    # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
+    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2", "v3", "v4", "v5"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification; default: v1)")
     parser.add_argument("--predictions", type=str, default=None, help="Path to predictions JSONL file")
     parser.add_argument("--data", type=str, default=None, help="Path to local ground-truth dataset")
     parser.add_argument("--summary-output", type=str, default=None, help="Output path for safe public summary JSON")
