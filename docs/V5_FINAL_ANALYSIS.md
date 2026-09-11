@@ -241,6 +241,7 @@ Observed task-level transition pairing between the separate V4 and V5 runs:
 | **Observed Net Difference** | **-1** | **-4** | **+1** | **-4** |
 
 The observed -4-task difference represents the net of 11 tasks that were incorrect in V4 but correct in V5, and 15 tasks that were correct in V4 but incorrect in V5. Because the verifier within V5 produced zero regressions and zero improvements on candidate answers, this cross-run variance reflects stochastic shifts occurring upstream during routing and worker generation.
+The observed -4-task difference represents the net of 11 tasks that were incorrect in V4 but correct in V5, and 15 tasks that were correct in V4 but incorrect in V5. The observed V5-vs-matched-V4 difference arose across separate stochastic runs and should not be attributed to any single mechanism without stronger causal evidence. This cross-run difference may reflect upstream stochastic variation, including differences in routing, worker generation, retrieval outputs, provider behavior, and execution outcomes.
 
 ---
 
@@ -311,8 +312,12 @@ The observed end-to-end system-level latency difference was +5.65 seconds on ave
 In this canonical V5 run, one-shot conservative post-answer verification produced zero improvements and zero regressions under the official GAIA scorer, leaving accuracy unchanged at 53/165. V5 as a complete system solved 53/165 tasks versus 57/165 for the matched V4 control, but the separate-run comparison does not isolate a pure causal verifier effect.
 
 1. **The V5 post-answer verification stage demonstrated flawless failure safety**, achieving zero regressions ($1 \rightarrow 0$) and zero corruption of valid candidate answers across all 165 tasks.
+1. **The V5 post-answer verification stage demonstrated conservative failure safety**, achieving zero regressions ($1 \rightarrow 0$) and zero corruption of valid candidate answers across all 165 tasks.
 2. **The conservative verification mechanism produced no empirical accuracy gain** ($\Delta = 0.00\text{ pp}$ within V5), with the verifier accepting 92.86% of incorrect candidates that reached it, alongside significant upstream candidate starvation (50.91% empty candidates).
 3. **The observed -4 task system difference (-2.42 pp) between V5 and matched V4 occurred across separate runs**, reflecting differences in upstream routing, worker generation, and completion outcomes rather than a pure verifier effect.
 4. **Post-answer verification without active tool use or execution feedback was insufficient to resolve complex agentic benchmark failures**, indicating that verification mechanisms require active verification capabilities (such as test execution or targeted search) rather than passive textual reflection.
+3. **The observed -4 task system difference (-2.42 pp) between V5 and matched V4 occurred across separate runs**, which may reflect differences in upstream routing, worker generation, retrieval outputs, provider behavior, and execution outcomes rather than an isolated verifier effect.
+4. **In this V5 configuration, a single conservative text-only post-answer verifier did not improve official GAIA accuracy.** While passive post-answer verification preserved existing correct answers, it did not resolve errors on incorrect candidate answers in this evaluation.
 
 In this V5 configuration, a single conservative text-only post-answer verifier did not improve official GAIA accuracy. Future versions could test whether verification mechanisms with additional evidence-gathering or execution capabilities perform differently.
+Future versions could test whether verification mechanisms with additional evidence-gathering, execution, or targeted re-checking capabilities perform differently.
