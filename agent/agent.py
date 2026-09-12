@@ -21,6 +21,12 @@ from prompts.verification import (
     parse_verifier_result,
     VerifierParseResult,
 )
+from prompts.self_evaluation import (
+    SELF_EVALUATION_PROMPT_VERSION,
+    build_execution_summary,
+    build_self_evaluator_prompt,
+    parse_self_evaluation_result,
+)
 from tools.web_search import TavilySearchTool, WebSearchResult
 from tools.file_tool import FileTool, FileResult
 from tools.python_tool import PythonTool, PythonResult
@@ -100,6 +106,29 @@ class AgentResult:
     verifier_prompt_version: Optional[str] = None
     verifier_prompt: Optional[str] = None
     verifier_raw_response: Optional[str] = None
+    # Self-evaluation metadata (V6). Raw prompt/response are internal only and
+    # are intentionally excluded from public evaluation serializers.
+    pre_self_evaluation_answer: Optional[str] = None
+    post_self_evaluation_answer: Optional[str] = None
+    self_eval_eligible: bool = False
+    self_eval_attempted: bool = False
+    self_eval_success: bool = False
+    self_eval_prompt_version: Optional[str] = None
+    self_eval_assessment: Optional[str] = None
+    self_eval_risk_type: Optional[str] = None
+    self_eval_confidence: Optional[float] = None
+    self_eval_error_type: Optional[str] = None
+    self_eval_finish_reason: Optional[str] = None
+    self_eval_generation_attempts: int = 0
+    self_eval_generation_success: bool = False
+    self_eval_latency_seconds: Optional[float] = None
+    self_eval_input_tokens: Optional[int] = None
+    self_eval_output_tokens: Optional[int] = None
+    self_eval_thinking_tokens: Optional[int] = None
+    self_eval_total_tokens: Optional[int] = None
+    self_eval_answer_unchanged: bool = True
+    self_eval_prompt: Optional[str] = None
+    self_eval_raw_response: Optional[str] = None
 
 
     @property
@@ -1095,6 +1124,207 @@ class GAIAVerificationAgent(GAIARouterAgent):
         v4_result.llm_generation_success_count = total_llm_success
 
         return v4_result
+
+    def __call__(self, question: str, file_path: Optional[str] = None) -> str:
+        return self.run(question, file_path=file_path).final_answer
+
+
+class GAIASelfEvaluationAgent(GAIAVerificationAgent):
+    """V6 read-only post-answer self-evaluation agent.
+
+    V5's verifier may KEEP or REVISE a candidate answer. V6 is deliberately a
+    different mechanism: after V5 has finalized its answer, this class may only
+    classify reliability as PASS or SUSPECT. It never changes that answer.
+    """
+
+    def _build_execution_summary(self, result: AgentResult, file_path: Optional[str]) -> str:
+        """Creates deterministic V6 context without V5 verdict information."""
+        search_res = result.search_result
+        file_res = result.file_result
+        py_result = result.python_result
+        worker_response = result.llm_response
+
+        if result.worker_error_type:
+            execution_error = result.worker_error_type
+        elif result.router_error_type:
+            execution_error = result.router_error_type
+        elif py_result and getattr(py_result, "error_type", None):
+            execution_error = py_result.error_type
+        else:
+            execution_error = None
+
+        finish_reason = getattr(worker_response, "finish_reason", None) if worker_response else None
+        completion_success = bool(
+            finish_reason == "STOP"
+            and result.raw_response is not None
+            and result.raw_response.strip() != ""
+        )
+        return build_execution_summary(
+            route=result.worker_mode or result.router_decision,
+            search_attempted=search_res is not None,
+            search_success=bool(search_res and getattr(search_res, "success", False)),
+            search_fallback=bool(result.search_fallback),
+            attachment_required=bool(file_path),
+            file_attempted=file_res is not None,
+            file_success=bool(file_res and getattr(file_res, "success", False)),
+            python_routed=result.worker_mode == "PYTHON",
+            python_attempted=bool(result.python_executed),
+            python_success=bool(py_result and getattr(py_result, "success", False)),
+            execution_error_type=execution_error,
+            completion_success=completion_success,
+            finish_reason=finish_reason,
+        )
+
+    @staticmethod
+    def _existing_web_evidence(result: AgentResult) -> str:
+        search_res = result.search_result
+        if not search_res or not getattr(search_res, "success", False):
+            return "[Web search unavailable]"
+        if hasattr(search_res, "format_evidence_block"):
+            return search_res.format_evidence_block()
+        if hasattr(search_res, "formatted_snippets"):
+            return str(search_res.formatted_snippets)
+        return str(search_res)
+
+    @staticmethod
+    def _existing_file_context(result: AgentResult) -> tuple[str, str]:
+        """Returns already-extracted text context only; V6 never rereads a file."""
+        file_res = result.file_result
+        if not file_res or result.file_fallback:
+            return "", ""
+        filename = str(getattr(file_res, "file_name", "") or "")
+        text_content = str(getattr(file_res, "text_content", "") or "")
+        if text_content.strip():
+            return text_content, filename
+        if filename:
+            return "[Attachment was available to the frozen V5 pipeline but has no extracted text context.]", filename
+        return "", ""
+
+    def run(self, question: str, file_path: Optional[str] = None) -> AgentResult:
+        """Runs frozen V5, then performs at most one observational text-only call."""
+        v5_result = super().run(question, file_path=file_path)
+        pre_self_evaluation_answer = v5_result.final_answer
+        eligible = bool(pre_self_evaluation_answer and pre_self_evaluation_answer.strip())
+
+        # The exact V5 answer remains authoritative in every branch below.
+        v5_result.pre_self_evaluation_answer = pre_self_evaluation_answer
+        v5_result.post_self_evaluation_answer = pre_self_evaluation_answer
+        v5_result.self_eval_eligible = eligible
+        v5_result.self_eval_prompt_version = SELF_EVALUATION_PROMPT_VERSION if eligible else None
+        v5_result.self_eval_answer_unchanged = True
+
+        if not eligible:
+            v5_result.self_eval_attempted = False
+            v5_result.self_eval_success = False
+            v5_result.self_eval_generation_attempts = 0
+            v5_result.self_eval_generation_success = False
+            v5_result.self_eval_assessment = None
+            v5_result.self_eval_risk_type = None
+            v5_result.self_eval_confidence = None
+            v5_result.self_eval_error_type = None
+            v5_result.self_eval_finish_reason = None
+            v5_result.self_eval_latency_seconds = None
+            v5_result.self_eval_input_tokens = None
+            v5_result.self_eval_output_tokens = None
+            v5_result.self_eval_thinking_tokens = None
+            v5_result.self_eval_total_tokens = None
+            v5_result.self_eval_prompt = None
+            v5_result.self_eval_raw_response = None
+            return v5_result
+
+        web_evidence = self._existing_web_evidence(v5_result)
+        file_evidence, attachment_filename = self._existing_file_context(v5_result)
+        execution_summary = self._build_execution_summary(v5_result, file_path)
+        self_eval_prompt = build_self_evaluator_prompt(
+            question=question,
+            final_answer=pre_self_evaluation_answer,
+            execution_summary=execution_summary,
+            web_evidence=web_evidence,
+            file_evidence=file_evidence,
+            attachment_filename=attachment_filename,
+        )
+
+        self_eval_generation_attempts = 1
+        self_eval_generation_success = False
+        self_eval_llm_resp = None
+        self_eval_raw_response = None
+        self_eval_error_type = None
+        start_time = time.time()
+        try:
+            # max_retries=0 is intentional: V6 permits exactly one provider attempt.
+            self_eval_llm_resp = self.llm.generate(
+                self_eval_prompt,
+                attachment_parts=None,
+                max_retries=0,
+            )
+            self_eval_generation_success = True
+            if isinstance(self_eval_llm_resp, LLMResponse):
+                self_eval_raw_response = (
+                    self_eval_llm_resp.raw_text
+                    if self_eval_llm_resp.raw_text
+                    else self_eval_llm_resp.text
+                )
+                if self_eval_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
+                    self_eval_error_type = "malformed_function_call_finish_reason"
+                elif self_eval_llm_resp.finish_reason != "STOP":
+                    self_eval_error_type = "unexpected_finish_reason"
+            else:
+                self_eval_raw_response = str(self_eval_llm_resp)
+                self_eval_error_type = "unexpected_provider_response_type"
+        except Exception as exc:
+            error_text = str(exc).lower()
+            if "timeout" in error_text or "deadline" in error_text:
+                self_eval_error_type = "provider_timeout"
+            elif "malformed_function_call" in error_text:
+                self_eval_error_type = "malformed_function_call_finish_reason"
+            else:
+                self_eval_error_type = "provider_api_error"
+
+        self_eval_latency = round(time.time() - start_time, 2)
+        self_eval_finish_reason = getattr(self_eval_llm_resp, "finish_reason", None) if self_eval_llm_resp else None
+        self_eval_input_tokens = getattr(self_eval_llm_resp, "input_tokens", None) if self_eval_llm_resp else None
+        self_eval_output_tokens = getattr(self_eval_llm_resp, "output_tokens", None) if self_eval_llm_resp else None
+        self_eval_thinking_tokens = getattr(self_eval_llm_resp, "thinking_tokens", None) if self_eval_llm_resp else None
+        self_eval_total_tokens = getattr(self_eval_llm_resp, "total_tokens", None) if self_eval_llm_resp else None
+        if (
+            self_eval_total_tokens is None
+            and self_eval_input_tokens is not None
+            and self_eval_output_tokens is not None
+        ):
+            self_eval_total_tokens = self_eval_input_tokens + self_eval_output_tokens
+
+        parsed = None
+        if self_eval_error_type is None:
+            parsed = parse_self_evaluation_result(self_eval_raw_response)
+            if not parsed.is_valid:
+                self_eval_error_type = parsed.error_type
+
+        v5_result.self_eval_attempted = True
+        v5_result.self_eval_success = bool(parsed and parsed.is_valid)
+        v5_result.self_eval_generation_attempts = self_eval_generation_attempts
+        v5_result.self_eval_generation_success = self_eval_generation_success
+        v5_result.self_eval_assessment = parsed.assessment if parsed and parsed.is_valid else None
+        v5_result.self_eval_risk_type = parsed.risk_type if parsed and parsed.is_valid else None
+        v5_result.self_eval_confidence = parsed.confidence if parsed and parsed.is_valid else None
+        v5_result.self_eval_error_type = self_eval_error_type
+        v5_result.self_eval_finish_reason = self_eval_finish_reason
+        v5_result.self_eval_latency_seconds = self_eval_latency
+        v5_result.self_eval_input_tokens = self_eval_input_tokens
+        v5_result.self_eval_output_tokens = self_eval_output_tokens
+        v5_result.self_eval_thinking_tokens = self_eval_thinking_tokens
+        v5_result.self_eval_total_tokens = self_eval_total_tokens
+        v5_result.self_eval_prompt = self_eval_prompt
+        v5_result.self_eval_raw_response = self_eval_raw_response
+
+        # V6 diagnostic data has no write path to final_answer.
+        v5_result.post_self_evaluation_answer = pre_self_evaluation_answer
+        v5_result.self_eval_answer_unchanged = v5_result.final_answer == pre_self_evaluation_answer
+        v5_result.llm_generation_attempts += self_eval_generation_attempts
+        v5_result.llm_generation_count = v5_result.llm_generation_attempts
+        v5_result.llm_generation_success_count += 1 if self_eval_generation_success else 0
+        assert v5_result.llm_generation_attempts <= 4, "V6 exceeds the four-generation cap"
+        assert v5_result.self_eval_answer_unchanged, "V6 self-evaluation mutated the final answer"
+        return v5_result
 
     def __call__(self, question: str, file_path: Optional[str] = None) -> str:
         return self.run(question, file_path=file_path).final_answer
