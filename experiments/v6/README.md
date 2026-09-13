@@ -1,10 +1,12 @@
 # V6 — Self-Evaluation / Failure Detection
 
 Status: AUDITED / READY FOR FREEZE WITH DOCUMENTED LIMITATIONS  
+Status: FROZEN  
 Parent Baseline: Frozen V5 (`v5-one-shot-verification`)  
 Branch: `v6-self-evaluation-agent`  
 
 See [`docs/V6_POST_BENCHMARK_AUDIT.md`](../../docs/V6_POST_BENCHMARK_AUDIT.md) for the complete scientific post-benchmark audit, failure and mechanism analysis, calibration diagnostics, and freeze review.
+See [`FROZEN.md`](FROZEN.md) for the frozen baseline specification and [`docs/V6_POST_BENCHMARK_AUDIT.md`](../../docs/V6_POST_BENCHMARK_AUDIT.md) for the complete scientific post-benchmark audit, failure and mechanism analysis, calibration diagnostics, and freeze review. Deterministic SHA-256 hashes are available in [`ARTIFACT_MANIFEST.sha256`](ARTIFACT_MANIFEST.sha256).
 
 ---
 
