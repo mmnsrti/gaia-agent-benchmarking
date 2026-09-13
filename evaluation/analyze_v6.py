@@ -443,6 +443,57 @@ def analyze_v6_experiment(
 
     manifest = compute_v6_manifest(v6_dir, v5_dir)
 
+    # 11. Artifact integrity audit across all levels
+    expected_counts = {1: 53, 2: 86, 3: 26}
+    artifact_integrity = {"v6": {}, "matched_v5": {}}
+    blocking_issues = []
+
+    for lvl in [1, 2, 3]:
+        exp_n = expected_counts[lvl]
+        p_v6_count = len(v6_preds[lvl])
+        d_v6_count = len(v6_detailed[lvl])
+        s_v6_total = v6_summary[lvl].get("total_tasks", 0) if v6_summary.get(lvl) else 0
+        s_v6_comp = v6_summary[lvl].get("completed_tasks", 0) if v6_summary.get(lvl) else 0
+
+        v6_complete = (p_v6_count == exp_n and d_v6_count == exp_n and s_v6_total == exp_n)
+        if not v6_complete:
+            blocking_issues.append(
+                f"V6 Level {lvl} artifact mismatch: predictions={p_v6_count}, detailed_eval={d_v6_count}, expected={exp_n}"
+            )
+
+        artifact_integrity["v6"][f"level_{lvl}"] = {
+            "expected_tasks": exp_n,
+            "predictions_count": p_v6_count,
+            "detailed_eval_count": d_v6_count,
+            "summary_total_tasks": s_v6_total,
+            "summary_completed_tasks": s_v6_comp,
+            "completed_consistent": s_v6_comp == perf_by_level[f"level_{lvl}"]["v6_completed"],
+            "is_complete": v6_complete,
+        }
+
+        p_v5_count = len(v5_preds[lvl])
+        d_v5_count = len(v5_detailed[lvl])
+        s_v5_total = v5_summary[lvl].get("total_tasks", 0) if v5_summary.get(lvl) else 0
+        s_v5_comp = v5_summary[lvl].get("completed_tasks", 0) if v5_summary.get(lvl) else 0
+
+        v5_complete = (p_v5_count == exp_n and d_v5_count == exp_n and s_v5_total == exp_n)
+        if not v5_complete:
+            blocking_issues.append(
+                f"Matched V5 Level {lvl} artifact mismatch: predictions={p_v5_count}, detailed_eval={d_v5_count}, expected={exp_n}"
+            )
+
+        artifact_integrity["matched_v5"][f"level_{lvl}"] = {
+            "expected_tasks": exp_n,
+            "predictions_count": p_v5_count,
+            "detailed_eval_count": d_v5_count,
+            "summary_total_tasks": s_v5_total,
+            "summary_completed_tasks": s_v5_comp,
+            "completed_consistent": s_v5_comp == perf_by_level[f"level_{lvl}"]["v5_completed"],
+            "is_complete": v5_complete,
+        }
+
+    freeze_verdict = "NOT_READY_TO_FREEZE" if blocking_issues else "READY_TO_FREEZE_WITH_DOCUMENTED_LIMITATIONS"
+
     return {
         "manifest": manifest,
         "performance_by_level": perf_by_level,
@@ -458,6 +509,9 @@ def analyze_v6_experiment(
         "latency_tokens": latency_tokens,
         "operational_health": operational_health,
         "invalid_matched_v5_l3": invalid_v5_info,
+        "artifact_integrity": artifact_integrity,
+        "blocking_issues": blocking_issues,
+        "freeze_verdict": freeze_verdict,
     }
 
 
@@ -477,6 +531,10 @@ def format_summary_report(results: Dict[str, Any]) -> str:
         f"- V6: {po['v6_correct']} / {po['total_tasks']} ({po['v6_accuracy']:.2%})",
         f"- Matched V5: {po['v5_correct']} / {po['total_tasks']} ({po['v5_accuracy']:.2%})",
         f"- Observed Delta: {po['accuracy_delta_tasks']} tasks ({po['accuracy_delta_pp']:+.2f} pp) [Observational, non-causal]",
+        f"- V6: {po['v6_correct']} / {po['total_tasks']} ({po['v6_accuracy']:.2%}); Completed: {po['v6_completed']} / {po['total_tasks']} ({po['v6_completion_rate']:.2%})",
+        f"- Matched V5: {po['v5_correct']} / {po['total_tasks']} ({po['v5_accuracy']:.2%}); Completed: {po['v5_completed']} / {po['total_tasks']} ({po['v5_completion_rate']:.2%})",
+        f"- Accuracy Delta: {po['accuracy_delta_tasks']} tasks ({po['accuracy_delta_pp']:+.2f} pp) [Observational, non-causal]",
+        f"- Completed Delta: {po['v6_completed'] - po['v5_completed']:+d} tasks ({(po['v6_completed'] - po['v5_completed'])/po['total_tasks']*100:+.2f} pp)",
         "",
         "Diagnostic Results (Eligible Answers):",
         f"- Eligible: {do['eligible_count']}",
@@ -494,6 +552,7 @@ def format_summary_report(results: Dict[str, Any]) -> str:
         f"- Diagnostic Coverage: {do['diagnostic_coverage']:.4f}",
         f"- PASS-group Correctness (NPV): {do['pass_group_correctness_rate']:.4f} ({do['correct_among_pass']}/{do['pass_count']})",
         f"- SUSPECT-group Error Rate: {do['suspect_group_error_rate']:.4f} ({do['incorrect_among_suspect']}/{do['suspect_count']})",
+        f"- Brier Diagnostic Score: {do['brier_diagnostic_score']:.4f}",
         "",
         "Candidate Starvation:",
         f"- Eligible candidates: {cs['eligible_tasks']} / {cs['total_tasks']} ({cs['eligible_tasks']/cs['total_tasks']:.2%})",
@@ -514,8 +573,31 @@ def format_summary_report(results: Dict[str, Any]) -> str:
         f"- Both Wrong: {tr['both_wrong']}",
         f"- V5 Wrong -> V6 Correct: {tr['v5_wrong_to_v6_correct']}",
         f"- V5 Correct -> V6 Wrong: {tr['v5_correct_to_v6_wrong']}",
+        "",
+        "Artifact Integrity:",
+    ]
+    for lvl in [1, 2, 3]:
+        v6_ai = results["artifact_integrity"]["v6"][f"level_{lvl}"]
+        v5_ai = results["artifact_integrity"]["matched_v5"][f"level_{lvl}"]
+        lines.append(f"- Level {lvl} V6: predictions={v6_ai['predictions_count']}/{v6_ai['expected_tasks']}, detailed={v6_ai['detailed_eval_count']}/{v6_ai['expected_tasks']}, complete={v6_ai['is_complete']}")
+        lines.append(f"- Level {lvl} Matched V5: predictions={v5_ai['predictions_count']}/{v5_ai['expected_tasks']}, detailed={v5_ai['detailed_eval_count']}/{v5_ai['expected_tasks']}, complete={v5_ai['is_complete']}")
+
+    lines.extend([
+        "",
+        f"Blocking Issues ({len(results['blocking_issues'])}):",
+    ])
+    if results['blocking_issues']:
+        for b in results['blocking_issues']:
+            lines.append(f"- {b}")
+    else:
+        lines.append("- None")
+
+    lines.extend([
+        "",
+        f"Freeze Readiness Verdict: {results['freeze_verdict']}",
         "================================================================================",
     ]
+    ])
     return "\n".join(lines)
 
 

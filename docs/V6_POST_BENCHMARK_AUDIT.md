@@ -1,6 +1,7 @@
 # V6 Post-Benchmark Audit: Self-Evaluation and Failure Detection
 
 **Status:** AUDITED / READY TO FREEZE WITH DOCUMENTED LIMITATIONS  
+**Status:** AUDITED / NOT READY TO FREEZE (BLOCKING ARTIFACT CORRUPTION DETECTED)  
 **Evaluation Scope:** GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)  
 **Parent Baseline:** Frozen V5 One-Shot Post-Answer Verification  
 **Branch:** `v6-self-evaluation-agent`  
@@ -69,6 +70,7 @@ Canonical artifacts for V6 and the matched V5 control are stored in `experiments
 | `predictions_level_1.jsonl` | `b7cec9d1c5ef31418282d207b5066e5f8e81d65b50b2fff2af88b92139cdbb1e` | 2,247,983 | Full runtime predictions for Level 1 |
 | `predictions_level_2.jsonl` | `7ea2fd941b1d22759dff9d105f3e5b925b4bfffa7448da51c207666ecceccf9d` | 3,307,217 | Full runtime predictions for Level 2 |
 | `predictions_level_3.jsonl` | `1b2260b7c1f8817ca7fd7319bc30bedda19f8bfd19c9c94f783b0d79699db183` | 408,313 | Partial predictions log (11 tasks; see Section 25) |
+| `predictions_level_3.jsonl` | `1b2260b7c1f8817ca7fd7319bc30bedda19f8bfd19c9c94f783b0d79699db183` | 408,313 | Partial predictions log (11 tasks; **BLOCKING INTEGRITY ISSUE**; see Section 25) |
 | `summary_level_1.json` | `33cd2088b9e07011f7d84ea5a23a74cd93034f68e8c55a33fed0f2d96a23a065` | 6,539 | Level 1 aggregate summary |
 | `summary_level_2.json` | `9d2365ba559254e1edbd0f2053d373c734928dd2d434b7394640622314e8b555` | 6,459 | Level 2 aggregate summary |
 | `summary_level_3.json` | `c6f900caed11074e728282b60702ce95e05c6f1b7e18c0fc236e6180c560c986` | 6,137 | Level 3 aggregate summary |
@@ -89,6 +91,9 @@ Canonical artifacts for V6 and the matched V5 control are stored in `experiments
 | `summary_level_3.json` | `87bdd698eacbb02c34796fc4bc159fc5cfd5a7e2a1b6992669803466c3895ba7` | 4,579 |
 
 All JSON/JSONL artifacts parse cleanly with zero schema errors or duplicate task IDs across all levels.
+> [!CAUTION]
+> **Artifact Integrity Status**: **FAILED (BLOCKING)**.  
+> While all existing files parse with valid JSON syntax and zero duplicate task IDs, `experiments/v6/predictions_level_3.jsonl` contains only 11 lines instead of the expected 26 lines. This violates the mandatory freeze invariant requiring complete canonical benchmark prediction logs for every level. Provenance and recovery analysis are detailed in Section 25.
 
 ---
 
@@ -113,14 +118,31 @@ Contemporaneous matched frozen V5 control run:
 | :--- | :---: | :---: | :---: | :---: |
 | **Level 1** | 25 / 53 | 47.17% | 41 / 53 | 77.36% |
 | **Level 2** | 20 / 86 | 23.26% | 37 / 86 | 43.02% |
+| **Level 1** | 25 / 53 | 47.17% | 32 / 53 | 60.38% |
+| **Level 2** | 20 / 86 | 23.26% | 33 / 86 | 38.37% |
 | **Level 3** | 2 / 26 | 7.69% | 6 / 26 | 23.08% |
 | **Overall** | **47 / 165** | **28.48%** | **84 / 165** | **50.91%** |
+| **Overall** | **47 / 165** | **28.48%** | **71 / 165** | **43.03%** |
 
 Observed Cross-Run Difference ($V6 - \text{Matched } V5$):
 - **Level 1**: -2 tasks (-3.77 pp)
 - **Level 2**: -2 tasks (-2.33 pp)
 - **Level 3**: -1 task (-3.85 pp)
 - **Overall**: **-5 tasks (-3.03 pp)**
+- **Accuracy Delta**:
+  - **Level 1**: -2 tasks (-3.77 pp; 23 vs 25)
+  - **Level 2**: -2 tasks (-2.33 pp; 18 vs 20)
+  - **Level 3**: -1 task (-3.85 pp; 1 vs 2)
+  - **Overall**: **-5 tasks (-3.03 pp; 42 vs 47)**
+- **Completion Delta**:
+  - **Level 1**: +3 tasks (+5.66 pp; 35 vs 32)
+  - **Level 2**: +2 tasks (+2.33 pp; 35 vs 33)
+  - **Level 3**: -2 tasks (-7.69 pp; 4 vs 6)
+  - **Overall**: **+3 tasks (+1.82 pp; 74 vs 71)**
+
+> [!NOTE]
+> **Completed Count Reconciliation & Root Cause of Historical "84 / 165" Reference**:  
+> In an earlier draft summary, Matched V5 completed counts were erroneously transcribed as 41 (L1), 37 (L2), and 6 (L3) totaling 84 (50.91%). Detailed investigation of the canonical run records (`experiments/v6_matched_v5/detailed_eval_level_*.jsonl` and `summary_level_*.json`) confirms that the true canonical completed counts (`completion_success == True`) are **32 / 53 (60.38%)** for Level 1, **33 / 86 (38.37%)** for Level 2, and **6 / 26 (23.08%)** for Level 3, summing to **71 / 165 (43.03%)**. The remaining 94 tasks suffered completion failures (e.g. `finish_reason: MAX_TOKENS` or uncompleted worker generation), exactly matching the 94 completion failures reported in Section 23. The previous "84" figure was a manual documentation transcription error from an unverified intermediate state, now fully corrected.
 
 ---
 
@@ -426,9 +448,30 @@ This invalid run was quarantined in `experiments/v6_matched_v5_invalid_l3_provid
 ---
 
 ## 25. Artifact Limitations
+## 25. Artifact Integrity & Limitations
 
 1. **Level 3 Predictions Log (`predictions_level_3.jsonl`)**: Contains 11 task records due to an aborted rerun command, whereas `detailed_eval_level_3.jsonl` and `summary_level_3.json` contain the complete, verified 26-task canonical data from the full execution.
 2. **Small Level 3 Eligible Sample ($n=4$)**: While the evaluator achieved 100% precision and recall on Level 3, this reflects only 4 eligible tasks (3 TP, 1 TN, 0 FP, 0 FN) and cannot be generalized.
+### A. Level 3 Predictions Log Incompleteness (BLOCKING ISSUE)
+`experiments/v6/predictions_level_3.jsonl` contains only 11 task records, whereas Level 3 comprises 26 tasks. In contrast, `detailed_eval_level_3.jsonl` and `summary_level_3.json` contain the full, verified 26-task canonical evaluation data.
+
+#### Provenance Investigation
+Forensic analysis of the PowerShell terminal history (`ConsoleHost_history.txt`) and git commit timestamps established the precise sequence of events:
+1. **12:02 PM Sep 13, 2026**: The command `.venv\Scripts\python -m evaluation.run_level --version v6 --level 3 --no-resume --delay 5` completed all 26 tasks, generating a 26-record `predictions_level_3.jsonl`, a 26-record `detailed_eval_level_3.jsonl`, and `summary_level_3.json` (`completed_tasks: 4`, `accuracy: 0.0385`).
+2. **12:09 PM Sep 13, 2026**: The resulting `summary_level_3.json` was committed to git (commit `e6dce61`). However, because `experiments/**/predictions*.jsonl` is excluded by `.gitignore`, the full predictions file was not tracked in version control.
+3. **12:23 PM Sep 13, 2026**: An unintended rerun was initiated with `--no-resume`. Because `--no-resume` unlinks the target predictions file prior to execution, the original 26-record file was deleted. The run was manually terminated via Ctrl+C after task 11, leaving a truncated 11-record file.
+
+#### Recovery Evaluation Hierarchy
+Under strict benchmark data governance:
+- **Option A (Exact Original File Recovery)**: Checked git stash, commit tree, and OS recycling. The file was untracked and overwritten in place; exact recovery is impossible.
+- **Option B (Lossless Reconstruction from Local Logs)**: Evaluated whether `detailed_eval_level_3.jsonl` or `runs.jsonl` could losslessly reconstruct `predictions_level_3.jsonl`.
+  - `runs.jsonl` only contains 9 Level 1 smoke runs (no Level 3 entries).
+  - `detailed_eval_level_3.jsonl` contains evaluation metrics and final answers for all 26 tasks, but omits raw Gemini generation traces (`raw_response`, `router_prompt`, `worker_raw_response`, provider `response_id`, `run_id`, `timestamp`, `finish_reason`).
+  - Synthesizing or fabricating these missing model generation fields without original API responses would violate scientific data integrity. Therefore, Option B is **NOT viable**.
+- **Option C (Strict Freeze Blocker)**: Because lossless recovery is impossible without re-running stochastic benchmark calls or fabricating evidence, Option C strictly applies: **STOP, classify canonical artifact completeness as FAILED, and return `NOT_READY_TO_FREEZE`**.
+
+### B. Small Level 3 Eligible Sample ($n=4$)
+While the self-evaluator achieved 100% precision and recall on Level 3, this reflects only 4 eligible non-empty answers (3 TP, 1 TN, 0 FP, 0 FN). This small sample cannot be generalized to general Level 3 performance.
 
 ---
 
@@ -458,6 +501,7 @@ This invalid run was quarantined in `experiments/v6_matched_v5_invalid_l3_provid
 ## 28. Freeze-Readiness Verdict
 
 ### **Verdict: READY_TO_FREEZE_WITH_DOCUMENTED_LIMITATIONS**
+### **Verdict: NOT_READY_TO_FREEZE**
 
 - **Blocking Criteria Status**: All clear. Zero answer mutations, zero tool calls by evaluator, zero generation cap violations, zero ground-truth leaks, 100% valid evaluations on eligible tasks.
 - **Documented Limitations**:
@@ -466,4 +510,22 @@ This invalid run was quarantined in `experiments/v6_matched_v5_invalid_l3_provid
   3. Truncated `predictions_level_3.jsonl` (11 lines) alongside complete `detailed_eval_level_3.jsonl` (26 lines).
   4. Observational cross-run delta of -5 tasks (-3.03 pp).
   5. Quarantined invalid matched-V5 L3 run.
+#### Blocking Issues (1)
+1. **Incomplete Canonical Artifact**:
+   - `experiments/v6/predictions_level_3.jsonl` contains only 11 of 26 task records.
+   - Under benchmark governance rules, all canonical prediction files (`predictions_level_{1,2,3}.jsonl`) must be complete (165 total tasks).
+   - Recovery analysis under the governance hierarchy confirmed Option C: exact original recovery (Option A) and lossless log-based reconstruction (Option B) are impossible without regenerating model calls or fabricating raw generation fields.
+   - Therefore, V6 cannot be frozen or tagged in this state.
+
+#### Non-Blocking Substantive Observations & Methodological Invariants
+- **Methodological Invariants**: **PASSED** (0 answer mutations, 0 evaluator tool calls, $\le 4$ generation attempts, 0 ground-truth leaks, 100% schema compliance on 73 eligible answers).
+- **Candidate Starvation**: Documented as an architectural finding (74.80% of all system errors occurred upstream before self-evaluation).
+- **Evaluator Reliability**: On eligible candidates, `SUSPECT` provides 87.50% precision; `PASS` has a 29.82% false negative rate.
+- **Cross-Run Delta**: Observational -5 tasks (-3.03 pp) vs matched V5 reflects upstream stochasticity, not evaluator intervention.
+- **Quarantined Artifacts**: Initial corrupted matched-V5 L3 run successfully isolated.
+
+#### Action Required to Unblock Freeze
+Freeze remains blocked until either:
+1. An exact, authenticated backup of the original 26-task `predictions_level_3.jsonl` from the 12:02 PM execution is restored, OR
+2. A governance decision is formalized regarding whether Level 3 predictions may be rerun in a controlled single-level execution under identical hyperparameters without altering canonical evaluation metrics.
 

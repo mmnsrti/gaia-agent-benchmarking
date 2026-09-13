@@ -225,6 +225,87 @@ class TestV6AnalysisUtility(unittest.TestCase):
         self.assertEqual(inv_v5["correct"], 0)
         self.assertEqual(inv_v5["router_fallbacks"], 25)
 
+    def test_completed_tasks_reconciliation(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        v6_dir = repo_root / "experiments" / "v6"
+        v5_dir = repo_root / "experiments" / "v6_matched_v5"
+
+        if not (v6_dir / "detailed_eval_level_1.jsonl").exists():
+            self.skipTest("Canonical experiment artifacts not present")
+
+        results = analyze_v6_experiment(v6_dir, v5_dir)
+        pbl = results["performance_by_level"]
+        po = results["performance_overall"]
+
+        # 1. Per-level V6 completed sum must equal overall completed
+        v6_sum_completed = sum(pbl[f"level_{lvl}"]["v6_completed"] for lvl in [1, 2, 3])
+        self.assertEqual(pbl["level_1"]["v6_completed"], 35)
+        self.assertEqual(pbl["level_2"]["v6_completed"], 35)
+        self.assertEqual(pbl["level_3"]["v6_completed"], 4)
+        self.assertEqual(v6_sum_completed, 74)
+        self.assertEqual(po["v6_completed"], 74)
+
+        # 2. Per-level Matched V5 completed sum must equal overall completed (71, NOT 84)
+        v5_sum_completed = sum(pbl[f"level_{lvl}"]["v5_completed"] for lvl in [1, 2, 3])
+        self.assertEqual(pbl["level_1"]["v5_completed"], 32)
+        self.assertEqual(pbl["level_2"]["v5_completed"], 33)
+        self.assertEqual(pbl["level_3"]["v5_completed"], 6)
+        self.assertEqual(v5_sum_completed, 71)
+        self.assertEqual(po["v5_completed"], 71)
+
+        # 3. Must match canonical summary JSON files exactly
+        for lvl in [1, 2, 3]:
+            with open(v6_dir / f"summary_level_{lvl}.json", encoding="utf-8") as f:
+                s6 = json.load(f)
+            with open(v5_dir / f"summary_level_{lvl}.json", encoding="utf-8") as f:
+                s5 = json.load(f)
+            self.assertEqual(s6["completed_tasks"], pbl[f"level_{lvl}"]["v6_completed"])
+            self.assertEqual(s5["completed_tasks"], pbl[f"level_{lvl}"]["v5_completed"])
+
+    def test_brier_score_semantics_explicit(self):
+        from evaluation.self_evaluation_metrics import calculate_self_evaluation_metrics
+        # Synthetic records testing exact mapping:
+        # Case 1: SUSPECT with conf 0.8, incorrect -> prob=0.8, label=1.0 -> sq=(0.8-1)^2 = 0.04
+        # Case 2: SUSPECT with conf 0.8, correct   -> prob=0.8, label=0.0 -> sq=(0.8-0)^2 = 0.64
+        # Case 3: PASS with conf 0.9, correct     -> prob=0.1, label=0.0 -> sq=(0.1-0)^2 = 0.01
+        # Case 4: PASS with conf 0.9, incorrect   -> prob=0.1, label=1.0 -> sq=(0.1-1)^2 = 0.81
+        # Mean = (0.04 + 0.64 + 0.01 + 0.81) / 4 = 1.50 / 4 = 0.3750
+        records = [
+            {"eligible": True, "attempted": True, "success": True, "assessment": "SUSPECT", "risk_type": "EVIDENCE", "confidence": 0.8, "correct": False},
+            {"eligible": True, "attempted": True, "success": True, "assessment": "SUSPECT", "risk_type": "EVIDENCE", "confidence": 0.8, "correct": True},
+            {"eligible": True, "attempted": True, "success": True, "assessment": "PASS", "risk_type": "NONE", "confidence": 0.9, "correct": True},
+            {"eligible": True, "attempted": True, "success": True, "assessment": "PASS", "risk_type": "NONE", "confidence": 0.9, "correct": False},
+        ]
+        m = calculate_self_evaluation_metrics(records)
+        self.assertAlmostEqual(m["brier_diagnostic_score"], 0.3750, places=4)
+
+    def test_artifact_integrity_and_freeze_verdict(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        v6_dir = repo_root / "experiments" / "v6"
+        v5_dir = repo_root / "experiments" / "v6_matched_v5"
+
+        if not (v6_dir / "detailed_eval_level_1.jsonl").exists():
+            self.skipTest("Canonical experiment artifacts not present")
+
+        results = analyze_v6_experiment(v6_dir, v5_dir)
+        ai = results["artifact_integrity"]
+
+        # V6 L1 and L2 are complete, L3 is incomplete (11 != 26)
+        self.assertTrue(ai["v6"]["level_1"]["is_complete"])
+        self.assertTrue(ai["v6"]["level_2"]["is_complete"])
+        self.assertFalse(ai["v6"]["level_3"]["is_complete"])
+        self.assertEqual(ai["v6"]["level_3"]["predictions_count"], 11)
+        self.assertEqual(ai["v6"]["level_3"]["detailed_eval_count"], 26)
+
+        # Matched V5 all levels are complete
+        self.assertTrue(ai["matched_v5"]["level_1"]["is_complete"])
+        self.assertTrue(ai["matched_v5"]["level_2"]["is_complete"])
+        self.assertTrue(ai["matched_v5"]["level_3"]["is_complete"])
+
+        # Blocking issue must be present and verdict must be NOT_READY_TO_FREEZE
+        self.assertIn("V6 Level 3 artifact mismatch: predictions=11, detailed_eval=26, expected=26", results["blocking_issues"])
+        self.assertEqual(results["freeze_verdict"], "NOT_READY_TO_FREEZE")
+
 
 if __name__ == "__main__":
     unittest.main()
