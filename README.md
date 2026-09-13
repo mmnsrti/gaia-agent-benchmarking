@@ -668,6 +668,34 @@ Future work must not alter V7 results, runtime code, prompts, model configs, or 
 
 ---
 
+## v8 — Bounded Active Evidence Verification (Proposed / In Progress)
+
+**v8** investigates bounded active evidence verification within the GAIA agent benchmarking framework:
+```text
+V8 = frozen V7 + one bounded active web-evidence verification opportunity
+```
+
+### Research Question
+> *When Frozen V7 reaches a non-empty answer whose upstream V6 diagnostic is a valid `SUSPECT` with `RISK_TYPE: EVIDENCE`, does one additional bounded web retrieval followed by one bounded evidence-based adjudication correct more erroneous answers than it harms correct answers?*
+
+### Architecture & Boundaries
+1. **Upstream Pipeline**: Identical to frozen V7 (search $\le 1$, file extraction $\le 1$, capability router selecting `DIRECT` vs `PYTHON`, worker, verifier, read-only self-evaluator, and optional one-shot text-only repair).
+2. **Selective Eligibility Guard**: Active verification is attempted if and only if:
+   - The Frozen V7 final answer is non-empty (`bool(v7_final_answer.strip())`).
+   - Upstream V6 self-evaluation succeeded (`self_eval_success is True`).
+   - Upstream V6 assessment is `SUSPECT` (`self_eval_assessment == "SUSPECT"`).
+   - Upstream V6 risk type is `EVIDENCE` (`self_eval_risk_type == "EVIDENCE"`).
+3. **Strict Invariants**:
+   - At most 1 additional Tavily search per task (total task searches capped at $\le 2$).
+   - At most 1 adjudication LLM generation attempt per task (total standard LLM generations capped at $\le 6$).
+   - Search-only: exactly 0 Python executions, 0 file rereads, 0 multi-tool verification planners.
+   - Usable evidence requirement: if active search fails or returns zero results, adjudication is bypassed and the Frozen V7 answer is preserved verbatim.
+   - Strict output schema: `VERIFICATION_ACTION: KEEP` (1 line) or `VERIFICATION_ACTION: REPLACE\nFINAL: <corrected answer>` (2 lines).
+   - Deterministic fallback: on any search failure, provider exception, timeout, unexpected finish reason, or parser failure, the Frozen V7 answer is preserved verbatim (`active_verification_answer_changed = False`).
+   - Strict runtime ground-truth isolation.
+
+---
+
 ## Getting Started
 
 ### 1. Installation
@@ -741,6 +769,9 @@ Each experiment record captures:
 ### 1. Run One Development Question (Debug / Smoke Test)
 Run a single question locally without submitting:
 ```bash
+# Run with V8 bounded active evidence verification
+python evaluation/run_one.py --version v8 -i 0
+
 # Run with V7 SUSPECT-triggered targeted repair
 python evaluation/run_one.py --version v7 -i 0
 
@@ -769,6 +800,9 @@ python evaluation/run_one.py --version v0 -i 0
 ### 2. Run a Complete Benchmark Level
 Run tasks for a specific GAIA benchmark level from local data:
 ```bash
+# Run V8 bounded active evidence verification
+python -m evaluation.run_level --version v8 --level 1
+
 # Run V7 SUSPECT-triggered targeted repair
 python -m evaluation.run_level --version v7 --level 1
 
@@ -803,6 +837,9 @@ Useful arguments:
 ### 3. Evaluate Predictions Locally
 Compute metrics (accuracy, token usage, latency, attachment breakdown, file metrics, search metrics) against local ground truth without calling Hugging Face:
 ```bash
+# Evaluate V8 predictions
+python -m evaluation.evaluate --version v8 --level 1
+
 # Evaluate V7 predictions
 python -m evaluation.evaluate --version v7 --level 1
 

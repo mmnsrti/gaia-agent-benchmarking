@@ -45,6 +45,7 @@ from agent import (
     GAIAVerificationAgent,
     GAIASelfEvaluationAgent,
     GAIATargetedRepairAgent,
+    GAIAActiveEvidenceVerificationAgent,
     LLMClient,
 )
 from evaluation.dataset import load_gaia_tasks, EXPECTED_VALIDATION_COUNTS
@@ -153,7 +154,9 @@ def run_level(
     # Initialize client & agent once
     llm = LLMClient()
     if agent is None:
-        if version == "v7":
+        if version == "v8":
+            agent = GAIAActiveEvidenceVerificationAgent(llm_client=llm)
+        elif version == "v7":
             agent = GAIATargetedRepairAgent(llm_client=llm)
         elif version == "v6":
             agent = GAIASelfEvaluationAgent(llm_client=llm)

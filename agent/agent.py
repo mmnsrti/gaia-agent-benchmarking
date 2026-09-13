@@ -32,6 +32,12 @@ from prompts.targeted_repair import (
     build_targeted_repair_prompt,
     parse_targeted_repair_result,
 )
+from prompts.active_evidence_verification import (
+    ACTIVE_EVIDENCE_VERIFICATION_PROMPT_VERSION,
+    build_active_evidence_query,
+    build_active_evidence_verification_prompt,
+    parse_active_evidence_verification_result,
+)
 from tools.web_search import TavilySearchTool, WebSearchResult
 from tools.file_tool import FileTool, FileResult
 from tools.python_tool import PythonTool, PythonResult
@@ -156,6 +162,37 @@ class AgentResult:
     repair_prompt_version: Optional[str] = None
     repair_prompt: Optional[str] = None
     repair_raw_response: Optional[str] = None
+    # Active evidence verification metadata (V8). Raw prompt/response are internal only
+    # and are intentionally excluded from public evaluation serializers.
+    pre_active_verification_answer: Optional[str] = None
+    post_active_verification_answer: Optional[str] = None
+    active_verification_eligible: bool = False
+    active_verification_triggered: bool = False
+    active_verification_query: Optional[str] = None
+    active_verification_search_attempted: bool = False
+    active_verification_search_success: bool = False
+    active_verification_search_usable: bool = False
+    active_verification_search_error_type: Optional[str] = None
+    active_verification_search_latency_seconds: Optional[float] = None
+    active_verification_search_result_count: int = 0
+    active_verification_adjudication_attempted: bool = False
+    active_verification_adjudication_success: bool = False
+    active_verification_prompt_version: Optional[str] = None
+    active_verification_action: Optional[str] = None
+    active_verification_error_type: Optional[str] = None
+    active_verification_finish_reason: Optional[str] = None
+    active_verification_generation_attempts: int = 0
+    active_verification_generation_success: bool = False
+    active_verification_latency_seconds: Optional[float] = None
+    active_verification_input_tokens: Optional[int] = None
+    active_verification_output_tokens: Optional[int] = None
+    active_verification_thinking_tokens: Optional[int] = None
+    active_verification_total_tokens: Optional[int] = None
+    active_verification_answer_changed: bool = False
+    active_verification_total_stage_latency_seconds: Optional[float] = None
+    active_verification_prompt: Optional[str] = None
+    active_verification_raw_response: Optional[str] = None
+    active_verification_search_result: Optional[WebSearchResult] = None
 
 
     @property
@@ -1525,4 +1562,273 @@ class GAIATargetedRepairAgent(GAIASelfEvaluationAgent):
 
     def __call__(self, question: str, file_path: Optional[str] = None) -> str:
         return self.run(question, file_path=file_path).final_answer
+
+
+class GAIAActiveEvidenceVerificationAgent(GAIATargetedRepairAgent):
+    """V8 Bounded Active Evidence Verification Agent.
+
+    Inherits frozen V7 behavior completely. After V7 has produced its final answer,
+    this agent triggers at most one bounded active web search followed by at most
+    one bounded adjudication generation if and only if:
+    1. The Frozen V7 answer is non-empty.
+    2. Upstream V6 self_eval_success is True.
+    3. Upstream V6 self_eval_assessment == "SUSPECT".
+    4. Upstream V6 self_eval_risk_type == "EVIDENCE".
+    """
+
+    def run(self, question: str, file_path: Optional[str] = None) -> AgentResult:
+        stage_start_time = time.time()
+        v7_result = super().run(question, file_path=file_path)
+        pre_answer = v7_result.final_answer
+
+        eligible = (
+            bool(pre_answer and pre_answer.strip())
+            and v7_result.self_eval_success is True
+            and v7_result.self_eval_assessment == "SUSPECT"
+            and v7_result.self_eval_risk_type == "EVIDENCE"
+        )
+
+        v7_result.pre_active_verification_answer = pre_answer
+        v7_result.post_active_verification_answer = pre_answer
+        v7_result.active_verification_eligible = eligible
+        v7_result.active_verification_triggered = eligible
+        v7_result.active_verification_prompt_version = (
+            ACTIVE_EVIDENCE_VERIFICATION_PROMPT_VERSION if eligible else None
+        )
+        v7_result.active_verification_answer_changed = False
+
+        if not eligible:
+            v7_result.active_verification_query = None
+            v7_result.active_verification_search_attempted = False
+            v7_result.active_verification_search_success = False
+            v7_result.active_verification_search_usable = False
+            v7_result.active_verification_search_error_type = None
+            v7_result.active_verification_search_latency_seconds = None
+            v7_result.active_verification_search_result_count = 0
+            v7_result.active_verification_adjudication_attempted = False
+            v7_result.active_verification_adjudication_success = False
+            v7_result.active_verification_action = None
+            v7_result.active_verification_error_type = None
+            v7_result.active_verification_finish_reason = None
+            v7_result.active_verification_generation_attempts = 0
+            v7_result.active_verification_generation_success = False
+            v7_result.active_verification_latency_seconds = None
+            v7_result.active_verification_input_tokens = None
+            v7_result.active_verification_output_tokens = None
+            v7_result.active_verification_thinking_tokens = None
+            v7_result.active_verification_total_tokens = None
+            v7_result.active_verification_prompt = None
+            v7_result.active_verification_raw_response = None
+            v7_result.active_verification_search_result = None
+            v7_result.active_verification_total_stage_latency_seconds = round(
+                time.time() - stage_start_time, 2
+            )
+            assert v7_result.llm_generation_attempts <= 6, "V8 exceeds the six-generation cap"
+            return v7_result
+
+        # 1. Deterministic query formulation
+        query = build_active_evidence_query(question=question, current_answer=pre_answer)
+        v7_result.active_verification_query = query
+        v7_result.active_verification_search_attempted = True
+
+        # 2. Exactly one search execution
+        search_start = time.time()
+        search_error_type = None
+        search_result = None
+        search_latency = 0.0
+        search_success = False
+        result_count = 0
+        try:
+            search_result = self.search_tool.search(query)
+            search_latency = round(time.time() - search_start, 2)
+            search_success = bool(search_result and getattr(search_result, "success", False))
+            result_count = len(search_result.results) if (search_result and getattr(search_result, "results", None)) else 0
+            if not search_success:
+                search_error_type = getattr(search_result, "error_type", None) or "search_failed"
+        except Exception as exc:
+            search_latency = round(time.time() - search_start, 2)
+            search_success = False
+            result_count = 0
+            err_str = str(exc).lower()
+            if "timeout" in err_str:
+                search_error_type = "search_timeout"
+            elif "quota" in err_str or "rate" in err_str:
+                search_error_type = "search_rate_limit"
+            elif "auth" in err_str or "401" in err_str or "key" in err_str:
+                search_error_type = "search_auth_error"
+            else:
+                search_error_type = "search_provider_error"
+
+        usable = bool(search_success and result_count > 0)
+        v7_result.active_verification_search_success = search_success
+        v7_result.active_verification_search_usable = usable
+        v7_result.active_verification_search_latency_seconds = search_latency
+        v7_result.active_verification_search_result_count = result_count
+        v7_result.active_verification_search_result = search_result
+
+        # Search failure or no usable evidence policy: preserve pre_answer, skip adjudication
+        if not usable:
+            if search_success and result_count == 0:
+                search_error_type = "zero_search_results"
+            v7_result.active_verification_search_error_type = search_error_type
+            v7_result.active_verification_adjudication_attempted = False
+            v7_result.active_verification_adjudication_success = False
+            v7_result.active_verification_action = None
+            v7_result.active_verification_error_type = search_error_type
+            v7_result.active_verification_finish_reason = None
+            v7_result.active_verification_generation_attempts = 0
+            v7_result.active_verification_generation_success = False
+            v7_result.active_verification_latency_seconds = None
+            v7_result.active_verification_input_tokens = None
+            v7_result.active_verification_output_tokens = None
+            v7_result.active_verification_thinking_tokens = None
+            v7_result.active_verification_total_tokens = None
+            v7_result.active_verification_prompt = None
+            v7_result.active_verification_raw_response = None
+            v7_result.final_answer = pre_answer
+            v7_result.post_active_verification_answer = pre_answer
+            v7_result.active_verification_answer_changed = False
+            v7_result.active_verification_total_stage_latency_seconds = round(
+                time.time() - stage_start_time, 2
+            )
+            assert v7_result.llm_generation_attempts <= 6, "V8 exceeds the six-generation cap"
+            return v7_result
+
+        v7_result.active_verification_search_error_type = None
+
+        # 3. Build adjudication prompt
+        new_evidence = (
+            search_result.format_evidence_block()
+            if hasattr(search_result, "format_evidence_block")
+            else str(search_result)
+        )
+        web_evidence = self._existing_web_evidence(v7_result)
+        file_evidence, attachment_filename = self._existing_file_context(v7_result)
+        execution_summary = self._build_execution_summary(v7_result, file_path)
+
+        adjudication_prompt = build_active_evidence_verification_prompt(
+            question=question,
+            current_answer=pre_answer,
+            new_evidence=new_evidence,
+            web_evidence=web_evidence,
+            file_evidence=file_evidence,
+            attachment_filename=attachment_filename,
+            risk_type=v7_result.self_eval_risk_type,
+            confidence=v7_result.self_eval_confidence,
+            execution_summary=execution_summary,
+        )
+
+        # 4. Adjudication LLM call (max_retries=0)
+        v7_result.active_verification_adjudication_attempted = True
+        adj_generation_attempts = 1
+        adj_generation_success = False
+        adj_llm_resp = None
+        adj_raw_response = None
+        adj_error_type = None
+        adj_start = time.time()
+
+        try:
+            adj_llm_resp = self.llm.generate(
+                adjudication_prompt,
+                attachment_parts=None,
+                max_retries=0,
+            )
+            adj_generation_success = True
+            if isinstance(adj_llm_resp, LLMResponse):
+                adj_raw_response = (
+                    adj_llm_resp.raw_text
+                    if adj_llm_resp.raw_text
+                    else adj_llm_resp.text
+                )
+                if adj_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
+                    adj_error_type = "malformed_function_call_finish_reason"
+                elif adj_llm_resp.finish_reason != "STOP":
+                    adj_error_type = "unexpected_finish_reason"
+            else:
+                adj_raw_response = str(adj_llm_resp)
+                adj_error_type = "unexpected_provider_response_type"
+        except Exception as exc:
+            err_str = str(exc).lower()
+            if "timeout" in err_str or "timed out" in err_str or "deadline" in err_str:
+                adj_error_type = "provider_timeout"
+            elif "malformed_function_call" in err_str:
+                adj_error_type = "malformed_function_call_finish_reason"
+            else:
+                adj_error_type = "provider_api_error"
+
+        adj_latency = round(time.time() - adj_start, 2)
+        adj_finish_reason = getattr(adj_llm_resp, "finish_reason", None) if adj_llm_resp else None
+        adj_input_tokens = getattr(adj_llm_resp, "input_tokens", None) if adj_llm_resp else None
+        adj_output_tokens = getattr(adj_llm_resp, "output_tokens", None) if adj_llm_resp else None
+        adj_thinking_tokens = getattr(adj_llm_resp, "thinking_tokens", None) if adj_llm_resp else None
+        adj_total_tokens = getattr(adj_llm_resp, "total_tokens", None) if adj_llm_resp else None
+        if (
+            adj_total_tokens is None
+            and adj_input_tokens is not None
+            and adj_output_tokens is not None
+        ):
+            adj_total_tokens = adj_input_tokens + adj_output_tokens
+
+        # 5. Strict parser
+        parsed = None
+        if adj_error_type is None:
+            parsed = parse_active_evidence_verification_result(
+                adj_raw_response,
+                current_answer=pre_answer,
+            )
+            if not parsed.is_valid:
+                adj_error_type = parsed.error_type
+
+        # 6. Action resolution & answer assignment
+        final_answer = pre_answer
+        adj_action = None
+        adj_success = False
+        adj_answer_changed = False
+
+        if parsed and parsed.is_valid and adj_error_type is None:
+            adj_success = True
+            adj_action = parsed.action
+            if parsed.action == "KEEP":
+                final_answer = pre_answer
+                adj_answer_changed = False
+            elif parsed.action == "REPLACE":
+                final_answer = parsed.final_answer
+                adj_answer_changed = (final_answer != pre_answer)
+        else:
+            # Failure policy: preserve pre_answer
+            final_answer = pre_answer
+            adj_success = False
+            adj_action = None
+            adj_answer_changed = False
+
+        v7_result.final_answer = final_answer
+        v7_result.post_active_verification_answer = final_answer
+        v7_result.active_verification_adjudication_success = adj_success
+        v7_result.active_verification_action = adj_action
+        v7_result.active_verification_answer_changed = adj_answer_changed
+        v7_result.active_verification_error_type = adj_error_type
+        v7_result.active_verification_finish_reason = adj_finish_reason
+        v7_result.active_verification_generation_attempts = adj_generation_attempts
+        v7_result.active_verification_generation_success = adj_generation_success
+        v7_result.active_verification_latency_seconds = adj_latency
+        v7_result.active_verification_input_tokens = adj_input_tokens
+        v7_result.active_verification_output_tokens = adj_output_tokens
+        v7_result.active_verification_thinking_tokens = adj_thinking_tokens
+        v7_result.active_verification_total_tokens = adj_total_tokens
+        v7_result.active_verification_prompt = adjudication_prompt
+        v7_result.active_verification_raw_response = adj_raw_response
+        v7_result.active_verification_total_stage_latency_seconds = round(
+            time.time() - stage_start_time, 2
+        )
+
+        v7_result.llm_generation_attempts += adj_generation_attempts
+        v7_result.llm_generation_count = v7_result.llm_generation_attempts
+        v7_result.llm_generation_success_count += 1 if adj_generation_success else 0
+
+        assert v7_result.llm_generation_attempts <= 6, "V8 exceeds the six-generation cap"
+        return v7_result
+
+    def __call__(self, question: str, file_path: Optional[str] = None) -> str:
+        return self.run(question, file_path=file_path).final_answer
+
 

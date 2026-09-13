@@ -13,6 +13,7 @@ from agent import (
     GAIAVerificationAgent,
     GAIASelfEvaluationAgent,
     GAIATargetedRepairAgent,
+    GAIAActiveEvidenceVerificationAgent,
     LLMClient,
 )
 from prompts.baseline import PROMPT_VERSION
@@ -97,7 +98,9 @@ def execute_task(
     if llm is None:
         llm = LLMClient()
     if agent is None:
-        if project_version == "v7":
+        if project_version == "v8":
+            agent = GAIAActiveEvidenceVerificationAgent(llm_client=llm)
+        elif project_version == "v7":
             agent = GAIATargetedRepairAgent(llm_client=llm)
         elif project_version == "v6":
             agent = GAIASelfEvaluationAgent(llm_client=llm)
@@ -114,7 +117,9 @@ def execute_task(
         else:
             agent = GAIAAgent(llm_client=llm)
 
-    if isinstance(agent, GAIATargetedRepairAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6"):
+    if isinstance(agent, GAIAActiveEvidenceVerificationAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"):
+        project_version = "v8"
+    elif isinstance(agent, GAIATargetedRepairAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6"):
         project_version = "v7"
     elif isinstance(agent, GAIASelfEvaluationAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5"):
         project_version = "v6"
@@ -218,14 +223,17 @@ def execute_task(
     latency = round(time.time() - start_time, 2)
 
     # Prompt provenance extraction
-    is_v7 = (project_version == "v7") or isinstance(agent, GAIATargetedRepairAgent)
-    is_v6 = ((project_version == "v6") or isinstance(agent, GAIASelfEvaluationAgent)) and not is_v7
-    is_v5 = ((project_version == "v5") or isinstance(agent, GAIAVerificationAgent)) and not is_v6 and not is_v7
-    is_v4 = (((project_version == "v4") or isinstance(agent, GAIARouterAgent)) and not is_v5 and not is_v6 and not is_v7)
-    is_v3 = (((project_version == "v3") or isinstance(agent, GAIAPythonAgent)) and not is_v4 and not is_v5 and not is_v6 and not is_v7)
-    file_enabled = (((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3 and not is_v4 and not is_v5 and not is_v6 and not is_v7)
+    is_v8 = (project_version == "v8") or isinstance(agent, GAIAActiveEvidenceVerificationAgent)
+    is_v7 = ((project_version == "v7") or isinstance(agent, GAIATargetedRepairAgent)) and not is_v8
+    is_v6 = ((project_version == "v6") or isinstance(agent, GAIASelfEvaluationAgent)) and not is_v7 and not is_v8
+    is_v5 = ((project_version == "v5") or isinstance(agent, GAIAVerificationAgent)) and not is_v6 and not is_v7 and not is_v8
+    is_v4 = (((project_version == "v4") or isinstance(agent, GAIARouterAgent)) and not is_v5 and not is_v6 and not is_v7 and not is_v8)
+    is_v3 = (((project_version == "v3") or isinstance(agent, GAIAPythonAgent)) and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v8)
+    file_enabled = (((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3 and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v8)
     if result is None:
-        if is_v7:
+        if is_v8:
+            prompt_ver = "active-evidence-verification-v1"
+        elif is_v7:
             prompt_ver = "targeted-repair-v1"
         elif is_v6:
             prompt_ver = "self-evaluator-v1"
@@ -246,7 +254,7 @@ def execute_task(
     fallback_prompt_ver = getattr(result, "fallback_prompt_version", None) if result else None
 
     if primary_prompt_ver is None:
-        if is_v7 or is_v6 or is_v5 or is_v4:
+        if is_v8 or is_v7 or is_v6 or is_v5 or is_v4:
             primary_prompt_ver = "capability-router-v1"
         elif is_v3:
             primary_prompt_ver = "python-execution-v1"
@@ -258,7 +266,7 @@ def execute_task(
             primary_prompt_ver = prompt_ver or "baseline-v1"
 
     if fallback_prompt_ver is None:
-        if is_v7 or is_v6 or is_v5 or is_v4:
+        if is_v8 or is_v7 or is_v6 or is_v5 or is_v4:
             fallback_prompt_ver = "router-direct-worker-v1" if getattr(result, "router_fallback", False) else None
         elif is_v3:
             fallback_prompt_ver = None
@@ -368,7 +376,11 @@ def execute_task(
     python_fallback = getattr(result, "python_fallback", False) if result else False
     python_execution_count = 1 if python_executed else 0
     assert python_execution_count in (0, 1), f"Execution count {python_execution_count} not in {0, 1}"
-    if is_v7:
+    if is_v8:
+        llm_generation_attempts = getattr(result, "llm_generation_attempts", 6 if completion_success else 2) if result else (6 if completion_success else 2)
+        assert 1 <= llm_generation_attempts <= 6, f"V8 LLM generation attempts {llm_generation_attempts} outside [1, 6]"
+        llm_generation_count = llm_generation_attempts
+    elif is_v7:
         llm_generation_attempts = getattr(result, "llm_generation_attempts", 5 if completion_success else 2) if result else (5 if completion_success else 2)
         assert 1 <= llm_generation_attempts <= 5, f"V7 LLM generation attempts {llm_generation_attempts} outside [1, 5]"
         llm_generation_count = llm_generation_attempts
@@ -391,11 +403,13 @@ def execute_task(
     python_prompt_version = getattr(result, "python_prompt_version", None) if result else None
 
     # Router metadata (V4, V5, V6 & V7)
+    # Router metadata (V4, V5, V6, V7 & V8)
     router_decision = getattr(result, "router_decision", None) if result else None
     router_success = getattr(result, "router_success", False) if result else False
     router_fallback = getattr(result, "router_fallback", False) if result else False
     router_error_type = getattr(result, "router_error_type", None) if result else None
     router_prompt_version = getattr(result, "router_prompt_version", "capability-router-v1" if (is_v4 or is_v5 or is_v6 or is_v7) else None) if result else ("capability-router-v1" if (is_v4 or is_v5 or is_v6 or is_v7) else None)
+    router_prompt_version = getattr(result, "router_prompt_version", "capability-router-v1" if (is_v4 or is_v5 or is_v6 or is_v7 or is_v8) else None) if result else ("capability-router-v1" if (is_v4 or is_v5 or is_v6 or is_v7 or is_v8) else None)
     router_prompt = getattr(result, "router_prompt", None) if result else None
     router_raw_response = getattr(result, "router_raw_response", None) if result else None
     router_latency_seconds = getattr(result, "router_latency_seconds", None) if result else None
@@ -403,9 +417,11 @@ def execute_task(
     router_output_tokens = getattr(result, "router_output_tokens", None) if result else None
     router_thinking_tokens = getattr(result, "router_thinking_tokens", None) if result else None
     router_generation_attempts = getattr(result, "router_generation_attempts", 1 if (is_v4 or is_v5 or is_v6 or is_v7) else 0) if result else (1 if (is_v4 or is_v5 or is_v6 or is_v7) else 0)
+    router_generation_attempts = getattr(result, "router_generation_attempts", 1 if (is_v4 or is_v5 or is_v6 or is_v7 or is_v8) else 0) if result else (1 if (is_v4 or is_v5 or is_v6 or is_v7 or is_v8) else 0)
     router_generation_success = getattr(result, "router_generation_success", False) if result else False
 
     # Worker metadata (V4, V5, V6 & V7)
+    # Worker metadata (V4, V5, V6, V7 & V8)
     worker_mode = getattr(result, "worker_mode", None) if result else None
     worker_success = getattr(result, "worker_success", False) if result else False
     worker_error_type = getattr(result, "worker_error_type", None) if result else None
@@ -417,6 +433,7 @@ def execute_task(
     worker_output_tokens = getattr(result, "worker_output_tokens", None) if result else None
     worker_thinking_tokens = getattr(result, "worker_thinking_tokens", None) if result else None
     worker_generation_attempts = getattr(result, "worker_generation_attempts", 1 if (is_v4 or is_v5 or is_v6 or is_v7) else 0) if result else (1 if (is_v4 or is_v5 or is_v6 or is_v7) else 0)
+    worker_generation_attempts = getattr(result, "worker_generation_attempts", 1 if (is_v4 or is_v5 or is_v6 or is_v7 or is_v8) else 0) if result else (1 if (is_v4 or is_v5 or is_v6 or is_v7 or is_v8) else 0)
     worker_generation_success = getattr(result, "worker_generation_success", False) if result else False
 
     # Verifier metadata (V5, V6 & V7)
@@ -481,8 +498,38 @@ def execute_task(
     repair_total_tokens = getattr(result, "repair_total_tokens", None) if result else None
     repair_prompt_version = getattr(result, "repair_prompt_version", None) if result else None
 
+    # Active evidence verification telemetry (V8): intentionally public-safe only.
+    pre_active_verification_answer = getattr(result, "pre_active_verification_answer", None) if result else None
+    post_active_verification_answer = getattr(result, "post_active_verification_answer", None) if result else None
+    active_verification_eligible = getattr(result, "active_verification_eligible", False) if result else False
+    active_verification_triggered = getattr(result, "active_verification_triggered", False) if result else False
+    active_verification_query = getattr(result, "active_verification_query", None) if result else None
+    active_verification_search_attempted = getattr(result, "active_verification_search_attempted", False) if result else False
+    active_verification_search_success = getattr(result, "active_verification_search_success", False) if result else False
+    active_verification_search_usable = getattr(result, "active_verification_search_usable", False) if result else False
+    active_verification_search_error_type = getattr(result, "active_verification_search_error_type", None) if result else None
+    active_verification_search_latency_seconds = getattr(result, "active_verification_search_latency_seconds", None) if result else None
+    active_verification_search_result_count = getattr(result, "active_verification_search_result_count", 0) if result else 0
+    active_verification_adjudication_attempted = getattr(result, "active_verification_adjudication_attempted", False) if result else False
+    active_verification_adjudication_success = getattr(result, "active_verification_adjudication_success", False) if result else False
+    active_verification_prompt_version = getattr(result, "active_verification_prompt_version", None) if result else None
+    active_verification_action = getattr(result, "active_verification_action", None) if result else None
+    active_verification_error_type = getattr(result, "active_verification_error_type", None) if result else None
+    active_verification_finish_reason = getattr(result, "active_verification_finish_reason", None) if result else None
+    active_verification_generation_attempts = getattr(result, "active_verification_generation_attempts", 0) if result else 0
+    active_verification_generation_success = getattr(result, "active_verification_generation_success", False) if result else False
+    active_verification_latency_seconds = getattr(result, "active_verification_latency_seconds", None) if result else None
+    active_verification_input_tokens = getattr(result, "active_verification_input_tokens", None) if result else None
+    active_verification_output_tokens = getattr(result, "active_verification_output_tokens", None) if result else None
+    active_verification_thinking_tokens = getattr(result, "active_verification_thinking_tokens", None) if result else None
+    active_verification_total_tokens = getattr(result, "active_verification_total_tokens", None) if result else None
+    active_verification_answer_changed = getattr(result, "active_verification_answer_changed", False) if result else False
+    active_verification_total_stage_latency_seconds = getattr(result, "active_verification_total_stage_latency_seconds", None) if result else None
+
     default_gen_success = (
-        ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0))
+        ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0) + (1 if active_verification_generation_success else 0))
+        if is_v8
+        else ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0))
         if is_v7
         else ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0))
         if is_v6
@@ -513,7 +560,9 @@ def execute_task(
         python_stderr_length = 0
         python_output_truncated = False
 
-    if is_v7 and schema_version < 6:
+    if is_v8 and schema_version < 7:
+        resolved_schema_version = 7
+    elif is_v7 and schema_version < 6:
         resolved_schema_version = 6
     elif is_v6 and schema_version < 5:
         resolved_schema_version = 5
@@ -625,6 +674,8 @@ def execute_task(
 
         # Router metadata (V4 & V5)
         "router_requested": True if (is_v4 or is_v5 or is_v6) else False,
+        # Router metadata (V4, V5, V6, V7 & V8)
+        "router_requested": True if (is_v4 or is_v5 or is_v6 or is_v7 or is_v8) else False,
         "router_decision": router_decision,
         "router_success": router_success,
         "router_fallback": router_fallback,
@@ -712,6 +763,34 @@ def execute_task(
         "repair_thinking_tokens": repair_thinking_tokens,
         "repair_total_tokens": repair_total_tokens,
         "repair_prompt_version": repair_prompt_version,
+
+        # Active evidence verification telemetry (V8): intentionally public-safe only.
+        "pre_active_verification_answer": pre_active_verification_answer,
+        "post_active_verification_answer": post_active_verification_answer,
+        "active_verification_eligible": active_verification_eligible,
+        "active_verification_triggered": active_verification_triggered,
+        "active_verification_query": active_verification_query,
+        "active_verification_search_attempted": active_verification_search_attempted,
+        "active_verification_search_success": active_verification_search_success,
+        "active_verification_search_usable": active_verification_search_usable,
+        "active_verification_search_error_type": active_verification_search_error_type,
+        "active_verification_search_latency_seconds": active_verification_search_latency_seconds,
+        "active_verification_search_result_count": active_verification_search_result_count,
+        "active_verification_adjudication_attempted": active_verification_adjudication_attempted,
+        "active_verification_adjudication_success": active_verification_adjudication_success,
+        "active_verification_prompt_version": active_verification_prompt_version,
+        "active_verification_action": active_verification_action,
+        "active_verification_error_type": active_verification_error_type,
+        "active_verification_finish_reason": active_verification_finish_reason,
+        "active_verification_generation_attempts": active_verification_generation_attempts,
+        "active_verification_generation_success": active_verification_generation_success,
+        "active_verification_latency_seconds": active_verification_latency_seconds,
+        "active_verification_input_tokens": active_verification_input_tokens,
+        "active_verification_output_tokens": active_verification_output_tokens,
+        "active_verification_thinking_tokens": active_verification_thinking_tokens,
+        "active_verification_total_tokens": active_verification_total_tokens,
+        "active_verification_answer_changed": active_verification_answer_changed,
+        "active_verification_total_stage_latency_seconds": active_verification_total_stage_latency_seconds,
 
         # Generation counts
         "llm_generation_attempts": llm_generation_attempts,
