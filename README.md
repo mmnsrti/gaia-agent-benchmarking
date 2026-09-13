@@ -620,6 +620,54 @@ Future work must not alter V6 results, runtime code, prompts, model configs, or 
 
 ---
 
+## v7 — SUSPECT-Triggered Targeted Repair
+
+**v7** investigates bounded post-evaluation targeted repair within the GAIA agent benchmarking framework:
+```text
+V7 = frozen V6 + one bounded text-only targeted repair generation triggered exclusively by valid SUSPECT
+```
+
+Research Question:
+> *Can one bounded targeted repair generation, triggered only by a valid V6 SUSPECT assessment, correct more erroneous answers than it harms correct answers, without additional tools, new evidence retrieval, or retries?*
+
+### Architecture & Boundaries
+1. **Upstream Pipeline**: Identical to frozen V6 (search $\le 1$, file extraction $\le 1$, capability router selecting `DIRECT` vs `PYTHON`, worker, candidate eligibility guard, one-shot verifier `KEEP`/`REVISE`, and read-only self-evaluator emitting `PASS`/`SUSPECT`).
+2. **Selective Trigger Guard**: Repair is triggered if and only if the self-evaluator produces a valid `SUSPECT` assessment on a non-empty candidate answer.
+3. **Strict Invariants**:
+   - At most 1 repair generation attempt per task (total task generations capped at $\le 5$).
+   - Text-only repair (`mode="NONE"`): 0 searches, 0 Python calls, 0 file reread calls.
+   - Deterministic fallback: on parser failure or error, pre-repair candidate is preserved verbatim (`repair_answer_changed = False`).
+   - Strict runtime ground-truth isolation.
+
+### Canonical Benchmark Results (GAIA 2023 Validation, 165 Tasks)
+
+V7 adds one bounded targeted repair generation to frozen V6, triggered only on valid `SUSPECT` assessments. Across 19 repair triggers, it produced 16 `KEEP` actions, two answer-changing `REPLACE` actions, and one parser failure. Neither replacement corrected its task, yielding zero improvements, zero regressions, and a net within-run repair delta of 0 tasks:
+
+| Benchmark Level | Total Tasks | Pre-Repair Correct | Post-Repair Correct | Within-Run Net Delta |
+| :--- | :---: | :---: | :---: | :---: |
+| **Level 1** | 53 | 22 (41.51%) | 22 (41.51%) | **0 tasks (0.00 pp)** |
+| **Level 2** | 86 | 22 (25.58%) | 22 (25.58%) | **0 tasks (0.00 pp)** |
+| **Level 3** | 26 | 2 (7.69%) | 2 (7.69%) | **0 tasks (0.00 pp)** |
+| **Overall** | **165** | **46 (27.88%)** | **46 (27.88%)** | **0 tasks (0.00 pp)** |
+
+- **Repair Transitions**: 0 IMPROVEMENT, 0 REGRESSION, 4 STABLE_CORRECT, 15 STABLE_FAILURE, 146 NOT_TRIGGERED.
+- **Harm Avoidance in This Run**: Among the four initially-correct answers flagged `SUSPECT`, no regression was observed ($0 / 4 = 0.00\%$), all four being protected by `KEEP` behavior. This observation is bounded by the small denominator ($N = 4$) and only two total `REPLACE` actions.
+- **Candidate Starvation**: 87 of 119 pre-repair system errors (**73.11%**) were unreachable by repair because no candidate answer existed upstream.
+- **Evidence-Limitation Context**: Most SUSPECT triggers (15 / 19, 78.95%) were evaluator-assigned `EVIDENCE` risks, while V7 was limited to reconsidering already-available evidence. The V7 repair stage was unable to acquire new evidence because active retrieval and tools were intentionally prohibited. This motivates studying bounded active verification in a future version.
+
+### Observational Matched Frozen V6 Control Comparison
+
+A contemporaneous matched frozen V6 control run completed 85 tasks (51.52%) and achieved 52 / 165 correct (31.52%), compared with V7 post-repair at 46 / 165 correct (27.88%) for an observed cross-run delta of -6 tasks (-3.64 pp). This cross-run comparison is strictly **observational and non-causal** (cross-run contingency: 36 both correct, 103 both wrong, 10 V6 wrong $\rightarrow$ V7 correct, 16 V6 correct $\rightarrow$ V7 wrong), arising from upstream LLM sampling stochasticity and router branch selection across separate runs.
+
+### Freeze Rule
+V7 is frozen as the immutable research baseline for SUSPECT-triggered targeted repair:
+```text
+V7 = frozen V6 + one bounded text-only targeted repair generation triggered exclusively by valid SUSPECT
+```
+Future work must not alter V7 results, runtime code, prompts, model configs, or evaluations. Any active verification experimentation belongs to V8+.
+
+---
+
 ## Getting Started
 
 ### 1. Installation
@@ -693,6 +741,9 @@ Each experiment record captures:
 ### 1. Run One Development Question (Debug / Smoke Test)
 Run a single question locally without submitting:
 ```bash
+# Run with V7 SUSPECT-triggered targeted repair
+python evaluation/run_one.py --version v7 -i 0
+
 # Run with V6 bounded read-only self-evaluation
 python evaluation/run_one.py --version v6 -i 0
 
@@ -718,6 +769,9 @@ python evaluation/run_one.py --version v0 -i 0
 ### 2. Run a Complete Benchmark Level
 Run tasks for a specific GAIA benchmark level from local data:
 ```bash
+# Run V7 SUSPECT-triggered targeted repair
+python -m evaluation.run_level --version v7 --level 1
+
 # Run V6 bounded read-only self-evaluation
 python -m evaluation.run_level --version v6 --level 1
 
@@ -749,6 +803,9 @@ Useful arguments:
 ### 3. Evaluate Predictions Locally
 Compute metrics (accuracy, token usage, latency, attachment breakdown, file metrics, search metrics) against local ground truth without calling Hugging Face:
 ```bash
+# Evaluate V7 predictions
+python -m evaluation.evaluate --version v7 --level 1
+
 # Evaluate V6 predictions
 python -m evaluation.evaluate --version v6 --level 1
 

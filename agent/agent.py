@@ -27,6 +27,11 @@ from prompts.self_evaluation import (
     build_self_evaluator_prompt,
     parse_self_evaluation_result,
 )
+from prompts.targeted_repair import (
+    TARGETED_REPAIR_PROMPT_VERSION,
+    build_targeted_repair_prompt,
+    parse_targeted_repair_result,
+)
 from tools.web_search import TavilySearchTool, WebSearchResult
 from tools.file_tool import FileTool, FileResult
 from tools.python_tool import PythonTool, PythonResult
@@ -129,6 +134,28 @@ class AgentResult:
     self_eval_answer_unchanged: bool = True
     self_eval_prompt: Optional[str] = None
     self_eval_raw_response: Optional[str] = None
+    # Targeted repair metadata (V7). Raw prompt/response are internal only and
+    # are intentionally excluded from public evaluation serializers.
+    pre_repair_answer: Optional[str] = None
+    post_repair_answer: Optional[str] = None
+    repair_eligible: bool = False
+    repair_triggered: bool = False
+    repair_attempted: bool = False
+    repair_success: bool = False
+    repair_action: Optional[str] = None
+    repair_answer_changed: bool = False
+    repair_error_type: Optional[str] = None
+    repair_finish_reason: Optional[str] = None
+    repair_generation_attempts: int = 0
+    repair_generation_success: bool = False
+    repair_latency_seconds: Optional[float] = None
+    repair_input_tokens: Optional[int] = None
+    repair_output_tokens: Optional[int] = None
+    repair_thinking_tokens: Optional[int] = None
+    repair_total_tokens: Optional[int] = None
+    repair_prompt_version: Optional[str] = None
+    repair_prompt: Optional[str] = None
+    repair_raw_response: Optional[str] = None
 
 
     @property
@@ -1325,6 +1352,176 @@ class GAIASelfEvaluationAgent(GAIAVerificationAgent):
         assert v5_result.llm_generation_attempts <= 4, "V6 exceeds the four-generation cap"
         assert v5_result.self_eval_answer_unchanged, "V6 self-evaluation mutated the final answer"
         return v5_result
+
+    def __call__(self, question: str, file_path: Optional[str] = None) -> str:
+        return self.run(question, file_path=file_path).final_answer
+
+
+class GAIATargetedRepairAgent(GAIASelfEvaluationAgent):
+    """V7 SUSPECT-triggered targeted repair agent.
+
+    Inherits frozen V6 behavior completely. After V6 has performed its read-only
+    reliability assessment, this agent triggers exactly one bounded text-only
+    targeted repair generation if and only if V6 produced a valid SUSPECT
+    assessment on a non-empty answer.
+    """
+
+    def run(self, question: str, file_path: Optional[str] = None) -> AgentResult:
+        """Runs frozen V6, then performs at most one text-only repair generation if SUSPECT."""
+        v6_result = super().run(question, file_path=file_path)
+        pre_repair_answer = v6_result.final_answer
+
+        eligible = (
+            bool(pre_repair_answer and pre_repair_answer.strip())
+            and v6_result.self_eval_success is True
+            and v6_result.self_eval_assessment == "SUSPECT"
+        )
+
+        v6_result.pre_repair_answer = pre_repair_answer
+        v6_result.post_repair_answer = pre_repair_answer
+        v6_result.repair_eligible = eligible
+        v6_result.repair_triggered = eligible
+        v6_result.repair_prompt_version = TARGETED_REPAIR_PROMPT_VERSION if eligible else None
+        v6_result.repair_answer_changed = False
+
+        if not eligible:
+            v6_result.repair_attempted = False
+            v6_result.repair_success = False
+            v6_result.repair_action = None
+            v6_result.repair_error_type = None
+            v6_result.repair_finish_reason = None
+            v6_result.repair_generation_attempts = 0
+            v6_result.repair_generation_success = False
+            v6_result.repair_latency_seconds = None
+            v6_result.repair_input_tokens = None
+            v6_result.repair_output_tokens = None
+            v6_result.repair_thinking_tokens = None
+            v6_result.repair_total_tokens = None
+            v6_result.repair_prompt = None
+            v6_result.repair_raw_response = None
+            assert v6_result.llm_generation_attempts <= 5, "V7 exceeds the five-generation cap"
+            return v6_result
+
+        web_evidence = self._existing_web_evidence(v6_result)
+        file_evidence, attachment_filename = self._existing_file_context(v6_result)
+        execution_summary = self._build_execution_summary(v6_result, file_path)
+
+        repair_prompt = build_targeted_repair_prompt(
+            question=question,
+            current_answer=pre_repair_answer,
+            risk_type=v6_result.self_eval_risk_type,
+            confidence=v6_result.self_eval_confidence,
+            execution_summary=execution_summary,
+            web_evidence=web_evidence,
+            file_evidence=file_evidence,
+            attachment_filename=attachment_filename,
+        )
+
+        repair_generation_attempts = 1
+        repair_generation_success = False
+        repair_llm_resp = None
+        repair_raw_response = None
+        repair_error_type = None
+        start_time = time.time()
+
+        try:
+            # max_retries=0 is intentional: V7 permits exactly one provider attempt.
+            repair_llm_resp = self.llm.generate(
+                repair_prompt,
+                attachment_parts=None,
+                max_retries=0,
+            )
+            repair_generation_success = True
+            if isinstance(repair_llm_resp, LLMResponse):
+                repair_raw_response = (
+                    repair_llm_resp.raw_text
+                    if repair_llm_resp.raw_text
+                    else repair_llm_resp.text
+                )
+                if repair_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
+                    repair_error_type = "malformed_function_call_finish_reason"
+                elif repair_llm_resp.finish_reason != "STOP":
+                    repair_error_type = "unexpected_finish_reason"
+            else:
+                repair_raw_response = str(repair_llm_resp)
+                repair_error_type = "unexpected_provider_response_type"
+        except Exception as exc:
+            error_text = str(exc).lower()
+            if "timeout" in error_text or "timed out" in error_text or "deadline" in error_text:
+                repair_error_type = "provider_timeout"
+            elif "malformed_function_call" in error_text:
+                repair_error_type = "malformed_function_call_finish_reason"
+            else:
+                repair_error_type = "provider_api_error"
+
+        repair_latency = round(time.time() - start_time, 2)
+        repair_finish_reason = getattr(repair_llm_resp, "finish_reason", None) if repair_llm_resp else None
+        repair_input_tokens = getattr(repair_llm_resp, "input_tokens", None) if repair_llm_resp else None
+        repair_output_tokens = getattr(repair_llm_resp, "output_tokens", None) if repair_llm_resp else None
+        repair_thinking_tokens = getattr(repair_llm_resp, "thinking_tokens", None) if repair_llm_resp else None
+        repair_total_tokens = getattr(repair_llm_resp, "total_tokens", None) if repair_llm_resp else None
+        if (
+            repair_total_tokens is None
+            and repair_input_tokens is not None
+            and repair_output_tokens is not None
+        ):
+            repair_total_tokens = repair_input_tokens + repair_output_tokens
+
+        parsed = None
+        if repair_error_type is None:
+            parsed = parse_targeted_repair_result(
+                repair_raw_response,
+                original_answer=pre_repair_answer,
+            )
+            if not parsed.is_valid:
+                repair_error_type = parsed.error_type
+
+        # Action resolution and answer assignment
+        final_answer = pre_repair_answer
+        repair_action = None
+        repair_success = False
+        repair_answer_changed = False
+
+        if parsed and parsed.is_valid and repair_error_type is None:
+            repair_success = True
+            repair_action = parsed.action
+            if parsed.action == "KEEP":
+                final_answer = pre_repair_answer
+                repair_answer_changed = False
+            elif parsed.action == "REPLACE":
+                final_answer = parsed.final_answer
+                repair_answer_changed = (final_answer != pre_repair_answer)
+        else:
+            # Failure policy: preserve pre_repair_answer
+            final_answer = pre_repair_answer
+            repair_success = False
+            repair_action = None
+            repair_answer_changed = False
+
+        v6_result.final_answer = final_answer
+        v6_result.post_repair_answer = final_answer
+        v6_result.repair_attempted = True
+        v6_result.repair_success = repair_success
+        v6_result.repair_action = repair_action
+        v6_result.repair_answer_changed = repair_answer_changed
+        v6_result.repair_error_type = repair_error_type
+        v6_result.repair_finish_reason = repair_finish_reason
+        v6_result.repair_generation_attempts = repair_generation_attempts
+        v6_result.repair_generation_success = repair_generation_success
+        v6_result.repair_latency_seconds = repair_latency
+        v6_result.repair_input_tokens = repair_input_tokens
+        v6_result.repair_output_tokens = repair_output_tokens
+        v6_result.repair_thinking_tokens = repair_thinking_tokens
+        v6_result.repair_total_tokens = repair_total_tokens
+        v6_result.repair_prompt = repair_prompt
+        v6_result.repair_raw_response = repair_raw_response
+
+        v6_result.llm_generation_attempts += repair_generation_attempts
+        v6_result.llm_generation_count = v6_result.llm_generation_attempts
+        v6_result.llm_generation_success_count += 1 if repair_generation_success else 0
+
+        assert v6_result.llm_generation_attempts <= 5, "V7 exceeds the five-generation cap"
+        return v6_result
 
     def __call__(self, question: str, file_path: Optional[str] = None) -> str:
         return self.run(question, file_path=file_path).final_answer

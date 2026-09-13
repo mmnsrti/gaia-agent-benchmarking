@@ -1,0 +1,187 @@
+{
+  "version": "v7",
+  "status": "PROPOSED_PRE_BENCHMARK",
+  "evaluation_schema_version": 6,
+  "research_label": "suspect_triggered_targeted_repair",
+  "parent_version": "v6",
+  "parent_baseline": "frozen V6 (read-only self-evaluation failure detection)",
+  "capability_added": "one_suspect_triggered_bounded_targeted_repair_generation",
+  "research_question": "Can one bounded targeted repair generation, triggered only by a valid V6 SUSPECT assessment, correct more erroneous answers than it harms correct answers, without additional tools, new evidence retrieval, or retries?",
+  "frozen_upstream_configuration_source": "experiments/v6/config.json",
+  "model_configuration": {
+    "model": "gemini-3.5-flash-lite",
+    "thinking_level": "medium",
+    "max_output_tokens": 2048,
+    "temperature": null,
+    "tools_mode": "NONE",
+    "function_calling_enabled": false
+  },
+  "search_configuration": {
+    "provider": "tavily",
+    "search_depth": "basic",
+    "max_results": 5,
+    "include_answer": false,
+    "include_raw_content": false,
+    "include_images": false,
+    "auto_parameters": false,
+    "max_query_length": 1500,
+    "executions_per_task": 1,
+    "query_used": "original_question",
+    "retries": 0
+  },
+  "file_configuration": {
+    "status": "inherited_from_frozen_v6",
+    "supported_extensions": [
+      ".txt",
+      ".md",
+      ".csv",
+      ".json",
+      ".py",
+      ".docx",
+      ".xlsx",
+      ".pptx",
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".pdf",
+      ".mp3"
+    ],
+    "unsupported_extensions": [
+      ".zip",
+      ".pdb",
+      ".jsonld",
+      ".xls"
+    ],
+    "attached_py_execution_policy": "source_text_only_never_auto_executed"
+  },
+  "python_configuration": {
+    "status": "frozen_v6_semantics_strictly_preserved",
+    "max_executions_per_task": 1,
+    "timeout_seconds": 15.0,
+    "tools_mode": "NONE",
+    "function_calling_enabled": false,
+    "disallowed_modules": [
+      "multiprocessing",
+      "ctypes"
+    ]
+  },
+  "router_configuration": {
+    "prompt_version": "capability-router-v1",
+    "allowed_decisions": [
+      "DIRECT",
+      "PYTHON"
+    ],
+    "fallback_mode": "DIRECT",
+    "generation_budget": 1
+  },
+  "verifier_configuration": {
+    "prompt_version": "answer-verifier-v1",
+    "allowed_verdicts": [
+      "KEEP",
+      "REVISE"
+    ],
+    "fallback_verdict": "KEEP",
+    "generation_budget": 1,
+    "trigger": "non_empty_candidate_answer"
+  },
+  "self_evaluation_configuration": {
+    "prompt_version": "self-evaluator-v1",
+    "allowed_assessments": [
+      "PASS",
+      "SUSPECT"
+    ],
+    "allowed_risk_types": [
+      "NONE",
+      "EVIDENCE",
+      "REASONING",
+      "CALCULATION",
+      "FORMAT",
+      "EXECUTION",
+      "UNKNOWN"
+    ],
+    "confidence_range": [
+      0.0,
+      1.0
+    ],
+    "trigger": "non_empty_candidate_answer",
+    "generation_budget": 1,
+    "failure_policy": "record_null_diagnostic_and_preserve_exact_final_answer"
+  },
+  "repair_configuration": {
+    "enabled": true,
+    "prompt_version": "targeted-repair-v1",
+    "trigger": "valid_suspect_only",
+    "confidence_threshold": null,
+    "generation_attempts_max": 1,
+    "provider_retries": 0,
+    "tools": "none",
+    "search": false,
+    "python": false,
+    "file_reread": false,
+    "function_calling": "NONE",
+    "post_repair_verification": false,
+    "post_repair_self_evaluation": false,
+    "failure_policy": "preserve_pre_repair_answer",
+    "allowed_actions": [
+      "KEEP",
+      "REPLACE"
+    ],
+    "max_standard_llm_generations": 5
+  },
+  "frozen_invariants": {
+    "router_generation_attempts": 1,
+    "worker_generation_attempts": 1,
+    "verifier_generation_attempts_range": [
+      0,
+      1
+    ],
+    "self_eval_generation_attempts_range": [
+      0,
+      1
+    ],
+    "repair_generation_attempts_range": [
+      0,
+      1
+    ],
+    "llm_generation_attempts_range": [
+      2,
+      5
+    ],
+    "python_execution_count_range": [
+      0,
+      1
+    ],
+    "search_call_count_max": 1,
+    "file_call_count_max": 1,
+    "retries_permitted": 0,
+    "reflection_loop": false,
+    "autonomous_tool_loop": false,
+    "function_calling_enabled": false
+  },
+  "prompt_versions": {
+    "router": "capability-router-v1",
+    "worker_direct": "router-direct-worker-v1",
+    "worker_python": "router-python-worker-v1",
+    "verifier": "answer-verifier-v1",
+    "self_evaluator": "self-evaluator-v1",
+    "targeted_repair": "targeted-repair-v1"
+  },
+  "dataset": {
+    "name": "GAIA 2023 Validation",
+    "split": "validation",
+    "total_tasks": 165,
+    "level_1_tasks": 53,
+    "level_2_tasks": 86,
+    "level_3_tasks": 26
+  },
+  "scorer": {
+    "name": "official-gaia-leaderboard",
+    "commit": "9f133d71362e77b3539f1514f31b9c101a545fec"
+  },
+  "matched_control_protocol": {
+    "control_version": "v6",
+    "delay_seconds": 5.0,
+    "requirement": "Contemporaneous matched frozen V6 control preregistered for observational comparison; within-run pre/post scoring is the primary measurement of repair effect."
+  }
+}
+

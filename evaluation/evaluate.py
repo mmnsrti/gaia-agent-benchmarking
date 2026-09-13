@@ -32,6 +32,7 @@ from evaluation.metrics import (
 )
 from evaluation.experiment_logger import get_git_metadata
 from evaluation.self_evaluation_metrics import calculate_self_evaluation_metrics
+from evaluation.targeted_repair_metrics import calculate_targeted_repair_metrics
 
 
 def calculate_metrics(
@@ -118,7 +119,7 @@ def calculate_metrics(
     if predictions and predictions[0].get("project_version"):
         resolved_pv = predictions[0].get("project_version")
 
-    has_python = (resolved_pv in ("v3", "v4", "v5", "v6")) or any(
+    has_python = (resolved_pv in ("v3", "v4", "v5", "v6", "v7")) or any(
         pred.get("python_requested") or pred.get("python_executed") or pred.get("python_prompt_version")
         for pred in predictions
     )
@@ -133,7 +134,7 @@ def calculate_metrics(
     python_not_executed_count = 0
     python_not_executed_correct = 0
 
-    has_router = (resolved_pv in ("v4", "v5", "v6")) or any(
+    has_router = (resolved_pv in ("v4", "v5", "v6", "v7")) or any(
         pred.get("router_requested") or pred.get("router_decision")
         for pred in predictions
     )
@@ -148,15 +149,20 @@ def calculate_metrics(
     worker_latencies: List[float] = []
     total_llm_generations_list: List[int] = []
 
-    has_verifier = (resolved_pv in ("v5", "v6")) or any(
+    has_verifier = (resolved_pv in ("v5", "v6", "v7")) or any(
         pred.get("verifier_attempted") or pred.get("verifier_eligible") or pred.get("verifier_verdict")
         for pred in predictions
     )
-    has_self_evaluator = (resolved_pv == "v6") or any(
+    has_self_evaluator = (resolved_pv in ("v6", "v7")) or any(
         pred.get("self_eval_attempted") or pred.get("self_eval_eligible") or pred.get("self_eval_prompt_version")
         for pred in predictions
     )
+    has_targeted_repair = (resolved_pv == "v7") or any(
+        pred.get("repair_attempted") or pred.get("repair_eligible") or pred.get("repair_triggered") or pred.get("repair_prompt_version")
+        for pred in predictions
+    )
     self_evaluation_records: List[Dict[str, Any]] = []
+    targeted_repair_records: List[Dict[str, Any]] = []
     pre_verification_correct_tasks = 0
     verifier_eligible_count = 0
     verifier_attempted_count = 0
@@ -214,11 +220,62 @@ def calculate_metrics(
         if is_correct:
             correct_tasks += 1
 
+        pre_repair_ans = pred.get("pre_repair_answer")
+        post_repair_ans = pred.get("post_repair_answer") or final_ans
+        pre_repair_correct = False
+        post_repair_correct = is_correct
+        repair_transition = "NOT_TRIGGERED"
+
+        if has_targeted_repair or pred.get("pre_repair_answer") is not None:
+            if comp_success and pre_repair_ans is not None and str(pre_repair_ans).strip():
+                pre_repair_correct = gaia_question_scorer(str(pre_repair_ans), gt)
+            else:
+                pre_repair_correct = False
+
+            if pred.get("repair_triggered"):
+                if not pre_repair_correct and post_repair_correct:
+                    repair_transition = "IMPROVEMENT"
+                elif pre_repair_correct and not post_repair_correct:
+                    repair_transition = "REGRESSION"
+                elif pre_repair_correct and post_repair_correct:
+                    repair_transition = "STABLE_CORRECT"
+                else:
+                    repair_transition = "STABLE_FAILURE"
+            else:
+                repair_transition = "NOT_TRIGGERED"
+
+            targeted_repair_records.append({
+                "task_id": task_id,
+                "pre_repair_answer": pre_repair_ans,
+                "post_repair_answer": post_repair_ans,
+                "pre_repair_correct": pre_repair_correct,
+                "post_repair_correct": post_repair_correct,
+                "repair_eligible": bool(pred.get("repair_eligible")),
+                "repair_triggered": bool(pred.get("repair_triggered")),
+                "repair_attempted": bool(pred.get("repair_attempted")),
+                "repair_success": bool(pred.get("repair_success")),
+                "repair_action": pred.get("repair_action"),
+                "repair_answer_changed": bool(pred.get("repair_answer_changed")),
+                "repair_error_type": pred.get("repair_error_type"),
+                "repair_finish_reason": pred.get("repair_finish_reason"),
+                "repair_latency_seconds": pred.get("repair_latency_seconds"),
+                "repair_input_tokens": pred.get("repair_input_tokens"),
+                "repair_output_tokens": pred.get("repair_output_tokens"),
+                "repair_thinking_tokens": pred.get("repair_thinking_tokens"),
+                "repair_total_tokens": pred.get("repair_total_tokens"),
+                "self_eval_risk_type": pred.get("self_eval_risk_type"),
+                "repair_transition": repair_transition,
+            })
+
         # V6 scorer firewall: correctness reaches diagnostic metrics only here,
         # after the runtime evaluator has completed. It is never passed upstream.
         if has_self_evaluator or pred.get("self_eval_attempted") or pred.get("self_eval_eligible"):
             if (pred.get("self_eval_eligible") or pred.get("self_eval_attempted")) and pred.get("self_eval_answer_unchanged") is not True:
                 raise AssertionError("V6 self-evaluation answer immutability invariant violated")
+            # Diagnostic anchoring invariant:
+            # Self-evaluation runs before repair, so diagnostic quality must be
+            # measured against pre-repair correctness, NOT post-repair correctness.
+            se_correct = pre_repair_correct if (has_targeted_repair or pred.get("pre_repair_answer") is not None) else is_correct
             self_evaluation_records.append({
                 "eligible": bool(pred.get("self_eval_eligible")),
                 "attempted": bool(pred.get("self_eval_attempted")),
@@ -226,7 +283,7 @@ def calculate_metrics(
                 "assessment": pred.get("self_eval_assessment"),
                 "risk_type": pred.get("self_eval_risk_type"),
                 "confidence": pred.get("self_eval_confidence"),
-                "correct": is_correct,
+                "correct": se_correct,
             })
 
         has_att = bool(pred.get("attachment_required"))
@@ -574,6 +631,28 @@ def calculate_metrics(
                 "self_eval_total_tokens": pred.get("self_eval_total_tokens"),
                 "self_eval_answer_unchanged": pred.get("self_eval_answer_unchanged", True),
             })
+        if has_targeted_repair or pred.get("repair_attempted") or pred.get("repair_eligible") or pred.get("pre_repair_answer") is not None:
+            detailed_entry.update({
+                "pre_repair_answer": pre_repair_ans,
+                "pre_repair_correct": pre_repair_correct,
+                "post_repair_answer": post_repair_ans,
+                "post_repair_correct": post_repair_correct,
+                "repair_transition": repair_transition,
+                "repair_eligible": pred.get("repair_eligible", False),
+                "repair_triggered": pred.get("repair_triggered", False),
+                "repair_attempted": pred.get("repair_attempted", False),
+                "repair_success": pred.get("repair_success", False),
+                "repair_action": pred.get("repair_action"),
+                "repair_answer_changed": pred.get("repair_answer_changed", False),
+                "repair_error_type": pred.get("repair_error_type"),
+                "repair_finish_reason": pred.get("repair_finish_reason"),
+                "repair_latency_seconds": pred.get("repair_latency_seconds"),
+                "repair_input_tokens": pred.get("repair_input_tokens"),
+                "repair_output_tokens": pred.get("repair_output_tokens"),
+                "repair_thinking_tokens": pred.get("repair_thinking_tokens"),
+                "repair_total_tokens": pred.get("repair_total_tokens"),
+                "repair_prompt_version": pred.get("repair_prompt_version"),
+            })
         detailed_eval.append(detailed_entry)
 
     accuracy = round(correct_tasks / total_tasks, 4) if total_tasks > 0 else 0.0
@@ -614,7 +693,14 @@ def calculate_metrics(
 
     # Determine prompt version provenance
     # Avoid recording entire run as 'baseline-v1' if task 0 experienced search fallback
-    if resolved_pv == "v6" or (has_self_evaluator and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5")):
+    if resolved_pv == "v7" or (has_targeted_repair and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5", "v6")):
+        primary_pv = "capability-router-v1"
+        fallback_pv = "router-direct-worker-v1" if any(p.get("router_fallback") for p in predictions) else None
+        prompt_pv = "targeted-repair-v1"
+        if distinct_primary and len(distinct_primary) == 1:
+            primary_pv = distinct_primary[0]
+            fallback_pv = distinct_fallback[0] if distinct_fallback else fallback_pv
+    elif resolved_pv == "v6" or (has_self_evaluator and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5")):
         primary_pv = "capability-router-v1"
         fallback_pv = "router-direct-worker-v1" if any(p.get("router_fallback") for p in predictions) else None
         prompt_pv = "self-evaluator-v1"
@@ -859,6 +945,16 @@ def calculate_metrics(
         summary["self_eval_improvements"] = 0
         summary["self_eval_regressions"] = 0
 
+    if has_targeted_repair:
+        repair_metrics = calculate_targeted_repair_metrics(targeted_repair_records, total_benchmark_tasks=total_tasks)
+        summary["targeted_repair_enabled"] = True
+        summary["repair_prompt_version"] = next(
+            (p.get("repair_prompt_version") for p in predictions if p.get("repair_prompt_version")),
+            "targeted-repair-v1",
+        )
+        for metric_name, metric_value in repair_metrics.items():
+            summary[metric_name] = metric_value
+
     return {
         "summary": summary,
         "detailed": detailed_eval,
@@ -1009,6 +1105,15 @@ def evaluate_predictions(
         print(f"Self-Eval Prompt:    {summary.get('self_eval_prompt_version')}")
         print(f"Self-Eval Coverage:  {summary.get('self_eval_diagnostic_coverage', 0.0) * 100:.1f}% ({summary.get('self_eval_valid_assessment_count')}/{summary.get('self_eval_eligible_count')})")
         print(f"Self-Eval P/R/F1:    {summary.get('self_eval_precision')} / {summary.get('self_eval_recall')} / {summary.get('self_eval_f1')}")
+    if summary.get("targeted_repair_enabled"):
+        print(f"Repair Prompt:       {summary.get('repair_prompt_version')}")
+        print(f"Repair Triggered:    {summary.get('repair_triggered_count')}/{summary.get('total_tasks')} ({summary.get('repair_trigger_rate', 0.0) * 100:.1f}%)")
+        print(f"Repair KEEP/REPLACE: {summary.get('repair_keep_count')} KEEP / {summary.get('repair_replace_count')} REPLACE")
+        print(f"Transitions:         +{summary.get('repair_improvements')} improvements, -{summary.get('repair_regressions')} regressions (stable correct: {summary.get('repair_stable_correct')}, stable failure: {summary.get('repair_stable_failure')})")
+        print(f"Pre-Repair Accuracy: {summary.get('pre_repair_accuracy', 0.0) * 100:.2f}% ({summary.get('pre_repair_correct_tasks')}/{summary.get('total_tasks')})")
+        print(f"Post-Repair Accuracy:{summary.get('post_repair_accuracy', 0.0) * 100:.2f}% ({summary.get('post_repair_correct_tasks')}/{summary.get('total_tasks')})")
+        print(f"Net Repair Delta:    {summary.get('net_repair_correct_delta', 0):+d} tasks ({summary.get('net_repair_accuracy_delta', 0.0) * 100:+.2f} pp)")
+        print(f"Repair Harms:        {summary.get('repair_harm_count')} ({summary.get('repair_harm_rate', 0.0) * 100:.1f}%)")
     print("=" * 65 + "\n")
 
     # Write safe summary if requested
@@ -1034,7 +1139,7 @@ if __name__ == "__main__":
     parser.add_argument("--level", type=int, default=1, help="Benchmark level (1, 2, or 3)")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
-    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation; default: v1)")
+    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: targeted repair; default: v1)")
     parser.add_argument("--predictions", type=str, default=None, help="Path to predictions JSONL file")
     parser.add_argument("--data", type=str, default=None, help="Path to local ground-truth dataset")
     parser.add_argument("--summary-output", type=str, default=None, help="Output path for safe public summary JSON")

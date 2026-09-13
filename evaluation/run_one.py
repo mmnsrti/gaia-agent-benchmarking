@@ -119,6 +119,19 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
         if record.get("self_eval_error_type"):
             print(f"Self-Eval Error: {record.get('self_eval_error_type')}")
         print(f"Self-Eval Latency: {record.get('self_eval_latency_seconds')}s")
+    if record.get("repair_eligible") or record.get("repair_attempted") or record.get("repair_triggered"):
+        print(f"Repair Eligible: {record.get('repair_eligible')}")
+        print(f"Repair Triggered: {record.get('repair_triggered')}")
+        print(f"Repair Attempted: {record.get('repair_attempted')}")
+        print(f"Repair Success: {record.get('repair_success')}")
+        print(f"Repair Action: {record.get('repair_action')}")
+        print(f"Repair Answer Changed: {record.get('repair_answer_changed')}")
+        if record.get("repair_error_type"):
+            print(f"Repair Error: {record.get('repair_error_type')}")
+        print(f"Pre-Repair Answer: {record.get('pre_repair_answer')}")
+        print(f"Post-Repair Answer: {record.get('post_repair_answer')}")
+        print(f"Repair Latency: {record.get('repair_latency_seconds')}s")
+        print(f"Repair Generation Attempts: {record.get('repair_generation_attempts')}")
     if record.get("search_enabled"):
         print(f"Search Provider: {record['search_provider']}")
         print(f"Search Success: {record['search_success']}")
@@ -174,7 +187,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--task-id", type=str, default=None, help="Specific task ID to run")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
-    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation; required)")
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: SUSPECT-triggered targeted repair; required)")
     parser.add_argument("--no-log", action="store_true", help="Do not write record to experiments/runs.jsonl")
     args = parser.parse_args()
 
