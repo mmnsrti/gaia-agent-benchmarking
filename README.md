@@ -682,16 +682,24 @@ V8 = frozen V7 + one bounded active web-evidence verification opportunity
 1. **Upstream Pipeline**: Identical to frozen V7 (search $\le 1$, file extraction $\le 1$, capability router selecting `DIRECT` vs `PYTHON`, worker, verifier, read-only self-evaluator, and optional one-shot text-only repair).
 2. **Selective Eligibility Guard**: Active verification is attempted if and only if:
    - The Frozen V7 final answer is non-empty (`bool(v7_final_answer.strip())`).
+   - The Frozen V7 final answer (`pre_active_verification_answer`) is non-empty (`bool(pre_active_verification_answer.strip())`).
    - Upstream V6 self-evaluation succeeded (`self_eval_success is True`).
    - Upstream V6 assessment is `SUSPECT` (`self_eval_assessment == "SUSPECT"`).
    - Upstream V6 risk type is `EVIDENCE` (`self_eval_risk_type == "EVIDENCE"`).
 3. **Strict Invariants**:
+3. **Deterministic Active Verification Query**:
+   V8 deterministically constructs the active verification query by concatenating the original question with the current Frozen V7 final answer (`pre_active_verification_answer`) under the fixed `"Candidate answer to independently verify:"` label via `build_active_evidence_query(question: str, current_answer: str)`. No LLM or heuristic query rewriting is performed. The active verification query is deterministically truncated to the first 1,500 characters by the existing `TavilySearchTool` before provider submission (`provider_query = cleaned_query[:1500]`).
+4. **Strict Invariants**:
    - At most 1 additional Tavily search per task (total task searches capped at $\le 2$).
    - At most 1 adjudication LLM generation attempt per task (total standard LLM generations capped at $\le 6$).
    - Search-only: exactly 0 Python executions, 0 file rereads, 0 multi-tool verification planners.
    - Usable evidence requirement: if active search fails or returns zero results, adjudication is bypassed and the Frozen V7 answer is preserved verbatim.
+   - Usable evidence requirement: if active search fails or returns zero results, adjudication is bypassed and the Frozen V7 answer is preserved verbatim (recorded with `active_verification_action = None`, not a `KEEP` action).
    - Strict output schema: `VERIFICATION_ACTION: KEEP` (1 line) or `VERIFICATION_ACTION: REPLACE\nFINAL: <corrected answer>` (2 lines).
    - Deterministic fallback: on any search failure, provider exception, timeout, unexpected finish reason, or parser failure, the Frozen V7 answer is preserved verbatim (`active_verification_answer_changed = False`).
+   - Deterministic fallback: on any search failure, provider exception, timeout, unexpected finish reason, or parser failure, the Frozen V7 answer is preserved verbatim (`post_active_verification_answer = pre_active_verification_answer`, `active_verification_answer_changed = False`).
+   - Upstream V6 diagnostic metrics remain anchored to the pre-repair answer (`pre_repair_correct` / `pre_self_evaluation_correct`).
+   - Primary within-run intervention measurement compares `pre_active_verification_correct` with `post_active_verification_correct`. A contemporaneous matched Frozen V7 control is observational and non-causal.
    - Strict runtime ground-truth isolation.
 
 ---

@@ -182,6 +182,7 @@ def calculate_active_verification_metrics(
             changed_count += 1
 
         # Causal transition classification over triggered tasks
+        # Within-run intervention transition classification over triggered tasks
         if is_triggered:
             if not pre_corr and post_corr:
                 improvements += 1

@@ -19,6 +19,12 @@ The audit confirms that all core invariants, non-destructive safety mechanisms, 
 
 ---
 
+## Preregistered Primary Research Question
+
+> *When Frozen V7 reaches a non-empty answer whose upstream V6 diagnostic is a valid `SUSPECT` with `RISK_TYPE: EVIDENCE`, does one additional bounded web retrieval followed by one bounded evidence-based adjudication correct more erroneous answers than it harms correct answers?*
+
+---
+
 ## Audit Checklist & Verification Matrix
 
 | Audit Dimension | Requirement | Status | Evidence / Invariant |
@@ -28,12 +34,19 @@ The audit confirms that all core invariants, non-destructive safety mechanisms, 
 | **Trigger Eligibility** | Triggered only by `SUSPECT` + `EVIDENCE` risk + non-empty answer | **PASS** | Bypassed on `PASS`, non-`EVIDENCE`, invalid diagnostic, or empty answer |
 | **Search Contract** | At most 1 bounded search; deterministic query; max 5 results; 1500 chars | **PASS** | Verified in unit tests and `prompts/active_evidence_verification.py` |
 | **Usable Evidence Gate** | Skip adjudication if search fails or yields 0 usable results | **PASS** | No LLM call without usable evidence; preserves V7 answer |
+| **Trigger Eligibility** | Triggered only by `SUSPECT` + `EVIDENCE` risk + non-empty V7 final answer | **PASS** | Bypassed on `PASS`, non-`EVIDENCE` (e.g. `REASONING`), invalid diagnostic, or empty answer |
+| **Search Contract** | At most 1 bounded search; deterministic query; max 5 results; 1500-char query limit | **PASS** | Verified in unit tests and `prompts/active_evidence_verification.py` |
+| **Usable Evidence Gate** | Skip adjudication if search fails or yields 0 usable results | **PASS** | 0 LLM adjudication calls without usable evidence; preserves V7 answer |
 | **Tool Isolation** | 0 Python calls, 0 file rereads in V8 | **PASS** | `tools_mode = "NONE"`, verified in unit tests |
 | **Budget Invariants** | Total searches $\le 2$, Total LLM generations $\le 6$ | **PASS** | Upstream $\le 1$ search, V8 $\le 1$; upstream $\le 5$ gen, V8 $\le 1$ |
 | **Failure Safety** | Strictly non-destructive on any search, API, or parser error | **PASS** | Always falls back to `pre_verification_answer` verbatim |
+| **Budget Invariants** | Total searches $\le 2$, Total standard LLM generations $\le 6$ | **PASS** | Upstream $\le 1$ search, V8 $\le 1$; upstream $\le 5$ gen, V8 $\le 1$ |
+| **Failure Safety** | Strictly non-destructive on any search, API, or parser error | **PASS** | Always falls back to `pre_active_verification_answer` verbatim (`action = None`) |
 | **Information Firewall** | Zero access to ground truth or scorer at runtime | **PASS** | `build_active_evidence_verification_prompt` parameter audit |
 | **Diagnostic Anchoring** | Upstream V6 diagnostic metrics anchored to pre-verification answer | **PASS** | Evaluated against `pre_verification_correct` in `evaluate.py` |
 | **Transition Taxonomy** | Within-run pre/post evaluation with 5 transitions | **PASS** | `IMPROVEMENT`, `REGRESSION`, `STABLE_CORRECT`, `STABLE_FAILURE`, `NOT_TRIGGERED` |
+| **Diagnostic Anchoring** | Upstream V6 diagnostic metrics anchored to pre-repair answer | **PASS** | Evaluated against `pre_repair_correct` / `pre_self_evaluation_correct` |
+| **Intervention Taxonomy** | Within-run pre/post evaluation with 5 transitions | **PASS** | `IMPROVEMENT`, `REGRESSION`, `STABLE_CORRECT`, `STABLE_FAILURE`, `NOT_TRIGGERED` |
 | **Public Privacy** | No prompts or raw responses in public records | **PASS** | `active_verification_prompt` and `raw_response` omitted; `schema_version = 7` |
 | **Unit Test Coverage** | Dedicated tests + regression suite passing | **PASS** | 21/21 V8 tests pass; 349/349 full suite pass |
 
@@ -51,16 +64,19 @@ The audit confirms that all core invariants, non-destructive safety mechanisms, 
 - The sole increment in V8 is a bounded active evidence verification opportunity.
 - **Eligibility Conditions:**
   1. `pre_verification_answer` (the frozen V7 answer) is non-empty and non-whitespace.
+  1. Frozen V7 final answer (`pre_active_verification_answer`) is non-empty and non-whitespace.
   2. Upstream self-evaluator completed successfully (`self_eval_success == True`).
   3. Upstream self-evaluator assessment is strictly `SUSPECT` (`self_eval_assessment == "SUSPECT"`).
   4. Upstream self-evaluator risk type is strictly `EVIDENCE` (`self_eval_risk_type == "EVIDENCE"`).
 - If self-evaluation is `PASS`, invalid, associated with a non-`EVIDENCE` risk (e.g. `CALCULATION`, `LOGIC`, `FORMAT`), or if the answer is empty, active verification is completely bypassed:
+- If self-evaluation is `PASS`, invalid, associated with a non-`EVIDENCE` risk (e.g. `REASONING`, `CALCULATION`, `FORMAT`, `EXECUTION`), or if the candidate answer is empty, active verification is completely bypassed:
   - `active_verification_eligible = False`
   - `active_verification_triggered = False`
   - `active_verification_search_attempted = False`
   - `active_verification_adjudication_attempted = False`
   - `active_verification_generation_attempts = 0`
   - Answer preserved verbatim.
+  - Answer preserved verbatim (`post_active_verification_answer = pre_active_verification_answer`).
 
 ### 3. Active Search Contract & Usable Evidence Gate
 - **Deterministic Search Query Generation:**
@@ -68,29 +84,51 @@ The audit confirms that all core invariants, non-destructive safety mechanisms, 
   - Synthesizes core question entities and candidate answer claims into a targeted verification query.
   - Zero LLM generation calls used to form the query (deterministic helper).
 - **Search Execution:**
+  - Function signature:
+    ```python
+    def build_active_evidence_query(question: str, current_answer: str) -> str:
+        return (
+            f"{question.strip()}\n\n"
+            f"Candidate answer to independently verify:\n"
+            f"{current_answer.strip()}"
+        )
+    ```
+  - V8 deterministically constructs the active verification query by concatenating the original question with the current Frozen V7 final answer (`pre_active_verification_answer`) under the fixed `"Candidate answer to independently verify:"` label.
+  - No LLM or heuristic query rewriting is performed. Zero entity extraction, keyword filtering, stop-word removal, predicate extraction, or artificial keyword appending.
+- **Search Execution & Truncation:**
   - At most 1 search execution (`max_results=5`).
   - Text truncated to at most 1,500 characters per snippet.
   - Zero search retries.
+  - The active verification query is deterministically truncated to the first 1,500 characters by the existing `TavilySearchTool` before provider submission (`provider_query = cleaned_query[:1500]`).
+  - Zero search retries (`max_retries=0`).
 - **Usable Evidence Gate:**
   - If search encounters an exception, provider timeout, or yields 0 search results:
     - `active_verification_usable_evidence = False`
+    - `active_verification_search_usable = False`
     - Adjudication LLM call is **skipped entirely** (`active_verification_adjudication_attempted = False`, `active_verification_generation_attempts = 0`).
     - The agent immediately preserves `pre_verification_answer` verbatim.
+    - The agent immediately preserves the Frozen V7 final answer (`pre_active_verification_answer`) verbatim.
+    - Automatic failure preservation is **not** a `KEEP` action (`active_verification_action = None`).
 
 ### 4. Adjudication Prompt, Information Firewall & Strict Schema
 - `build_active_evidence_verification_prompt` accepts only:
   - Original question
   - Candidate answer (marked `CURRENT ANSWER (SUSPECT - EVIDENCE RISK)`)
+  - Candidate answer (marked `CURRENT ANSWER (MARKED SUSPECT)`)
   - Upstream diagnostic metadata (`ASSESSMENT: SUSPECT`, `RISK_TYPE: EVIDENCE`, `CONFIDENCE`)
   - Prior evidence summary (upstream search query + summary)
+  - Existing file context and attachment filename
   - Newly retrieved active verification evidence (snippets + URLs)
+  - Compact deterministic execution summary
 - **Firewall Guarantee:** Ground truth, reference answers, scorer functions, internal worker CoT reasoning, Python code, and scratchpad traces are strictly excluded.
 - **Strict Output Schema:**
   - Option A (Confirm / Keep):
+  - Option A (Confirm / Keep - exactly 1 line):
     ```text
     VERIFICATION_ACTION: KEEP
     ```
   - Option B (Correct / Replace):
+  - Option B (Correct / Replace - exactly 2 lines):
     ```text
     VERIFICATION_ACTION: REPLACE
     FINAL: <replacement answer>
@@ -99,12 +137,14 @@ The audit confirms that all core invariants, non-destructive safety mechanisms, 
   - Markdown code fences (```` ``` ````)
   - Multiline replacements
   - Replacements identical to `pre_verification_answer` (`replace_same_answer`)
+  - Replacements identical to `pre_active_verification_answer` (`replace_same_answer`)
   - Missing or empty `FINAL:` line under `REPLACE`
   - Extraneous text or unapproved action verbs
 
 ### 5. Non-Destructive Failure Safety
 - If active verification encounters:
   - Active search failure / 0 results (`active_search_error`, `empty_search_results`)
+  - Active search failure / 0 results (`active_search_error`, `zero_search_results`)
   - Provider timeout (`provider_timeout`)
   - Provider API error (`provider_api_error`)
   - Provider finish reason anomalies (`malformed_function_call_finish_reason`, `unexpected_finish_reason`)
@@ -113,6 +153,11 @@ The audit confirms that all core invariants, non-destructive safety mechanisms, 
   $$\text{post\_verification\_answer} = \text{pre\_verification\_answer}$$
   $$\text{final\_answer} = \text{pre\_verification\_answer}$$
   $$\text{active_verification_answer_changed} = \text{False}$$
+- The agent immediately falls back to `pre_active_verification_answer` (Frozen V7 answer):
+  $$\text{post\_active\_verification\_answer} = \text{pre\_active\_verification\_answer}$$
+  $$\text{final\_answer} = \text{pre\_active\_verification\_answer}$$
+  $$\text{active\_verification\_answer\_changed} = \text{False}$$
+- Automatic fallback preservation is strictly recorded with `active_verification_action = None`. `KEEP` is only recorded when the model successfully emits a valid `VERIFICATION_ACTION: KEEP` response.
 - An active verification failure can never produce an empty answer, crash execution, or corrupt a valid V7 answer.
 
 ### 6. Resource Budgets & Invariants
@@ -142,16 +187,35 @@ The audit confirms that all core invariants, non-destructive safety mechanisms, 
   - `NOT_TRIGGERED`: Verification not triggered (ineligible or bypassed).
 - **Diagnostic Anchoring Invariant:**
   - Diagnostic metrics (True Positives, False Positives, Precision, Recall, F1) are anchored to `pre_verification_correct`, preserving true failure detection accuracy prior to any post-hoc intervention.
+- **Upstream Diagnostic Anchoring:**
+  - The upstream V6 evaluator diagnostic remains anchored to the answer that V6 actually evaluated (`pre_repair_answer` / `pre_repair_correct` or fallback `pre_self_evaluation_correct`).
+  - V6 True Positives, False Positives, Precision, Recall, and F1 are **not** anchored to `pre_active_verification_correct` or generic `pre_verification_correct`.
+- **Within-Run Intervention Transitions:**
+  - V8 intervention transitions are measured separately by comparing `pre_active_verification_correct` and `post_active_verification_correct`:
+    - `IMPROVEMENT` ($0 \rightarrow 1$): `pre_active_verification_correct == False` and `post_active_verification_correct == True`
+    - `REGRESSION` ($1 \rightarrow 0$): `pre_active_verification_correct == True` and `post_active_verification_correct == False`
+    - `STABLE_CORRECT` ($1 \rightarrow 1$): `pre_active_verification_correct == True` and `post_active_verification_correct == True`
+    - `STABLE_FAILURE` ($0 \rightarrow 0$): `pre_active_verification_correct == False` and `post_active_verification_correct == False`
+    - `NOT_TRIGGERED`: Verification not triggered (ineligible or bypassed)
 
 ### 8. Public Serialization & Privacy
+### 8. Scientific Attribution & Observational Matched Control
+- **Primary within-run intervention measurement**: The primary V8 stage-effect measurement compares the Frozen V7 final answer (`pre_active_verification_answer`) with the V8 final answer (`post_active_verification_answer`) inside the exact same execution trace.
+- **Matched Frozen V7 Control**: A separately executed matched Frozen V7 control run is observational and non-causal. Useful for monitoring provider stability and global completion behavior, but explicitly labeled non-causal.
+
+### 9. Public Serialization & Privacy
 - Public predictions JSONL records:
   - Updated to `schema_version = 7`.
   - Comprehensive safe telemetry: `pre_verification_answer`, `post_verification_answer`, `active_verification_eligible`, `active_verification_triggered`, `active_verification_search_attempted`, `active_verification_search_success`, `active_verification_search_query`, `active_verification_search_result_count`, `active_verification_usable_evidence`, `active_verification_adjudication_attempted`, `active_verification_generation_success`, `active_verification_action`, `active_verification_answer_changed`, `active_verification_error_type`, `active_verification_finish_reason`, tokens, and latencies.
+  - Serialized under `schema_version = 7`.
+  - Comprehensive safe telemetry: `pre_active_verification_answer`, `post_active_verification_answer`, `active_verification_eligible`, `active_verification_triggered`, `active_verification_search_attempted`, `active_verification_search_success`, `active_verification_search_query`, `active_verification_search_result_count`, `active_verification_usable_evidence`, `active_verification_adjudication_attempted`, `active_verification_generation_success`, `active_verification_action`, `active_verification_answer_changed`, `active_verification_error_type`, `active_verification_finish_reason`, tokens, and latencies.
   - **Strictly Omitted:** `active_verification_prompt` and `active_verification_raw_response`.
 
 ### 9. Test Suite Validation
+### 10. Test Suite Validation
 - Dedicated V8 unit tests (`tests/test_v8_active_evidence_verification.py`):
   - 21 focused unit tests covering prompt generation, deterministic query formation, strict parser compliance, eligibility guards (PASS bypass, CALCULATION risk bypass, empty answer bypass), usable evidence enforcement, non-destructive fallbacks, budget limits ($\le 6$ generations, $\le 2$ searches), diagnostic anchoring, within-run transition taxonomy, and serialization.
+  - 21 focused unit tests covering prompt generation, deterministic query formation, strict parser compliance, eligibility guards (PASS bypass, REASONING risk bypass, empty answer bypass), usable evidence enforcement, non-destructive fallbacks, budget limits ($\le 6$ generations, $\le 2$ searches), diagnostic anchoring, within-run transition taxonomy, and serialization.
 - **Full Repository Suite:** 349 / 349 tests passing with 0 errors and 0 failures.
 
 ---

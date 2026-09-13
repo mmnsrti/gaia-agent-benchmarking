@@ -163,6 +163,11 @@ def build_active_evidence_query(question: str, current_answer: str) -> str:
 ```
 
 - **Query Truncation**: Reuses the standard `TavilySearchTool` contract which deterministically truncates queries exceeding 1,500 characters to `cleaned_query[:1500]`.
+V8 deterministically constructs the active verification query by concatenating the original question with the current Frozen V7 final answer (`pre_active_verification_answer`) under the fixed "Candidate answer to independently verify:" label.
+
+No LLM or heuristic query rewriting is performed.
+
+- **Query Truncation**: The active verification query is deterministically truncated to the first 1,500 characters by the existing `TavilySearchTool` before provider submission (`provider_query = cleaned_query[:1500]`).
 - **No LLM Planner**: Zero LLM generations for query formulation.
 - **No Search Loops**: Exactly 1 search executed.
 
@@ -272,11 +277,17 @@ Failures covered:
 
 ### Within-Run Causal Measurement
 Because V8 logs both `pre_active_verification_answer` and `post_active_verification_answer` within the exact same execution trace:
+### Within-Run Intervention Measurement
+Because V8 logs both `pre_active_verification_answer` (Frozen V7 final answer) and `post_active_verification_answer` within the exact same execution trace:
 ```text
 IMPROVEMENT:      pre_correct == False and post_correct == True
 REGRESSION:       pre_correct == True and post_correct == False
 STABLE_CORRECT:   pre_correct == True and post_correct == True
 STABLE_FAILURE:   pre_correct == False and post_correct == False
+IMPROVEMENT:      pre_active_verification_correct == False and post_active_verification_correct == True
+REGRESSION:       pre_active_verification_correct == True and post_active_verification_correct == False
+STABLE_CORRECT:   pre_active_verification_correct == True and post_active_verification_correct == True
+STABLE_FAILURE:   pre_active_verification_correct == False and post_active_verification_correct == False
 NOT_TRIGGERED:    active_verification_triggered == False
 ```
 
@@ -308,4 +319,7 @@ NOT_TRIGGERED:    active_verification_triggered == False
 ### Causal vs Observational Distinction
 - **Primary Causal Effect**: Within-run pre-vs-post active verification comparison ($V7_{\text{final}} \rightarrow V8_{\text{final}}$). Zero cross-run sampling variance.
 - **Matched V7 Run**: Observational only. Useful for monitoring provider stability and global completion behavior, but explicitly labeled non-causal.
+### Within-Run Intervention vs Observational Distinction
+- **Primary within-run intervention measurement**: The primary V8 stage-effect measurement compares the Frozen V7 final answer (`pre_active_verification_answer`) with the V8 final answer (`post_active_verification_answer`) inside the same execution trace.
+- **Matched Frozen V7 Run**: A separately executed matched Frozen V7 control is observational and non-causal. Useful for monitoring provider stability and global completion behavior, but explicitly labeled non-causal.
 
