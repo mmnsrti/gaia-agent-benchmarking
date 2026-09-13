@@ -36,7 +36,7 @@ def _safe_str(val: Optional[str], max_len: int = 80) -> str:
         return snippet.encode("ascii", errors="backslashreplace").decode("ascii")
 
 
-from agent import GAIAAgent, GAIAWebAgent, GAIAFileAgent, GAIAPythonAgent, GAIARouterAgent, GAIAVerificationAgent, LLMClient
+from agent import GAIAAgent, GAIAWebAgent, GAIAFileAgent, GAIAPythonAgent, GAIARouterAgent, GAIAVerificationAgent, GAIASelfEvaluationAgent, LLMClient
 from evaluation.dataset import load_gaia_tasks, EXPECTED_VALIDATION_COUNTS
 from evaluation.runner import execute_task
 from evaluation.experiment_logger import ExperimentLogger
@@ -75,7 +75,9 @@ def run_level(
     expected_tasks = EXPECTED_VALIDATION_COUNTS.get(level)
     is_partial = bool(limit or (expected_tasks and total_tasks < expected_tasks))
     run_tag = f"PARTIAL RUN (--limit {limit})" if limit else ("PARTIAL RUN" if is_partial else "COMPLETE BENCHMARK RUN")
-    if version == "v5":
+    if version == "v6":
+        version_desc = "v6 (Frozen V5 + read-only post-answer self-evaluation)"
+    elif version == "v5":
         version_desc = "v5 (One-shot post-answer verification + V4 routing + Python + V2 capabilities)"
     elif version == "v4":
         version_desc = "v4 (Explicit two-stage capability routing + Python + V2 capabilities)"
@@ -139,7 +141,9 @@ def run_level(
     # Initialize client & agent once
     llm = LLMClient()
     if agent is None:
-        if version == "v5":
+        if version == "v6":
+            agent = GAIASelfEvaluationAgent(llm_client=llm)
+        elif version == "v5":
             agent = GAIAVerificationAgent(llm_client=llm)
         elif version == "v4":
             agent = GAIARouterAgent(llm_client=llm)
@@ -228,7 +232,7 @@ if __name__ == "__main__":
     parser.add_argument("--level", type=int, required=True, choices=[1, 2, 3], help="GAIA level to run (1, 2, or 3)")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
-    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5"], help="Agent version to evaluate (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification; required)")
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6"], help="Agent version to evaluate (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation; required)")
     parser.add_argument("--data", type=str, default=None, help="Path to local GAIA dataset file")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of tasks to execute")
     parser.add_argument("--task-id", type=str, default=None, help="Run single specific task ID")

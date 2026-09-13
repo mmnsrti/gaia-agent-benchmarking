@@ -62,6 +62,8 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
             print("Note: v4 evaluates question and attachments using explicit capability routing (DIRECT vs PYTHON).")
         elif version == "v5":
             print("Note: v5 evaluates question and attachments using capability routing and one-shot verification.")
+        elif version == "v6":
+            print("Note: v6 preserves the V5 answer and adds read-only self-evaluation telemetry.")
     print("-" * 80)
 
     record = execute_task(
@@ -107,6 +109,16 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
         print(f"Pre-Verification Answer: {record.get('pre_verification_answer')}")
         print(f"Post-Verification Answer: {record.get('post_verification_answer')}")
         print(f"Verifier Latency: {record.get('verifier_latency_seconds')}s")
+    if record.get("self_eval_eligible") or record.get("self_eval_attempted"):
+        print(f"Self-Eval Eligible: {record.get('self_eval_eligible')}")
+        print(f"Self-Eval Attempted: {record.get('self_eval_attempted')}")
+        print(f"Self-Eval Success: {record.get('self_eval_success')}")
+        print(f"Self-Eval Assessment: {record.get('self_eval_assessment')}")
+        print(f"Self-Eval Risk Type: {record.get('self_eval_risk_type')}")
+        print(f"Self-Eval Confidence: {record.get('self_eval_confidence')}")
+        if record.get("self_eval_error_type"):
+            print(f"Self-Eval Error: {record.get('self_eval_error_type')}")
+        print(f"Self-Eval Latency: {record.get('self_eval_latency_seconds')}s")
     if record.get("search_enabled"):
         print(f"Search Provider: {record['search_provider']}")
         print(f"Search Success: {record['search_success']}")
@@ -162,7 +174,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--task-id", type=str, default=None, help="Specific task ID to run")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
-    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification; required)")
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation; required)")
     parser.add_argument("--no-log", action="store_true", help="Do not write record to experiments/runs.jsonl")
     args = parser.parse_args()
 

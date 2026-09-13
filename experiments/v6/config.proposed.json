@@ -1,0 +1,143 @@
+{
+  "version": "v6",
+  "status": "PROPOSED_PRE_BENCHMARK",
+  "evaluation_schema_version": 5,
+  "research_label": "read_only_self_evaluation_failure_detection",
+  "parent_version": "v5",
+  "parent_baseline": "frozen V5 (one-shot post-answer verification)",
+  "capability_added": "one_bounded_read_only_self_evaluation_generation",
+  "research_question": "Can a bounded self-evaluator reliably detect when the agent's non-empty final answer is likely incorrect, without modifying the answer or using additional tools?",
+  "frozen_upstream_configuration_source": "experiments/v5/config.json",
+  "model_configuration": {
+    "model": "gemini-3.5-flash-lite",
+    "thinking_level": "medium",
+    "max_output_tokens": 2048,
+    "temperature": null,
+    "tools_mode": "NONE",
+    "function_calling_enabled": false
+  },
+  "search_configuration": {
+    "provider": "tavily",
+    "search_depth": "basic",
+    "max_results": 5,
+    "include_answer": false,
+    "include_raw_content": false,
+    "include_images": false,
+    "auto_parameters": false,
+    "max_query_length": 1500,
+    "executions_per_task": 1,
+    "query_used": "original_question",
+    "retries": 0
+  },
+  "file_configuration": {
+    "status": "inherited_from_frozen_v5",
+    "supported_extensions": [".txt", ".md", ".csv", ".json", ".py", ".docx", ".xlsx", ".pptx", ".png", ".jpg", ".jpeg", ".pdf", ".mp3"],
+    "unsupported_extensions": [".zip", ".pdb", ".jsonld", ".xls"],
+    "attached_py_execution_policy": "source_text_only_never_auto_executed"
+  },
+  "python_configuration": {
+    "status": "frozen_v5_semantics_strictly_preserved",
+    "max_executions_per_task": 1,
+    "timeout_seconds": 15.0,
+    "max_output_length": 20000,
+    "isolated_workspace": true,
+    "mode": "python_isolated_mode (-I)",
+    "security_policy": "static_ast_validation_blocking_network_subprocesses_and_system_evasion",
+    "fallback_on_failure": true,
+    "retries_permitted": 0,
+    "isolation_type": "best_effort_research_execution_isolation",
+    "extraction_contract": "FINAL_ANSWER: <answer>",
+    "known_marker_failure_preserved": true
+  },
+  "router_configuration": {
+    "status": "frozen_v5_semantics_strictly_preserved",
+    "generation_attempts": 1,
+    "output_contract": "ROUTE: DIRECT or ROUTE: PYTHON",
+    "allowed_routes": ["DIRECT", "PYTHON"],
+    "fallback_policy": "pre_registered_conservative_deterministic_fallback_to_direct_without_python"
+  },
+  "worker_configuration": {
+    "status": "frozen_v5_semantics_strictly_preserved",
+    "generation_attempts": 1,
+    "direct_output_contract": "FINAL: <answer>",
+    "python_output_contract": "```python ... ``` printing FINAL_ANSWER: <answer>"
+  },
+  "verifier_configuration": {
+    "status": "frozen_v5_semantics_strictly_preserved",
+    "generation_attempts_max": 1,
+    "prompt_version": "answer-verifier-v1",
+    "allowed_verdicts": ["KEEP", "REVISE"],
+    "output_contract": "VERDICT: KEEP or VERDICT: REVISE with FINAL: <corrected answer>",
+    "eligibility_policy": "candidate_answer and candidate_answer.strip()",
+    "information_firewall": true,
+    "multimodal_bytes_reuse": true,
+    "non_destructive_fallback": true,
+    "allowed_error_types": [
+      "provider_timeout",
+      "provider_api_error",
+      "malformed_function_call_finish_reason",
+      "empty_verifier_response",
+      "missing_verdict",
+      "ambiguous_verdict",
+      "malformed_verifier_text",
+      "revise_missing_final",
+      "revise_empty_final"
+    ]
+  },
+  "self_evaluation_configuration": {
+    "enabled": true,
+    "prompt_version": "self-evaluator-v1",
+    "generation_attempts_max": 1,
+    "provider_retries": 0,
+    "eligibility_policy": "non_empty_final_answer",
+    "mutates_answer": false,
+    "tools": "none",
+    "search": false,
+    "python": false,
+    "function_calling": "NONE",
+    "input_policy": "question_existing_evidence_existing_file_context_final_answer_compact_execution_summary",
+    "forbidden_inputs": ["ground_truth", "expected_answer", "scorer_result", "scorer_internals", "v5_verifier_verdict", "v5_verifier_raw_response", "hidden_reasoning"],
+    "assessment_values": ["PASS", "SUSPECT"],
+    "risk_types": ["NONE", "EVIDENCE", "REASONING", "CALCULATION", "FORMAT", "EXECUTION", "UNKNOWN"],
+    "confidence_range": [0.0, 1.0],
+    "failure_policy": "record_null_diagnostic_and_preserve_exact_final_answer"
+  },
+  "frozen_invariants": {
+    "router_generation_attempts": 1,
+    "worker_generation_attempts": 1,
+    "verifier_generation_attempts_range": [0, 1],
+    "self_eval_generation_attempts_range": [0, 1],
+    "llm_generation_attempts_range": [2, 4],
+    "python_execution_count_range": [0, 1],
+    "search_call_count_max": 1,
+    "file_call_count_max": 1,
+    "retries_permitted": 0,
+    "reflection_loop": false,
+    "repair_agent": false,
+    "autonomous_tool_loop": false,
+    "function_calling_enabled": false
+  },
+  "prompt_versions": {
+    "router": "capability-router-v1",
+    "worker_direct": "router-direct-worker-v1",
+    "worker_python": "router-python-worker-v1",
+    "verifier": "answer-verifier-v1",
+    "self_evaluator": "self-evaluator-v1"
+  },
+  "dataset": {
+    "name": "GAIA 2023 Validation",
+    "split": "validation",
+    "total_tasks": 165,
+    "level_1_tasks": 53,
+    "level_2_tasks": 86,
+    "level_3_tasks": 26
+  },
+  "scorer": {
+    "name": "official-gaia-leaderboard",
+    "commit": "9f133d71362e77b3539f1514f31b9c101a545fec"
+  },
+  "matched_control_protocol": {
+    "control_version": "v5",
+    "requirement": "Contemporaneous matched frozen V5 control required for a future observational comparison; do not attribute cross-run answer accuracy variation to V6 self-evaluation."
+  }
+}

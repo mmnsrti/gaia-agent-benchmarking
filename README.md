@@ -542,6 +542,84 @@ V5 = frozen V4 + one-shot conservative post-answer verification/revision
 ```
 Future work must not alter V5 results, agent runtime code, prompts, model configurations, or benchmark evaluations. Any further architectural experimentation belongs to V6+.
 
+---
+
+## v6 — Self-Evaluation / Failure Detection
+
+**v6** investigates bounded post-answer self-evaluation within the GAIA agent benchmarking framework:
+```text
+V6 = frozen V5 + one bounded read-only post-answer self-evaluation generation
+```
+
+Research Question:
+> *Can a bounded self-evaluator reliably detect when the agent's non-empty final answer is likely incorrect, without modifying the answer or using additional tools?*
+
+### Architecture & Boundaries
+1. **Upstream Pipeline**: Identical to frozen V5 (search $\le 1$, file extraction $\le 1$, capability router selecting `DIRECT` vs `PYTHON`, worker, candidate eligibility guard, one-shot conservative verifier `KEEP`/`REVISE`).
+2. **Read-Only Self-Evaluator**: A single text-only LLM call evaluates non-empty final answers against evidence, emitting structured diagnostic labels (`PASS` vs `SUSPECT`, risk category, confidence 0.00–1.00).
+3. **Strict Invariants**:
+   - `self_eval_answer_unchanged == True` across all 165 tasks (zero answer modifications).
+   - Zero tool access (no search, no Python, no file tool during evaluation).
+   - Maximum 4 LLM generation attempts per task across the full pipeline.
+   - Empty answers bypass evaluation immediately.
+   - Strict runtime ground-truth isolation.
+
+### Canonical Benchmark Results (GAIA 2023 Validation, 165 Tasks)
+
+Evaluated against the contemporaneous matched frozen V5 control run (including promoted Level-3 recovery replication):
+
+| Benchmark Level | Contemporaneous Matched V5 Control | Canonical V6 | Observed Cross-Run Delta |
+| :--- | :---: | :---: | :---: |
+| **Level 1** | 47.17% (25 / 53) | 43.40% (23 / 53) | -3.77 pp (-2 tasks) |
+| **Level 2** | 23.26% (20 / 86) | 20.93% (18 / 86) | -2.33 pp (-2 tasks) |
+| **Level 3** (Recovery Replication) | 7.69% (2 / 26) | 3.85% (1 / 26) | -3.85 pp (-1 task) |
+| **Overall Accuracy** | **28.48% (47 / 165)** | **25.45% (42 / 165)** | **-3.03 pp (-5 tasks)** |
+| **Completion Rate** | **44.24% (73 / 165)** | **46.06% (76 / 165)** | **+1.82 pp (+3 tasks)** |
+
+> [!IMPORTANT]
+> **Observational, Non-Causal Nature of Delta**:  
+> Because `self_eval_answer_unchanged == True` across all 165 tasks, the self-evaluator had zero write access to candidate answers. The observed -5 task (-3.03 pp) difference reflects run-to-run stochasticity in upstream LLM sampling, capability routing, tool execution, and provider completion behavior across separate runs (29 tasks correct in both, 105 wrong in both, 13 improved V5$\rightarrow$V6, and 18 regressed V5$\rightarrow$V6). It must never be described as an accuracy penalty or cost caused by self-evaluation.
+
+### Diagnostic Performance (All 75 Eligible Answers)
+
+On tasks where a non-empty final answer was produced (75 / 165):
+
+| Diagnostic Metric | Value | Interpretation |
+| :--- | :---: | :--- |
+| **Diagnostic Coverage** | **100.0%** (75 / 75) | All eligible tasks evaluated with valid schema compliance (0 parser failures) |
+| **True Positives (TP)** | **16** | Erroneous answers correctly flagged as `SUSPECT` |
+| **False Positives (FP)** | **2** | Correct answers mistakenly flagged as `SUSPECT` (false alarms) |
+| **True Negatives (TN)** | **40** | Correct answers appropriately classified as `PASS` |
+| **False Negatives (FN)** | **17** | Erroneous answers missed by evaluator (classified as `PASS`) |
+| **Precision** | **88.89%** (16 / 18) | When `SUSPECT` is emitted, the answer is incorrect 88.9% of the time |
+| **Recall (Eligible)** | **48.48%** (16 / 33) | Evaluator detected roughly half of errors among generated candidates |
+| **F1 Score** | **0.6274** | Balanced diagnostic score on eligible candidates |
+| **Specificity** | **95.24%** (40 / 42) | High preservation of correct candidate answers |
+| **False Alarm Rate (FAR)** | **4.76%** (2 / 42) | Low rate of erroneous suspicion on correct answers |
+| **Missed Error Rate (MER)** | **51.52%** (17 / 33) | Over half of eligible errors passed without suspicion |
+| **PASS Group Correctness (NPV)** | **70.18%** (40 / 57) | `PASS` indicates moderate reliability, not guaranteed correctness |
+| **SUSPECT Group Error Rate** | **88.89%** (16 / 18) | Strong error concentration in `SUSPECT` group |
+| **Overall Brier Diagnostic Score** | **0.2428** | Mean squared error on predicted error probabilities (L1: 0.1739, L2: 0.3555, L3: 0.0059) |
+
+### Candidate Starvation: The Dominant Bottleneck
+- **Total System Errors**: 123 tasks (74.55% of benchmark)
+- **Upstream Starvation Errors**: 90 tasks (**73.17%** of all system errors occurred before self-evaluation had an answer to evaluate)
+- **Reachable Errors**: 33 tasks (26.83% of all system errors)
+- **End-to-End Error Detection Rate**: **13.01%** (16 / 123 tasks)
+- Scientific distinction: While eligible diagnostic recall is **48.48%**, the end-to-end detection reach across all benchmark errors is only **13.01%** because full-system reliability is bottlenecked by upstream candidate production.
+
+### Level-3 Recovery Replication Provenance
+The original Level-3 evaluation ran to completion (26 tasks, 1 correct, 4 completed; summary committed in `e6dce61`), but its predictions file was subsequently overwritten by an aborted re-run with `--no-resume`, leaving 11 records. Because lossless reconstruction from evaluation logs was impossible without fabricating raw model API responses, the original evidence was preserved in `experiments/v6_original_l3_pre_recovery/`. A strictly predeclared recovery replication was executed once under the unchanged frozen protocol; the first operationally healthy run was accepted regardless of score and promoted to canonical evidence.
+
+### Freeze Rule
+V6 is frozen as the immutable research baseline for read-only self-evaluation:
+```text
+V6 = frozen V5 + one bounded read-only post-answer self-evaluation generation
+```
+Future work must not alter V6 results, runtime code, prompts, model configs, or evaluations. Any targeted repair or self-correction experimentation belongs to V7+.
+
+---
+
 ## Getting Started
 
 ### 1. Installation
@@ -615,6 +693,9 @@ Each experiment record captures:
 ### 1. Run One Development Question (Debug / Smoke Test)
 Run a single question locally without submitting:
 ```bash
+# Run with V6 bounded read-only self-evaluation
+python evaluation/run_one.py --version v6 -i 0
+
 # Run with V5 one-shot post-answer verification
 python evaluation/run_one.py --version v5 -i 0
 
@@ -637,6 +718,9 @@ python evaluation/run_one.py --version v0 -i 0
 ### 2. Run a Complete Benchmark Level
 Run tasks for a specific GAIA benchmark level from local data:
 ```bash
+# Run V6 bounded read-only self-evaluation
+python -m evaluation.run_level --version v6 --level 1
+
 # Run V5 one-shot post-answer verification
 python -m evaluation.run_level --version v5 --level 1
 
@@ -665,6 +749,9 @@ Useful arguments:
 ### 3. Evaluate Predictions Locally
 Compute metrics (accuracy, token usage, latency, attachment breakdown, file metrics, search metrics) against local ground truth without calling Hugging Face:
 ```bash
+# Evaluate V6 predictions
+python -m evaluation.evaluate --version v6 --level 1
+
 # Evaluate V5 predictions
 python -m evaluation.evaluate --version v5 --level 1
 

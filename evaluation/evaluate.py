@@ -31,6 +31,7 @@ from evaluation.metrics import (
     SCORER_COMMIT,
 )
 from evaluation.experiment_logger import get_git_metadata
+from evaluation.self_evaluation_metrics import calculate_self_evaluation_metrics
 
 
 def calculate_metrics(
@@ -117,7 +118,7 @@ def calculate_metrics(
     if predictions and predictions[0].get("project_version"):
         resolved_pv = predictions[0].get("project_version")
 
-    has_python = (resolved_pv in ("v3", "v4", "v5")) or any(
+    has_python = (resolved_pv in ("v3", "v4", "v5", "v6")) or any(
         pred.get("python_requested") or pred.get("python_executed") or pred.get("python_prompt_version")
         for pred in predictions
     )
@@ -132,7 +133,7 @@ def calculate_metrics(
     python_not_executed_count = 0
     python_not_executed_correct = 0
 
-    has_router = (resolved_pv in ("v4", "v5")) or any(
+    has_router = (resolved_pv in ("v4", "v5", "v6")) or any(
         pred.get("router_requested") or pred.get("router_decision")
         for pred in predictions
     )
@@ -147,10 +148,15 @@ def calculate_metrics(
     worker_latencies: List[float] = []
     total_llm_generations_list: List[int] = []
 
-    has_verifier = (resolved_pv == "v5") or any(
+    has_verifier = (resolved_pv in ("v5", "v6")) or any(
         pred.get("verifier_attempted") or pred.get("verifier_eligible") or pred.get("verifier_verdict")
         for pred in predictions
     )
+    has_self_evaluator = (resolved_pv == "v6") or any(
+        pred.get("self_eval_attempted") or pred.get("self_eval_eligible") or pred.get("self_eval_prompt_version")
+        for pred in predictions
+    )
+    self_evaluation_records: List[Dict[str, Any]] = []
     pre_verification_correct_tasks = 0
     verifier_eligible_count = 0
     verifier_attempted_count = 0
@@ -207,6 +213,21 @@ def calculate_metrics(
 
         if is_correct:
             correct_tasks += 1
+
+        # V6 scorer firewall: correctness reaches diagnostic metrics only here,
+        # after the runtime evaluator has completed. It is never passed upstream.
+        if has_self_evaluator or pred.get("self_eval_attempted") or pred.get("self_eval_eligible"):
+            if (pred.get("self_eval_eligible") or pred.get("self_eval_attempted")) and pred.get("self_eval_answer_unchanged") is not True:
+                raise AssertionError("V6 self-evaluation answer immutability invariant violated")
+            self_evaluation_records.append({
+                "eligible": bool(pred.get("self_eval_eligible")),
+                "attempted": bool(pred.get("self_eval_attempted")),
+                "success": bool(pred.get("self_eval_success")),
+                "assessment": pred.get("self_eval_assessment"),
+                "risk_type": pred.get("self_eval_risk_type"),
+                "confidence": pred.get("self_eval_confidence"),
+                "correct": is_correct,
+            })
 
         has_att = bool(pred.get("attachment_required"))
         if has_att:
@@ -531,6 +552,28 @@ def calculate_metrics(
                 "verifier_total_tokens": pred.get("verifier_total_tokens"),
                 "verifier_prompt_version": pred.get("verifier_prompt_version"),
             })
+        if has_self_evaluator or pred.get("self_eval_attempted") or pred.get("self_eval_eligible"):
+            # Public-safe V6 diagnostics only. No raw evaluator prompt/response,
+            # hidden reasoning, scorer internals, or benchmark target is included.
+            detailed_entry.update({
+                "self_eval_eligible": pred.get("self_eval_eligible", False),
+                "self_eval_attempted": pred.get("self_eval_attempted", False),
+                "self_eval_success": pred.get("self_eval_success", False),
+                "self_eval_prompt_version": pred.get("self_eval_prompt_version"),
+                "self_eval_assessment": pred.get("self_eval_assessment"),
+                "self_eval_risk_type": pred.get("self_eval_risk_type"),
+                "self_eval_confidence": pred.get("self_eval_confidence"),
+                "self_eval_error_type": pred.get("self_eval_error_type"),
+                "self_eval_finish_reason": pred.get("self_eval_finish_reason"),
+                "self_eval_generation_attempts": pred.get("self_eval_generation_attempts", 0),
+                "self_eval_generation_success": pred.get("self_eval_generation_success", False),
+                "self_eval_latency_seconds": pred.get("self_eval_latency_seconds"),
+                "self_eval_input_tokens": pred.get("self_eval_input_tokens"),
+                "self_eval_output_tokens": pred.get("self_eval_output_tokens"),
+                "self_eval_thinking_tokens": pred.get("self_eval_thinking_tokens"),
+                "self_eval_total_tokens": pred.get("self_eval_total_tokens"),
+                "self_eval_answer_unchanged": pred.get("self_eval_answer_unchanged", True),
+            })
         detailed_eval.append(detailed_entry)
 
     accuracy = round(correct_tasks / total_tasks, 4) if total_tasks > 0 else 0.0
@@ -571,7 +614,14 @@ def calculate_metrics(
 
     # Determine prompt version provenance
     # Avoid recording entire run as 'baseline-v1' if task 0 experienced search fallback
-    if resolved_pv == "v5" or (has_verifier and resolved_pv not in ("v0", "v1", "v2", "v3", "v4")):
+    if resolved_pv == "v6" or (has_self_evaluator and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5")):
+        primary_pv = "capability-router-v1"
+        fallback_pv = "router-direct-worker-v1" if any(p.get("router_fallback") for p in predictions) else None
+        prompt_pv = "self-evaluator-v1"
+        if distinct_primary and len(distinct_primary) == 1:
+            primary_pv = distinct_primary[0]
+            fallback_pv = distinct_fallback[0] if distinct_fallback else fallback_pv
+    elif resolved_pv == "v5" or (has_verifier and resolved_pv not in ("v0", "v1", "v2", "v3", "v4")):
         primary_pv = "capability-router-v1"
         fallback_pv = "router-direct-worker-v1" if any(p.get("router_fallback") for p in predictions) else None
         prompt_pv = "answer-verifier-v1"
@@ -795,6 +845,20 @@ def calculate_metrics(
         summary["average_verifier_latency_seconds"] = round(statistics.mean(verifier_latencies), 2) if verifier_latencies else None
         summary["average_verifier_total_tokens"] = round(statistics.mean(verifier_total_tokens_list), 1) if verifier_total_tokens_list else None
 
+    if has_self_evaluator:
+        diagnostic_metrics = calculate_self_evaluation_metrics(self_evaluation_records)
+        summary["self_evaluation_enabled"] = True
+        summary["self_eval_prompt_version"] = next(
+            (p.get("self_eval_prompt_version") for p in predictions if p.get("self_eval_prompt_version")),
+            "self-evaluator-v1",
+        )
+        for metric_name, metric_value in diagnostic_metrics.items():
+            summary[f"self_eval_{metric_name}"] = metric_value
+        # The evaluator is read-only. These are explicit construction invariants,
+        # not empirically estimated answer transitions.
+        summary["self_eval_improvements"] = 0
+        summary["self_eval_regressions"] = 0
+
     return {
         "summary": summary,
         "detailed": detailed_eval,
@@ -941,6 +1005,10 @@ def evaluate_predictions(
         print(f"Pre-Ver Accuracy:    {summary.get('pre_verification_accuracy', 0.0) * 100:.2f}% ({summary.get('pre_verification_correct_tasks')}/{summary.get('total_tasks')})")
         print(f"Post-Ver Accuracy:   {summary.get('post_verification_accuracy', 0.0) * 100:.2f}% ({summary.get('post_verification_correct_tasks')}/{summary.get('total_tasks')})")
         print(f"Net Delta:           {summary.get('net_correct_delta'):+d} tasks ({summary.get('net_accuracy_delta', 0.0) * 100:+.2f} pp)")
+    if summary.get("self_evaluation_enabled"):
+        print(f"Self-Eval Prompt:    {summary.get('self_eval_prompt_version')}")
+        print(f"Self-Eval Coverage:  {summary.get('self_eval_diagnostic_coverage', 0.0) * 100:.1f}% ({summary.get('self_eval_valid_assessment_count')}/{summary.get('self_eval_eligible_count')})")
+        print(f"Self-Eval P/R/F1:    {summary.get('self_eval_precision')} / {summary.get('self_eval_recall')} / {summary.get('self_eval_f1')}")
     print("=" * 65 + "\n")
 
     # Write safe summary if requested
@@ -966,7 +1034,7 @@ if __name__ == "__main__":
     parser.add_argument("--level", type=int, default=1, help="Benchmark level (1, 2, or 3)")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
-    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2", "v3", "v4", "v5"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification; default: v1)")
+    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation; default: v1)")
     parser.add_argument("--predictions", type=str, default=None, help="Path to predictions JSONL file")
     parser.add_argument("--data", type=str, default=None, help="Path to local ground-truth dataset")
     parser.add_argument("--summary-output", type=str, default=None, help="Output path for safe public summary JSON")

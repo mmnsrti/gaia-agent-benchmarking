@@ -32,6 +32,14 @@ from .verification import (
     build_verifier_prompt,
     parse_verifier_result,
 )
+from .self_evaluation import (
+    SELF_EVALUATION_PROMPT_VERSION,
+    SELF_EVALUATOR_SYSTEM_PROMPT,
+    SelfEvaluationParseResult,
+    build_execution_summary,
+    build_self_evaluator_prompt,
+    parse_self_evaluation_result,
+)
 
 __all__ = [
     "BASELINE_SYSTEM_PROMPT",
@@ -60,5 +68,11 @@ __all__ = [
     "VerifierParseResult",
     "build_verifier_prompt",
     "parse_verifier_result",
+    "SELF_EVALUATION_PROMPT_VERSION",
+    "SELF_EVALUATOR_SYSTEM_PROMPT",
+    "SelfEvaluationParseResult",
+    "build_execution_summary",
+    "build_self_evaluator_prompt",
+    "parse_self_evaluation_result",
 ]
 

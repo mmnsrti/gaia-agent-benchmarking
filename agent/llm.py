@@ -137,8 +137,9 @@ class LLMClient:
         self,
         prompt: str,
         attachment_parts: Optional[List[Any]] = None,
+        max_retries: int = 3,
     ) -> LLMResponse:
-        """Generates a text completion for the given prompt and optional multimodal parts with tools disabled."""
+        """Generates a text completion with tools disabled and a bounded provider retry count."""
         if not prompt and not attachment_parts:
             return LLMResponse(
                 text="",
@@ -154,7 +155,9 @@ class LLMClient:
             )
 
         config = self._build_config()
-        max_retries = 3
+        if max_retries < 0:
+            raise ValueError("max_retries must be non-negative")
+        total_provider_attempts = max_retries + 1
         response = None
 
         if attachment_parts:
@@ -162,7 +165,7 @@ class LLMClient:
         else:
             contents = prompt
 
-        for attempt in range(max_retries):
+        for attempt in range(total_provider_attempts):
             try:
                 response = self._client.models.generate_content(
                     model=self.model,
@@ -174,7 +177,7 @@ class LLMClient:
                 err_str = str(e)
                 is_transient = "503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str
                 is_daily_cap = "GenerateRequestsPerDay" in err_str
-                if is_transient and not is_daily_cap and attempt < max_retries - 1:
+                if is_transient and not is_daily_cap and attempt < total_provider_attempts - 1:
                     sleep_time = 2.0 * (attempt + 1)
                     time.sleep(sleep_time)
                     continue
