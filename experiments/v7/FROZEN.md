@@ -20,11 +20,38 @@ V7 = Frozen V6 + one bounded text-only targeted repair generation triggered excl
 ### What V7 Does
 - Receives an already-finalized V6 candidate answer and diagnostic assessment.
 - Activates targeted repair if and only if the self-evaluation assessment is a valid `SUSPECT` on a non-empty candidate answer.
-- Operates strictly on existing evidence and compact status context.
-- Selects between `ACTION: KEEP` (retain original candidate verbatim) and `ACTION: REPLACE` (substitute with a revised answer).
+- Operates strictly on existing evidence, compact status context, and structured diagnostic signals.
+- Emits a structured repair decision adhering strictly to `targeted-repair-v1`:
+  - Exactly one line for KEEP:
+    ```text
+    REPAIR_ACTION: KEEP
+    ```
+    retaining the original candidate answer verbatim.
+  - Exactly two lines for REPLACE:
+    ```text
+    REPAIR_ACTION: REPLACE
+    FINAL: <corrected answer>
+    ```
+    substituting with a revised non-empty single-line answer.
 - Preserves the original pre-repair answer identically upon any repair parser failure, timeout, or exception.
 
+### Allowed Repair Inputs
+The V7 targeted repair stage receives strictly:
+- Original question
+- Existing web-search evidence
+- Existing extracted file context / attachment filename
+- Current pre-repair answer
+- Structured V6 diagnostic signal:
+  - `ASSESSMENT: SUSPECT`
+  - `RISK_TYPE`
+  - `CONFIDENCE`
+- Compact deterministic execution summary
+
 ### What V7 Does NOT Do
+- Does **NOT** receive raw worker reasoning or hidden chain-of-thought.
+- Does **NOT** receive raw V5 verifier response text or raw V6 evaluator response text.
+- Does **NOT** receive ground-truth reference labels or official scorer results.
+- Does **NOT** receive generated Python source code or Python stdout/stderr.
 - Does **NOT** perform new web searches (`search = false`).
 - Does **NOT** execute new Python code (`python = false`).
 - Does **NOT** reread or extract files (`file_reread = false`).
@@ -32,7 +59,6 @@ V7 = Frozen V6 + one bounded text-only targeted repair generation triggered excl
 - Does **NOT** retry failed repair generations (`provider_retries = 0`).
 - Does **NOT** execute post-repair verification (`post_repair_verification = false`).
 - Does **NOT** execute post-repair self-evaluation (`post_repair_self_evaluation = false`).
-- Does **NOT** access ground-truth reference labels or official scorer internals at runtime.
 - Does **NOT** repair empty candidate answers or unflagged (`PASS`) candidates.
 
 ---
@@ -66,13 +92,13 @@ Stage 4: Frozen Read-Only Self-Evaluator Generation (`self-evaluator-v1`, mode="
      │
      └── [Candidate Present AND Assessment == SUSPECT]
               ↓
-         Stage 5: One-Shot Targeted Repair Generation (`targeted-repair-v1`, mode="NONE", N ≤ 1)
-         (Inputs: Question, Existing Evidence, Pre-Repair Answer, Risk Type, Reasoning)
-              ↓
-         Deterministic Action Parser
-              ├── [ACTION: KEEP] → Post-Repair Answer = Pre-Repair Answer
-              ├── [ACTION: REPLACE] → Post-Repair Answer = Repaired Answer
-              └── [PARSER FAILURE / ERROR] → Fallback: Pre-Repair Answer Preserved
+          Stage 5: One-Shot Targeted Repair Generation (`targeted-repair-v1`, mode="NONE", N ≤ 1)
+          (Inputs: Question, Web Evidence, File Context, Pre-Repair Answer, Diagnostic Signal, Execution Summary)
+               ↓
+          Deterministic Action Parser
+               ├── [REPAIR_ACTION: KEEP] → Post-Repair Answer = Pre-Repair Answer
+               ├── [REPAIR_ACTION: REPLACE\nFINAL: <ans>] → Post-Repair Answer = Repaired Answer
+               └── [PARSER FAILURE / ERROR] → Fallback: Pre-Repair Answer Preserved
               ↓
          Final Answer Emitted to Scorer
 ```
