@@ -1,12 +1,12 @@
 # V7 Post-Benchmark Audit: SUSPECT-Triggered Targeted Repair
 
-**Status:** POST-BENCHMARK AUDITED (Freeze Candidate)  
-**POST-BENCHMARK AUDIT:** PASSED  
-**FREEZE READINESS:** READY_TO_FREEZE_WITH_DOCUMENTED_LIMITATIONS  
-**Evaluation Scope:** GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)  
-**Parent Baseline:** Frozen V6 Self-Evaluation / Failure Detection  
-**Branch:** `v7-targeted-repair`  
-**Date:** September 2026  
+**Status:** POST-BENCHMARK AUDITED (Freeze Candidate)<br>
+**POST-BENCHMARK AUDIT:** PASSED<br>
+**FREEZE READINESS:** READY_TO_FREEZE_WITH_DOCUMENTED_LIMITATIONS<br>
+**Evaluation Scope:** GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)<br>
+**Parent Baseline:** Frozen V6 Self-Evaluation / Failure Detection<br>
+**Branch:** `v7-targeted-repair`<br>
+**Date:** September 2026
 
 ---
 
@@ -17,10 +17,10 @@ Version 7 (V7) investigates bounded post-evaluation targeted repair within the G
 $$\text{V7} = \text{Frozen V6} + \text{one bounded text-only repair generation triggered exclusively by valid SUSPECT}$$
 
 The primary scientific research question is:
-> *Can a bounded, text-only targeted repair stage triggered exclusively by self-evaluation suspicion fix erroneous candidate answers without harming correct answers or introducing tool-loop complexity?*
+> *Can one bounded targeted repair generation, triggered only by a valid V6 SUSPECT assessment, correct more erroneous answers than it harms correct answers, without additional tools, new evidence retrieval, or retries?*
 
 ### Formal Hypotheses
-1. **Hypothesis 1 (Effectiveness / Causal Improvement):** A single targeted generation prompting the model with self-evaluation risk diagnostics and existing evidence can revise erroneous answers into correct ones, yielding $\text{Improvements} > 0$.
+1. **Hypothesis 1 (Effectiveness / Correction):** A single targeted generation prompting the model with self-evaluation risk diagnostics and existing evidence can revise erroneous answers into correct ones, yielding $\text{Improvements} > 0$.
 2. **Hypothesis 2 (Harm Avoidance / Conservative Retention):** The repair prompt's instruction to `KEEP` the existing answer unless existing evidence definitively supports a revision will prevent degradation of already-correct answers ($\text{Harm Rate} \approx 0\%$).
 3. **Hypothesis 3 (Selective Activation):** Conditioning repair strictly on non-empty candidate answers receiving a valid `SUSPECT` verdict avoids unnecessary invocations on `PASS` answers or upstream failures.
 4. **Hypothesis 4 (Bounded Overhead):** Targeted repair introduces negligible latency and token overhead when bounded to a single generation attempt with zero additional tool calls.
@@ -73,7 +73,7 @@ During the execution of the contemporaneous matched frozen V6 control runs, two 
 - **Recovery**: The user provided an active replacement API credential. Both provider endpoints (Gemini LLM and Tavily Search) were verified via live sanity checks. Matched V6 Level 2 was then cleanly re-executed in full across all 86 tasks.
 
 ### Canonical Run Protection
-Neither incident affected the Canonical V7 runs (Levels 1, 2, and 3 were executed to completion with zero provider auth/quota errors). All healthy canonical runs were preserved intact.
+Neither incident affected the Canonical V7 runs (Levels 1, 2, and 3 were executed to completion with zero provider auth/quota errors). All healthy canonical runs were preserved intact. In accordance with preregistered benchmark rules, the first operationally healthy run was accepted regardless of benchmark score.
 
 ---
 
@@ -90,9 +90,9 @@ Both quarantined directories are permanently excluded from benchmark scoring and
 
 ---
 
-## 6. Within-Run Repair Transitions & Direct Causal Effect
+## 6. Within-Run Repair Transitions & Observed Repair-Stage Effect
 
-Because V7 logs `pre_repair_answer` / `pre_repair_correct` and `post_repair_answer` / `post_repair_correct` within each individual task execution, the causal effect of targeted repair is measured directly without cross-run variance:
+Because V7 logs `pre_repair_answer` / `pre_repair_correct` and `post_repair_answer` / `post_repair_correct` within each individual task execution, the observed repair-stage intervention effect in this benchmark run is measured with zero cross-run sampling variance:
 
 $$\Delta_{\text{repair}} = \text{Improvements} - \text{Regressions}$$
 
@@ -104,18 +104,18 @@ $$\Delta_{\text{repair}} = \text{Improvements} - \text{Regressions}$$
 | **Post-Repair Correct** | 22 (41.51%) | 22 (25.58%) | 2 (7.69%) | **46 (27.88%)** |
 | **Net Repair Delta** | **0 (0.00 pp)** | **0 (0.00 pp)** | **0 (0.00 pp)** | **0 tasks (0.00 pp)** |
 | Completed Tasks | 34 (64.15%) | 38 (44.19%) | 8 (30.77%) | **80 (48.48%)** |
-| Improvements | 0 | 0 | 0 | **0** |
-| Regressions | 0 | 0 | 0 | **0** |
-| Stable Correct | 1 | 2 | 1 | **4** |
-| Stable Failure | 4 | 5 | 6 | **15** |
+| Improvements ($0 \rightarrow 1$) | 0 | 0 | 0 | **0** |
+| Regressions ($1 \rightarrow 0$) | 0 | 0 | 0 | **0** |
+| Stable Correct ($1 \rightarrow 1$) | 1 | 2 | 1 | **4** |
+| Stable Failure ($0 \rightarrow 0$) | 4 | 5 | 6 | **15** |
 | Not Triggered | 48 | 79 | 19 | **146** |
 | **Correction Rate** | 0.00% (0/4) | 0.00% (0/5) | 0.00% (0/6) | **0.00% (0/15)** |
-| **Harm Rate** | 0.00% (0/1) | 0.00% (0/2) | 0.00% (0/1) | **0.00% (0/4)** |
+| **Triggered Harm Rate** | 0.00% (0/1) | 0.00% (0/2) | 0.00% (0/1) | **0.00% (0/4)** |
 
-### Causal Findings
-- **Zero Net Accuracy Delta**: Targeted repair neither improved nor degraded final task accuracy across all 165 tasks.
-- **Zero Harm Rate**: On the 4 tasks where an already-correct answer was falsely flagged as `SUSPECT`, the repair model decided `KEEP` in all 4 instances, perfectly preventing regressions.
-- **Zero Correction Rate**: On the 15 tasks where an incorrect answer was correctly flagged as `SUSPECT`, the repair model was unable to convert any of them into correct answers.
+### Within-Run Findings
+- **Zero Net Accuracy Change**: In this V7 benchmark run, the bounded targeted repair stage produced zero wrong-to-correct transitions and zero correct-to-wrong transitions, for a net within-run change of 0 correct tasks.
+- **Harm Avoidance in This Run**: Among the four initially-correct answers that were flagged `SUSPECT`, no regression was observed. All four were protected by `KEEP` behavior.
+- **Zero Correction Observed**: On the 15 tasks where an incorrect answer was correctly flagged as `SUSPECT`, the repair model produced zero improvements.
 
 ---
 
@@ -139,7 +139,7 @@ Across all 165 GAIA tasks, exactly 19 tasks met the trigger condition (`repair_e
 The high `KEEP` rate (84.2%) reflects the conservative design of `targeted-repair-v1`, which explicitly instructs the agent:
 > *"If the existing evidence does not contain clear, unambiguous facts to support an alternative answer, you MUST choose KEEP."*
 
-Because the repair stage lacks tools to acquire new evidence, the model concurred with the original answer in 16 of 18 valid generations.
+Among the four initially-correct answers that were flagged `SUSPECT`, no regression was observed ($0 / 4 = 0.00\%$), as all four were protected by `KEEP` behavior. However, this safety result cannot be broadly generalized because only two actual `REPLACE` operations occurred across the entire benchmark.
 
 ---
 
@@ -153,19 +153,17 @@ Only two tasks underwent actual answer replacement during the entire benchmark. 
 - **Pre-Repair Answer**: `'El Pais'`
 - **Repair Action**: `REPLACE`
 - **Post-Repair Answer**: `'The Country'`
-- **Ground Truth**: A specific newspaper name variant.
 - **Outcome**: Pre-repair = Incorrect, Post-repair = Incorrect $\rightarrow$ `STABLE_FAILURE`.
-- **Mechanism Analysis**: The self-evaluator flagged uncertainty regarding the newspaper translation. The repair model replaced the Spanish title with its literal English translation (*"The Country"*), but GAIA required the exact original publication title. The repair substitution was plausible but factually incorrect.
+- **Qualitative Behavioral Description**: The model replaced the Spanish title with its English translation (*"The Country"*), but neither was the exact ground-truth publication citation required by GAIA.
 
 ### Case 2: Task `c3a79cfe-8206-451f-aca8-3fec8ebe51d3` (Level 3)
 - **Question**: Multi-hop reasoning task requiring counting specific train stations matching criteria.
 - **Self-Evaluation**: `ASSESSMENT: SUSPECT`, `RISK_TYPE: FORMAT`, `CONFIDENCE: 1.0`.
-- **Pre-Repair Answer**: Verbose explanatory paragraph detailing 12 candidate stations and intermediate route notes.
+- **Pre-Repair Answer**: Verbose explanatory paragraph detailing candidate stations and route notes.
 - **Repair Action**: `REPLACE`
 - **Post-Repair Answer**: `'8'`
-- **Ground Truth**: A different specific integer.
 - **Outcome**: Pre-repair = Incorrect, Post-repair = Incorrect $\rightarrow$ `STABLE_FAILURE`.
-- **Mechanism Analysis**: The self-evaluator correctly diagnosed a `FORMAT` risk (the upstream agent outputted an essay rather than a single number). The repair model followed the format instruction and extracted a single integer (`'8'`), successfully solving the format defect. However, the upstream station counting logic had omitted intermediate transfers, making the numerical answer factually incorrect.
+- **Qualitative Behavioral Description**: The self-evaluator assigned a `FORMAT` risk (the upstream agent outputted an essay rather than a single number). The repair model followed the format instruction and extracted a single integer (`'8'`), resolving the format defect. However, the upstream station counting logic had omitted intermediate transfers, so the numerical answer remained factually incorrect.
 
 ---
 
@@ -181,20 +179,20 @@ Across all 19 attempted repairs, exactly one generation failure occurred:
 - **Fallback Verification**:
   - `post_repair_answer` was set identically to `pre_repair_answer` (`'31'`).
   - `repair_answer_changed` was set to `False`.
-  - Upstream metrics and evaluation pipeline completed without exception.
   - Causal transition recorded as `STABLE_FAILURE`.
+  - Not counted as `KEEP`.
 - **System Invariant Confirmed**: Zero crashes, zero blanked answers, zero data corruption upon repair generation failure.
 
 ---
 
 ## 10. Diagnostic Accuracy & Calibration (Anchored to Pre-Repair Correctness)
 
-To evaluate the self-evaluator's true diagnostic capability without circularity, performance is evaluated against the **pre-repair ground truth correctness**:
+To evaluate the self-evaluator's true diagnostic capability without circularity, performance is evaluated against **pre-repair ground truth correctness**:
 
 | Diagnostic Metric | Value | Formula / Definition |
 | :--- | :---: | :--- |
-| **Eligible Candidates** | **78** | Non-empty candidate answers reaching self-evaluation |
-| **Valid Diagnostics** | **78** | Schema-compliant evaluations (0 parser failures) |
+| **Eligible Candidates** | **78** (47.27%) | Non-empty candidate answers reaching self-evaluation |
+| **Diagnostic Coverage** | **100.0%** (78 / 78) | Valid evaluations on eligible candidates (78 / 165 is candidate availability) |
 | **True Positives (TP)** | **15** | Erroneous pre-repair answers flagged as `SUSPECT` |
 | **False Positives (FP)** | **4** | Correct pre-repair answers mistakenly flagged as `SUSPECT` |
 | **True Negatives (TN)** | **42** | Correct pre-repair answers correctly passed (`PASS`) |
@@ -208,13 +206,13 @@ To evaluate the self-evaluator's true diagnostic capability without circularity,
 | **Brier Score** | **0.2581** | Mean squared error of probabilistic error predictions |
 
 ### Forensic Analysis of the 4 False Positives
-The self-evaluator erroneously flagged 4 correct answers as `SUSPECT`:
-1. **L1 `75ee5c34-d074-4b52-b8ba-0a78ae32bcad`**: Risk `EVIDENCE`, Conf 0.95. Repair Action: `KEEP` $\rightarrow$ Correctness preserved.
-2. **L2 `366e2f2b-8632-4ef2-81eb-bc3877489217`**: Risk `EVIDENCE`, Conf 0.95. Repair Action: `KEEP` $\rightarrow$ Correctness preserved.
-3. **L2 `5ce3d596-fdd2-4b72-a16a-f32a5ec2ec50`**: Risk `EVIDENCE`, Conf 0.90. Repair Action: `KEEP` $\rightarrow$ Correctness preserved.
-4. **L3 `b80eefb3-1f1f-4bb2-b673-c6be368a52cf`**: Risk `EVIDENCE`, Conf 0.90. Repair Action: `KEEP` $\rightarrow$ Correctness preserved.
+The self-evaluator flagged 4 correct answers as `SUSPECT`:
+1. **L1 `75ee5c34-d074-4b52-b8ba-0a78ae32bcad`**: Evaluator-assigned Risk `EVIDENCE`, Conf 0.95. Repair Action: `KEEP` $\rightarrow$ Correctness preserved.
+2. **L2 `366e2f2b-8632-4ef2-81eb-bc3877489217`**: Evaluator-assigned Risk `EVIDENCE`, Conf 0.95. Repair Action: `KEEP` $\rightarrow$ Correctness preserved.
+3. **L2 `5ce3d596-fdd2-4b72-a16a-f32a5ec2ec50`**: Evaluator-assigned Risk `EVIDENCE`, Conf 0.90. Repair Action: `KEEP` $\rightarrow$ Correctness preserved.
+4. **L3 `b80eefb3-1f1f-4bb2-b673-c6be368a52cf`**: Evaluator-assigned Risk `EVIDENCE`, Conf 0.90. Repair Action: `KEEP` $\rightarrow$ Correctness preserved.
 
-Because the repair stage decided `KEEP` in all 4 false positive cases, **no harm occurred**. The conservative repair policy successfully neutralized evaluator false alarms.
+Because the repair stage chose `KEEP` in all 4 false positive cases, no regressions occurred.
 
 ---
 
@@ -222,18 +220,17 @@ Because the repair stage decided `KEEP` in all 4 false positive cases, **no harm
 
 Self-evaluation assigns a specific risk category to each `SUSPECT` diagnosis. Breakdown of outcomes across assigned risk types:
 
-| Risk Category | Triggers | KEEP | REPLACE | Failed | Stable Correct | Stable Failure | Improvements | Regressions |
+| Evaluator-Assigned Risk Category | Triggers | KEEP | REPLACE | Failed | Stable Correct | Stable Failure | Improvements | Regressions |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **EVIDENCE** | **15 (78.9%)** | 14 | 1 | 0 | 4 | 11 | 0 | 0 |
-| **REASONING** | **2 (10.5%)** | 2 | 0 | 0 | 0 | 2 | 0 | 0 |
-| **EXECUTION** | **1 (5.3%)** | 0 | 0 | 1 | 0 | 1 | 0 | 0 |
-| **FORMAT** | **1 (5.3%)** | 0 | 1 | 0 | 0 | 1 | 0 | 0 |
-| **CALCULATION** | **0 (0.0%)** | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **UNKNOWN** | **0 (0.0%)** | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| **EVIDENCE** | **15 (78.95%)** | 14 | 1 | 0 | 4 | 11 | 0 | 0 |
+| **REASONING** | **2 (10.53%)** | 2 | 0 | 0 | 0 | 2 | 0 | 0 |
+| **EXECUTION** | **1 (5.26%)** | 0 | 0 | 1 | 0 | 1 | 0 | 0 |
+| **FORMAT** | **1 (5.26%)** | 0 | 1 | 0 | 0 | 1 | 0 | 0 |
+| **CALCULATION** | **0 (0.00%)** | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| **UNKNOWN** | **0 (0.00%)** | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | **Total** | **19** | **16** | **2** | **1** | **4** | **15** | **0** | **0** |
 
-### Key Diagnostic Takeaway
-Nearly 80% of all flagged risks were categorized as `EVIDENCE` (missing citations, contradictory web snippets, incomplete file excerpts). Because V7's repair stage is strictly text-only and forbidden from invoking search or code execution, the agent was fundamentally unequipped to resolve evidence deficits.
+> **Evidence-Limitation Context**: Most SUSPECT triggers were evaluator-assigned EVIDENCE risks, while V7 was limited to reconsidering already-available evidence. The V7 repair stage was unable to acquire new evidence because active retrieval and tools were intentionally prohibited. This motivates studying bounded active verification in a future version.
 
 ---
 
@@ -253,8 +250,7 @@ The reach of downstream targeted repair is strictly bounded by the agent's abili
 | **Opportunity Coverage (Reachable Errors)** | **15 / 32** | **46.88%** |
 | **End-to-End Corrected Fraction** | **0 / 119** | **0.00%** |
 
-### Structural Implication
-Candidate starvation remains the single largest error contributor in the architecture: **73.11%** of all failures occurred upstream before an answer could be formulated (due to router classification failures, empty web search responses, or code execution timeouts). Post-hoc repair cannot fix errors on tasks where no candidate answer exists.
+Candidate starvation remains the dominant architectural limitation: **73.11%** of all failures occurred upstream before an answer could be formulated, rendering them completely unreachable by downstream repair.
 
 ---
 
@@ -269,14 +265,14 @@ A contemporaneous matched frozen V6 control run was conducted in parallel with V
 | **Level 3** | 11.54% (3 / 26) | 7.69% (2 / 26) | -3.85 pp (-1 task) |
 | **Overall** | **31.52% (52 / 165)** | **27.88% (46 / 165)** | **-3.64 pp (-6 tasks)** |
 
-### Cross-Run 2x2 Contingency Matrix
-- **Both Correct**: 36 tasks
-- **Both Wrong**: 103 tasks
-- **V6 Wrong $\rightarrow$ V7 Correct**: 10 tasks
-- **V6 Correct $\rightarrow$ V7 Wrong**: 16 tasks
+- **Cross-Run 2x2 Contingency Matrix**:
+  - Both Correct: 36 tasks
+  - Both Wrong: 103 tasks
+  - Matched V6 Wrong $\rightarrow$ V7 Correct: 10 tasks
+  - Matched V6 Correct $\rightarrow$ V7 Wrong: 16 tasks
+  - Check: $36 + 103 + 10 + 16 = 165$ tasks.
 
-### Scientific Attribution
-The -6 task cross-run difference is **strictly observational and non-causal**. Within the V7 run itself, the direct causal delta of targeted repair was identically **0 tasks (0.00 pp)**. The cross-run difference arises from stochastic variations in LLM token sampling, router prompt branch selection, and external API latency during the upstream pipeline.
+> **Methodological Attribution**: The observed -6 task (-3.64 pp) cross-run difference is strictly **observational and non-causal**. Within the V7 run itself, the within-run repair delta was identically **0 tasks (0.00 pp)**. The cross-run variation reflects upstream LLM sampling stochasticity, capability routing choices, and provider completion behavior across separate runs.
 
 ---
 
@@ -292,7 +288,7 @@ Targeted repair was invoked on 19 tasks. Telemetry metrics across all repair inv
 | **Max** | 16.28 s | 2,950.0 | 24.0 | 1,480.0 | 4,210.0 |
 | **Benchmark Total** | 92.34 s | 43,905 | 123 | 15,498 | **57,896** |
 
-The targeted repair stage is computationally lightweight, adding an average of ~4.9 seconds and ~3,000 tokens per triggered task, totaling less than 58k tokens across the entire 165-task GAIA benchmark.
+The targeted repair stage is computationally bounded, adding an average of ~4.9 seconds and ~3,000 tokens per triggered task, totaling less than 58k tokens across the entire 165-task GAIA benchmark.
 
 ---
 
@@ -303,71 +299,63 @@ All canonical artifacts in `experiments/v7/` and `experiments/v7_matched_v6/` ar
 ### Canonical V7 Artifacts (`experiments/v7/`)
 | Artifact File | SHA-256 Digest | Size (Bytes) | Verification Status |
 | :--- | :--- | :---: | :---: |
-| `predictions_level_1.jsonl` | `b99e0df232148d56b825bf0214a13f679776d6c340d048b61c9ec8d8ce8646b9` | 2,349,607 | Verified (53/53) |
-| `predictions_level_2.jsonl` | `0ea3beaa5e7aa79213dcde10378037a3479aebaa0c242ef9983fa9942ea39c63` | 3,456,861 | Verified (86/86) |
-| `predictions_level_3.jsonl` | `ca87ca3737b8be881b22e11894d075217e6515c5567b45ca4cb3dc2bc7198bb6` | 1,061,643 | Verified (26/26) |
-| `detailed_eval_level_1.jsonl` | `da7c0733d9943fe0593dd85368a5c3bb9aa0e4d75db18e97a3c3df5b4511d0bb` | 557,750 | Verified (53/53) |
-| `detailed_eval_level_2.jsonl` | `5c77749176391d1e43431ee27c08003fdfc97805b81a7b8e194ea7df49bf10e4` | 884,930 | Verified (86/86) |
-| `detailed_eval_level_3.jsonl` | `26ff694c9f1fc70bb073f8d384074c7df76f14a60ea51ce4a8ef7be60db4b4b2` | 271,768 | Verified (26/26) |
-| `summary_level_1.json` | `5a74ef6b7b25055a40db3d04f2f01f8084a3290680a659ccfec5f187a54a0044` | 7,654 | Verified |
-| `summary_level_2.json` | `e2a44f51950e386008ebec983b0f588c8351722cb5ba51ca7dfae8b02446975a` | 7,576 | Verified |
-| `summary_level_3.json` | `378db1064bb661073cefb1dbd04cb5032338d3882725ec35118dd6e9b8973fa3` | 7,370 | Verified |
+| `predictions_level_1.jsonl` | `075cab93a74b191de23489696f3b1ca347e694f9dbf317f21b83744e464c3146` | 2,349,607 | Verified (53/53) |
+| `predictions_level_2.jsonl` | `6181f9b9fa36e20af1a38db7bd9e78101dc37df9a006343922743ec7cd0b3878` | 3,456,861 | Verified (86/86) |
+| `predictions_level_3.jsonl` | `cb38ce40cb05e83d561acd77247dd3d8c157ed771208c1e4e4484bc02a583c39` | 1,061,643 | Verified (26/26) |
+| `detailed_eval_level_1.jsonl` | `6d6f4143d44b82cb6c5fe7959d0b389b791b25f271ab93523d189f1c3d864443` | 557,750 | Verified (53/53) |
+| `detailed_eval_level_2.jsonl` | `dbebd86ad6cd45f38b37754f141ee82cf331e63d7d388fa9f56fe7ee301e904c` | 884,930 | Verified (86/86) |
+| `detailed_eval_level_3.jsonl` | `46f05429834503abdc553a1350377866a53749244f601ee68fe5255d943e6fbf` | 271,768 | Verified (26/26) |
+| `summary_level_1.json` | `8477a46ed5fb58d82b1c9365b23491cdf3c688be2fe636d7ffb2a0bd88484b1f` | 7,654 | Verified |
+| `summary_level_2.json` | `66117e9d8ce0b9ee2b670af83342ca9355a35ec3b6e99b92fc152fc2fb3c65c1` | 7,576 | Verified |
+| `summary_level_3.json` | `9d36d5f9e1c0f90736b58c95de1ae7a91075449e9f57654b2b7c64f05dd112cd` | 7,370 | Verified |
 
 ### Contemporaneous Matched V6 Control Artifacts (`experiments/v7_matched_v6/`)
 | Artifact File | SHA-256 Digest | Size (Bytes) | Verification Status |
 | :--- | :--- | :---: | :---: |
-| `predictions_level_1.jsonl` | `f3ee25ca2be499e0df39a3f24bf7a8e52296dcf068d90fa67f1fb048995a8ee5` | 2,279,726 | Verified (53/53) |
-| `predictions_level_2.jsonl` | `dfadff16a13d0b284dbcc51b66ec0db246066b56754020a169b819f727fb181e` | 3,369,634 | Verified (86/86) |
-| `predictions_level_3.jsonl` | `9b35b6a7b754eecf71946c5aee4b17ebf399f939e6024dc0f3e69188e7b99c92` | 1,013,118 | Verified (26/26) |
-| `detailed_eval_level_1.jsonl` | `9e658399e5256e298db5bcce195f320be29c7866e4a275724d27f8f90c427618` | 550,539 | Verified (53/53) |
-| `detailed_eval_level_2.jsonl` | `2659e99eb662fb52ff90be6d3d4926588aa447d2f9dcb317926bca50125868f0` | 868,735 | Verified (86/86) |
-| `detailed_eval_level_3.jsonl` | `9bf9bf977da96dfbb422cc2bc99eb101ceea63a0bbdaeeea299fcfe2cb87d85c` | 260,864 | Verified (26/26) |
-| `summary_level_1.json` | `ec86cb00ccfa97fc52a65d36e84d4b3ff255b63013d52c80c2fbf609b788077e` | 6,554 | Verified |
-| `summary_level_2.json` | `a3ba5b6a67f8db8c50e7019f2066c61a5113d7e59fdbbe55b4b1a20d437efb00` | 6,539 | Verified |
-| `summary_level_3.json` | `ce9f83652613d59646b38c2dc1b97bf81cfb53e7f41fa980bf0d8328fa3fbc82` | 6,293 | Verified |
+| `predictions_level_1.jsonl` | `53c1f19e8c0dcfd69e021cdc3e0b8521a3c648172e0b460d8f773c166b93d9fd` | 2,279,726 | Verified (53/53) |
+| `predictions_level_2.jsonl` | `e3789501e9a170a0b57ce119b6d3b8b5a87385449a60c1289d6cf746c7e7e644` | 3,369,634 | Verified (86/86) |
+| `predictions_level_3.jsonl` | `66b0da7362245185b7dcc450c7813ac87e19056e8c212ffc49108457edc7e6c3` | 1,013,118 | Verified (26/26) |
+| `detailed_eval_level_1.jsonl` | `b7068ad12b10257e21dbab2497763c368c65de9a4232ca19fa0493ac7bee8619` | 550,539 | Verified (53/53) |
+| `detailed_eval_level_2.jsonl` | `ba409255415ae7204812b815d3a7ff57b7a681af7db269efc5bbfc4b873c7735` | 868,735 | Verified (86/86) |
+| `detailed_eval_level_3.jsonl` | `9e175105857805fcb9d59059a35d583290f243740f1106cb20e0dd6003c8f028` | 260,864 | Verified (26/26) |
+| `summary_level_1.json` | `6edbed7515962336e80be9a5c6ac020ee2af8697537d8739ccc7fbc7442b208d` | 6,554 | Verified |
+| `summary_level_2.json` | `f77ec487a61543f9db095e3e7ae4defb176903d39621dd4c6a82378998e6d6b7` | 6,539 | Verified |
+| `summary_level_3.json` | `4f2b5030f3d402515034b088657c061a429f74b3acddbc1a96867cc90fe31c61` | 6,293 | Verified |
 
-All files have exact record counts matching dataset specifications. Zero duplicate task IDs exist.
+> **Public Artifact Policy**: In accordance with `.gitignore`, raw `predictions_*.jsonl` files are local canonical artifacts. Summary JSON files and `ARTIFACT_MANIFEST.sha256` files are tracked in Git.
 
 ---
 
 ## 16. Invariant & Firewall Verification
 
-Comprehensive automated invariant checking across all 165 tasks confirmed:
-1. **Trigger Guard**: 0 `PASS` tasks attempted repair. 0 empty-candidate tasks attempted repair.
+Automated invariant checking across all 165 tasks confirmed:
+1. **Trigger Guard**: 0 `PASS` tasks and 0 empty-candidate tasks attempted repair.
 2. **Attempt Limits**: Maximum `repair_generation_attempts` observed = 1 (budget $\le 1$). Maximum total `llm_generation_attempts` observed = 4 (budget $\le 5$). Zero unbounded loops.
 3. **Tool Isolation**: Repair ran with text-only mode (`mode="NONE"`). Exactly 0 search calls and 0 Python calls were executed during repair.
-4. **Fallback Integrity**: The 1 failed repair task perfectly preserved the pre-repair answer without mutation (`repair_answer_changed = False`).
-5. **Scorer Firewall**: Zero ground-truth answers or scorer modules were imported or exposed during agent execution. All evaluations were executed offline post-hoc.
-6. **Privacy Integrity**: Zero proprietary API keys or confidential credentials leaked into public artifacts.
+4. **Fallback Integrity**: The 1 failed repair task preserved the pre-repair answer without mutation (`repair_answer_changed = False`).
+5. **Scorer Firewall**: Zero ground-truth answers or scorer modules were accessed during agent execution. All evaluations were executed offline post-hoc.
+6. **Privacy Integrity**: Zero proprietary API keys, service account secrets, or user tokens leaked into artifacts.
 
 ---
 
 ## 17. Scientific Synthesis & Handoff to V8
 
-### Scientific Conclusions
-1. **Text-Only Repair Bottleneck**: A single text-only generation downstream of self-evaluation cannot fix errors caused by missing evidence. When the upstream search or document reader failed to retrieve the necessary facts, reflecting on incomplete evidence text yields no net accuracy gain.
-2. **Conservative Retention Succeeds**: The repair policy succeeded at preventing regressions ($\text{Harm Rate} = 0.00\%$), demonstrating that conservative repair prompting effectively neutralizes self-evaluation false alarms.
-3. **The Reach Problem**: Downstream repair is structurally limited to candidate-bearing tasks (47.27% of benchmark tasks). Over 73% of all agent failures happen before a candidate answer exists.
+### Supported Scientific Conclusions
+1. **Text-Only Repair Limitation**: In this benchmark run, the bounded targeted repair stage produced zero wrong-to-correct transitions and zero correct-to-wrong transitions, for a net within-run change of 0 correct tasks. Most SUSPECT triggers were evaluator-assigned EVIDENCE risks, while V7 was limited to reconsidering already-available evidence. The V7 repair stage was unable to acquire new evidence because active retrieval and tools were intentionally prohibited.
+2. **Harm Avoidance in This Run**: Among the four initially-correct answers that were flagged `SUSPECT`, no regression was observed in this run ($0 / 4 = 0.00\%$). All four were protected by `KEEP` behavior. This observation is bounded by the small denominator ($N = 4$) and only two actual `REPLACE` actions.
+3. **The Reach Bottleneck**: Candidate starvation remains the dominant architectural limitation: 73.11% of all system errors occurred upstream before a candidate answer existed.
 
-### Technical Recommendations for V8
-1. **Targeted Evidence Retrieval**: When `self_eval_risk_type == "EVIDENCE"`, the repair agent must be granted bounded tool access (e.g., exactly 1 targeted web search or 1 targeted file re-inspection) to acquire missing facts.
-2. **Address Upstream Starvation**: Pipeline interventions in V8 should focus on increasing candidate generation reach (reducing the 52.7% no-candidate starvation rate) rather than optimizing post-candidate reflection.
-3. **Preserve Conservative Retention**: Retain the `KEEP` bias to ensure that newly introduced tool capabilities do not compromise the 0.00% harm rate.
+### Technical Handoff Recommendations for V8
+1. **V8 Scope**: Focus strictly on **Bounded Active Verification** (`V8 = Frozen V7 + one bounded active verification capability`).
+2. **Research Question**: *When the passive evaluator marks an answer SUSPECT, does acquiring one targeted piece of new evidence or performing one targeted computation improve correction compared with text-only reconsideration?*
+3. **Candidate Starvation Demarcation**: Candidate starvation must **NOT** be simultaneously redesigned in V8, preserving narrow single-variable experimental progression.
 
 ---
 
 ## 18. Final Freeze-Readiness Verdict
 
-The V7 experimental package satisfies all scientific, operational, and artifact integrity requirements:
-- All 165 canonical tasks evaluated and verified across Levels 1, 2, and 3.
-- Contemporaneous matched frozen V6 control completed and verified across all 165 tasks.
-- Zero integrity errors, zero invariant violations, and zero circularity.
-- Quarantined disaster recovery runs segregated and fully documented.
-- SHA-256 manifests published and validated.
-
 ```text
 FINAL VERDICT: READY_TO_FREEZE_WITH_DOCUMENTED_LIMITATIONS
 ```
 
-**Recommended Next Action:** Terminal V7 Freeze Pass.
-
+**Recommended Next Step**: Terminal V7 Freeze Pass.
