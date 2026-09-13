@@ -179,22 +179,22 @@ class TestV6AnalysisUtility(unittest.TestCase):
 
         # Diagnostics
         do = results["diagnostics_overall"]
-        self.assertEqual(do["eligible_count"], 73)
-        self.assertEqual(do["valid_assessment_count"], 73)
+        self.assertEqual(do["eligible_count"], 75)
+        self.assertEqual(do["valid_assessment_count"], 75)
         self.assertEqual(do["failure_or_invalid_count"], 0)
-        self.assertEqual(do["true_positive"], 14)
+        self.assertEqual(do["true_positive"], 16)
         self.assertEqual(do["false_positive"], 2)
         self.assertEqual(do["true_negative"], 40)
         self.assertEqual(do["false_negative"], 17)
-        self.assertAlmostEqual(do["precision"], 0.8750, places=4)
-        self.assertAlmostEqual(do["recall"], 0.4516, places=4)
-        self.assertAlmostEqual(do["f1"], 0.5957, places=4)
+        self.assertAlmostEqual(do["precision"], 0.8889, places=4)
+        self.assertAlmostEqual(do["recall"], 0.4848, places=4)
+        self.assertAlmostEqual(do["f1"], 0.6274, places=4)
         self.assertAlmostEqual(do["specificity"], 0.9524, places=4)
         self.assertAlmostEqual(do["false_alarm_rate"], 0.0476, places=4)
-        self.assertAlmostEqual(do["missed_error_rate"], 0.5484, places=4)
+        self.assertAlmostEqual(do["missed_error_rate"], 0.5152, places=4)
         self.assertAlmostEqual(do["pass_group_correctness_rate"], 0.7018, places=4)
-        self.assertAlmostEqual(do["suspect_group_error_rate"], 0.8750, places=4)
-        self.assertAlmostEqual(do["brier_diagnostic_score"], 0.2490, places=4)
+        self.assertAlmostEqual(do["suspect_group_error_rate"], 0.8889, places=4)
+        self.assertAlmostEqual(do["brier_diagnostic_score"], 0.2428, places=4)
 
         # Invariants
         inv = results["invariants"]
@@ -205,12 +205,12 @@ class TestV6AnalysisUtility(unittest.TestCase):
 
         # Candidate Starvation
         cs = results["candidate_starvation"]
-        self.assertEqual(cs["eligible_tasks"], 73)
-        self.assertEqual(cs["ineligible_tasks"], 92)
+        self.assertEqual(cs["eligible_tasks"], 75)
+        self.assertEqual(cs["ineligible_tasks"], 90)
         self.assertEqual(cs["total_system_errors"], 123)
-        self.assertEqual(cs["ineligible_errors"], 92)
-        self.assertAlmostEqual(cs["starvation_share_of_total_errors"], 0.7480, places=4)
-        self.assertAlmostEqual(cs["end_to_end_error_detection_rate"], 0.1138, places=4)
+        self.assertEqual(cs["ineligible_errors"], 90)
+        self.assertAlmostEqual(cs["starvation_share_of_total_errors"], 0.7317, places=4)
+        self.assertAlmostEqual(cs["end_to_end_error_detection_rate"], 0.1301, places=4)
 
         # Operational health
         oh = results["operational_health"]
@@ -241,17 +241,17 @@ class TestV6AnalysisUtility(unittest.TestCase):
         v6_sum_completed = sum(pbl[f"level_{lvl}"]["v6_completed"] for lvl in [1, 2, 3])
         self.assertEqual(pbl["level_1"]["v6_completed"], 35)
         self.assertEqual(pbl["level_2"]["v6_completed"], 35)
-        self.assertEqual(pbl["level_3"]["v6_completed"], 4)
-        self.assertEqual(v6_sum_completed, 74)
-        self.assertEqual(po["v6_completed"], 74)
+        self.assertEqual(pbl["level_3"]["v6_completed"], 6)
+        self.assertEqual(v6_sum_completed, 76)
+        self.assertEqual(po["v6_completed"], 76)
 
-        # 2. Per-level Matched V5 completed sum must equal overall completed (71, NOT 84)
+        # 2. Per-level Matched V5 completed sum must equal overall completed
         v5_sum_completed = sum(pbl[f"level_{lvl}"]["v5_completed"] for lvl in [1, 2, 3])
         self.assertEqual(pbl["level_1"]["v5_completed"], 32)
         self.assertEqual(pbl["level_2"]["v5_completed"], 33)
-        self.assertEqual(pbl["level_3"]["v5_completed"], 6)
-        self.assertEqual(v5_sum_completed, 71)
-        self.assertEqual(po["v5_completed"], 71)
+        self.assertEqual(pbl["level_3"]["v5_completed"], 8)
+        self.assertEqual(v5_sum_completed, 73)
+        self.assertEqual(po["v5_completed"], 73)
 
         # 3. Must match canonical summary JSON files exactly
         for lvl in [1, 2, 3]:
@@ -290,11 +290,11 @@ class TestV6AnalysisUtility(unittest.TestCase):
         results = analyze_v6_experiment(v6_dir, v5_dir)
         ai = results["artifact_integrity"]
 
-        # V6 L1 and L2 are complete, L3 is incomplete (11 != 26)
+        # All levels are now complete in canonical evidence package (26/26 for L3)
         self.assertTrue(ai["v6"]["level_1"]["is_complete"])
         self.assertTrue(ai["v6"]["level_2"]["is_complete"])
-        self.assertFalse(ai["v6"]["level_3"]["is_complete"])
-        self.assertEqual(ai["v6"]["level_3"]["predictions_count"], 11)
+        self.assertTrue(ai["v6"]["level_3"]["is_complete"])
+        self.assertEqual(ai["v6"]["level_3"]["predictions_count"], 26)
         self.assertEqual(ai["v6"]["level_3"]["detailed_eval_count"], 26)
 
         # Matched V5 all levels are complete
@@ -302,9 +302,9 @@ class TestV6AnalysisUtility(unittest.TestCase):
         self.assertTrue(ai["matched_v5"]["level_2"]["is_complete"])
         self.assertTrue(ai["matched_v5"]["level_3"]["is_complete"])
 
-        # Blocking issue must be present and verdict must be NOT_READY_TO_FREEZE
-        self.assertIn("V6 Level 3 artifact mismatch: predictions=11, detailed_eval=26, expected=26", results["blocking_issues"])
-        self.assertEqual(results["freeze_verdict"], "NOT_READY_TO_FREEZE")
+        # Zero blocking issues and verdict is READY_TO_FREEZE_WITH_DOCUMENTED_LIMITATIONS
+        self.assertEqual(len(results["blocking_issues"]), 0)
+        self.assertEqual(results["freeze_verdict"], "READY_TO_FREEZE_WITH_DOCUMENTED_LIMITATIONS")
 
 
 if __name__ == "__main__":

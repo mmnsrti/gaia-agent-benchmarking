@@ -596,7 +596,6 @@ def format_summary_report(results: Dict[str, Any]) -> str:
         "",
         f"Freeze Readiness Verdict: {results['freeze_verdict']}",
         "================================================================================",
-    ]
     ])
     return "\n".join(lines)
 
