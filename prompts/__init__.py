@@ -40,6 +40,13 @@ from .self_evaluation import (
     build_self_evaluator_prompt,
     parse_self_evaluation_result,
 )
+from .targeted_repair import (
+    TARGETED_REPAIR_PROMPT_VERSION,
+    TARGETED_REPAIR_SYSTEM_PROMPT,
+    TargetedRepairParseResult,
+    build_targeted_repair_prompt,
+    parse_targeted_repair_result,
+)
 
 __all__ = [
     "BASELINE_SYSTEM_PROMPT",
@@ -74,5 +81,10 @@ __all__ = [
     "build_execution_summary",
     "build_self_evaluator_prompt",
     "parse_self_evaluation_result",
+    "TARGETED_REPAIR_PROMPT_VERSION",
+    "TARGETED_REPAIR_SYSTEM_PROMPT",
+    "TargetedRepairParseResult",
+    "build_targeted_repair_prompt",
+    "parse_targeted_repair_result",
 ]
 
