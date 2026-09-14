@@ -95,8 +95,7 @@ Across all 165 Canonical V8 tasks, all preregistered architectural bounds strict
 
 ## 6. Pre/Post Active Verification Results & Intervention Transitions
 
-The primary scientific evaluation of V8 is the causal, within-run intervention comparison measuring whether bounded active evidence verification improved the candidate answer entering V8:
-The primary V8 stage-effect measurement compares the Frozen V7 final answer with the V8 final answer inside the same execution trace:
+The primary within-run intervention measurement of V8's active verification stage compares the Frozen V7 candidate answer with the V8 final answer inside the same execution trace:
 
 $$\text{Frozen V7 Candidate Answer} \longrightarrow \text{V8 Final Answer}$$
 
@@ -200,8 +199,6 @@ The contemporaneous run of Matched Frozen V7 was executed side-by-side across al
 | **Overall** | **48 / 165 (29.09%)** | **45 / 165 (27.27%)** | **+3 tasks (+1.82 pp)** |
 
 ### Methodological Classification
-- **Secondary, Observational, Non-Causal**: In accordance with the preregistered experimental protocol, cross-run comparison between V8 and Matched V7 is **non-causal** due to stochastic sampling variability in upstream generation (e.g. slight differences in worker routing and tool execution).
-- The **sole causal measurement** of V8's active verification mechanism is the within-run intervention transition:
 - **Secondary, Observational, Non-Causal**: In accordance with the preregistered experimental protocol, cross-run comparison between V8 and Matched V7 is **observational and non-causal** due to stochastic sampling variability in upstream generation (e.g. slight differences in worker routing and tool execution).
 - The **primary within-run intervention measurement** of V8's active verification stage compares the Frozen V7 candidate answer with the V8 final answer inside the same execution trace:
   $$\text{Net Delta} = \text{Improvements} - \text{Regressions} = 0 - 1 = -1 \text{ task } (-0.61 \text{ pp})$$

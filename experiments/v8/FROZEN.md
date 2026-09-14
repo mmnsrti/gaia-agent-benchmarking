@@ -194,7 +194,7 @@ In Level 3, Task `00d579ea-0889-4fd9-a771-2c8d79835c8d`:
 - **Candidate Answer entering V8**: `"Claude Shannon"` (Correct)
 - **Upstream Diagnostic**: V6 self-evaluator flagged the candidate as `SUSPECT` with `EVIDENCE` risk.
 - **Active Search**: Formulated query retrieved text discussing multiple MIT participants in the 1961 documentary, prominently featuring both Claude Shannon and Jerome Wiesner.
-- **Adjudication**: The adjudicator emitted `REPAIR_ACTION: REPLACE` with `FINAL: Jerome Wiesner`.
+- **Adjudication**: The adjudicator emitted `VERIFICATION_ACTION: REPLACE` with `FINAL: Jerome Wiesner`.
 - **Outcome**: Converted a correct candidate into an incorrect answer ($1 \rightarrow 0$), producing the single regression observed across the benchmark.
 
 ---
