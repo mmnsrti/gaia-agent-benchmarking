@@ -1228,13 +1228,13 @@ def evaluate_predictions(
         print(f"Self-Eval P/R/F1:    {summary.get('self_eval_precision')} / {summary.get('self_eval_recall')} / {summary.get('self_eval_f1')}")
     if summary.get("targeted_repair_enabled"):
         print(f"Repair Prompt:       {summary.get('repair_prompt_version')}")
-        print(f"Repair Triggered:    {summary.get('repair_triggered_count')}/{summary.get('total_tasks')} ({summary.get('repair_trigger_rate', 0.0) * 100:.1f}%)")
+        print(f"Repair Triggered:    {summary.get('repair_triggered_count')}/{summary.get('total_tasks')} ({summary.get('repair_trigger_rate') * 100 if summary.get('repair_trigger_rate') is not None else 0.0:.1f}%)")
         print(f"Repair KEEP/REPLACE: {summary.get('repair_keep_count')} KEEP / {summary.get('repair_replace_count')} REPLACE")
         print(f"Transitions:         +{summary.get('repair_improvements')} improvements, -{summary.get('repair_regressions')} regressions (stable correct: {summary.get('repair_stable_correct')}, stable failure: {summary.get('repair_stable_failure')})")
         print(f"Pre-Repair Accuracy: {summary.get('pre_repair_accuracy', 0.0) * 100:.2f}% ({summary.get('pre_repair_correct_tasks')}/{summary.get('total_tasks')})")
         print(f"Post-Repair Accuracy:{summary.get('post_repair_accuracy', 0.0) * 100:.2f}% ({summary.get('post_repair_correct_tasks')}/{summary.get('total_tasks')})")
         print(f"Net Repair Delta:    {summary.get('net_repair_correct_delta', 0):+d} tasks ({summary.get('net_repair_accuracy_delta', 0.0) * 100:+.2f} pp)")
-        print(f"Repair Harms:        {summary.get('repair_harm_count')} ({summary.get('repair_harm_rate', 0.0) * 100:.1f}%)")
+        print(f"Repair Harms:        {summary.get('repair_harm_count')} ({summary.get('repair_harm_rate') * 100 if summary.get('repair_harm_rate') is not None else 0.0:.1f}%)")
     if summary.get("active_verification_enabled"):
         print(f"Active Ver Prompt:   {summary.get('active_verification_prompt_version')}")
         print(f"Active Ver Triggered:{summary.get('active_verification_triggered_count')}/{summary.get('total_tasks')} ({summary.get('active_verification_triggered_count', 0) / summary.get('total_tasks', 1) * 100:.1f}%)")
