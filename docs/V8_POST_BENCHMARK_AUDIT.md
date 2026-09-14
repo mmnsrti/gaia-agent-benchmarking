@@ -96,6 +96,7 @@ Across all 165 Canonical V8 tasks, all preregistered architectural bounds strict
 ## 6. Pre/Post Active Verification Results & Intervention Transitions
 
 The primary scientific evaluation of V8 is the causal, within-run intervention comparison measuring whether bounded active evidence verification improved the candidate answer entering V8:
+The primary V8 stage-effect measurement compares the Frozen V7 final answer with the V8 final answer inside the same execution trace:
 
 $$\text{Frozen V7 Candidate Answer} \longrightarrow \text{V8 Final Answer}$$
 
@@ -201,6 +202,8 @@ The contemporaneous run of Matched Frozen V7 was executed side-by-side across al
 ### Methodological Classification
 - **Secondary, Observational, Non-Causal**: In accordance with the preregistered experimental protocol, cross-run comparison between V8 and Matched V7 is **non-causal** due to stochastic sampling variability in upstream generation (e.g. slight differences in worker routing and tool execution).
 - The **sole causal measurement** of V8's active verification mechanism is the within-run intervention transition:
+- **Secondary, Observational, Non-Causal**: In accordance with the preregistered experimental protocol, cross-run comparison between V8 and Matched V7 is **observational and non-causal** due to stochastic sampling variability in upstream generation (e.g. slight differences in worker routing and tool execution).
+- The **primary within-run intervention measurement** of V8's active verification stage compares the Frozen V7 candidate answer with the V8 final answer inside the same execution trace:
   $$\text{Net Delta} = \text{Improvements} - \text{Regressions} = 0 - 1 = -1 \text{ task } (-0.61 \text{ pp})$$
 
 ---
@@ -220,6 +223,7 @@ The contemporaneous run of Matched Frozen V7 was executed side-by-side across al
 ---
 
 ## 13. Scientific Decision Rule & Recommendation
+## 13. Scientific Decision Rule & Governance Verdict
 
 ### Preregistered Decision Rule
 - $\text{Improvements} > \text{Regressions} \implies \text{Positive Net Intervention Effect}$
@@ -228,8 +232,10 @@ The contemporaneous run of Matched Frozen V7 was executed side-by-side across al
 
 ### Result
 $$\text{Improvements} (0) < \text{Regressions} (1) \implies \text{Harmful Net Intervention Effect (-1 task)}$$
+$$\text{Improvements} (0) < \text{Regressions} (1) \implies \text{Harmful Net Intervention Effect (-1 task, -0.61 pp)}$$
 
 ### Verdict: **REJECT / DO NOT FREEZE**
+### Governance Verdicts
 
 V8 active evidence verification failed to provide a net positive within-run benefit on the GAIA benchmark.
 - **Do NOT freeze V8**.
@@ -237,4 +243,18 @@ V8 active evidence verification failed to provide a net positive within-run bene
 - **Do NOT tag or release V8**.
 - **Do NOT merge `v8-active-evidence-verification` into `main`**.
 - All benchmark artifacts, predictions, summaries, and telemetry are preserved in `experiments/v8/` and `experiments/v8_matched_v7/` for scientific audit and future research.
+- **Research Verdict**: `REJECTED_AS_AN_IMPROVEMENT`
+- **Freeze Verdict**: `FROZEN_WITH_DOCUMENTED_NEGATIVE_RESULT`
+- **Promotion Verdict**: `DO_NOT_PROMOTE`
+- **Successor Baseline**: `Frozen V7`
+
+### Final Governance Explanation
+1. **Freezing vs. Promotion**:
+   - `FROZEN` does not mean successful; it means the experiment is complete, its architecture and results are immutable, and future modifications belong to a new version.
+   - V8 is being **frozen** because its experiment is complete and all empirical evidence must remain immutable for open scientific provenance.
+   - V8 is **NOT being promoted** as the baseline for V9 because the preregistered within-run intervention result was negative ($0$ improvements, $1$ regression, net delta $= -1$ task).
+2. **Successor Handoff**:
+   - The successor research experiment (V9) must branch from **Frozen V7**, not V8.
+   - Do NOT merge V8 into `main`.
+   - All benchmark artifacts, predictions, evaluations, summaries, and manifests are preserved in `experiments/v8/` and `experiments/v8_matched_v7/` as a permanent public record of this negative result.
 
