@@ -54,6 +54,72 @@ from evaluation.experiment_logger import ExperimentLogger
 from evaluation.evaluate import evaluate_predictions
 
 
+PROVIDER_COLLAPSE_ERROR_TYPES = {
+    "provider_api_error",
+    "search_auth_error",
+    "search_rate_limit",
+}
+
+PROVIDER_COLLAPSE_SUBSTRINGS = (
+    "429",
+    "RESOURCE_EXHAUSTED",
+    "Quota exceeded",
+    "401",
+    "UNAUTHENTICATED",
+)
+
+STAGE_ERROR_TYPE_FIELDS = (
+    "error_type",
+    "router_error_type",
+    "worker_error_type",
+    "verifier_error_type",
+    "self_eval_error_type",
+    "repair_error_type",
+    "active_verification_error_type",
+    "active_verification_search_error_type",
+    "search_error_type",
+    "file_error_type",
+    "python_error_type",
+)
+
+STAGE_ERROR_MESSAGE_FIELDS = (
+    "error_message",
+    "search_error_message",
+    "file_error_message",
+)
+
+
+def is_provider_collapse(record: dict) -> tuple[bool, str]:
+    """Detects explicit provider/quota/auth collapse from record telemetry.
+
+    Distinguishes provider collapse (e.g. 429, 401, provider_api_error, search_auth_error)
+    from ordinary model/parser/task failures (e.g. malformed_function_call, missing marker,
+    parser errors, zero search results, python execution failure).
+    """
+    if not isinstance(record, dict):
+        return False, ""
+
+    # Check explicit provider error types across all execution stages
+    for field in STAGE_ERROR_TYPE_FIELDS:
+        err_val = record.get(field)
+        if err_val and isinstance(err_val, str):
+            if err_val in PROVIDER_COLLAPSE_ERROR_TYPES:
+                return True, f"Explicit provider error type '{err_val}' in field '{field}'"
+            for sub in PROVIDER_COLLAPSE_SUBSTRINGS:
+                if sub in err_val:
+                    return True, f"Provider collapse substring '{sub}' in field '{field}': '{err_val}'"
+
+    # Check error messages for quota / auth exhaustion
+    for field in STAGE_ERROR_MESSAGE_FIELDS:
+        msg_val = record.get(field)
+        if msg_val and isinstance(msg_val, str):
+            for sub in PROVIDER_COLLAPSE_SUBSTRINGS:
+                if sub in msg_val:
+                    return True, f"Provider collapse substring '{sub}' in message '{field}': '{msg_val}'"
+
+    return False, ""
+
+
 def run_level(
     level: int,
     data_path: Optional[str] = None,
@@ -134,8 +200,9 @@ def run_level(
                         record = json.loads(line)
                         t_id = record.get("task_id")
                         req_success = record.get("request_success")
-                        # Only count as completed if it did not fail due to a request error
-                        if t_id and req_success is not False:
+                        is_collapse, _ = is_provider_collapse(record)
+                        # Only count as completed if it did not fail due to a request error or provider collapse
+                        if t_id and req_success is not False and not is_collapse:
                             completed_task_ids.add(t_id)
                             valid_records.append(record)
                     except Exception:
@@ -216,6 +283,18 @@ def run_level(
                 print(f"  python -m evaluation.run_level --version {version} --level {level}")
                 print("!" * 80 + "\n")
                 break
+        # Check for explicit provider / quota / auth collapse across top-level and stage telemetry
+        is_collapse, collapse_reason = is_provider_collapse(record)
+        if is_collapse:
+            print("\n" + "!" * 80)
+            print(f"[PROVIDER COLLAPSE GUARD] Task {task.task_id} encountered provider collapse:")
+            print(f"  {collapse_reason}")
+            print("\nHalting benchmark run immediately to preserve quota and prevent cascade of invalid records.")
+            print("The failed task record was NOT appended as completed.")
+            print("You can safely resume later with:")
+            print(f"  python -m evaluation.run_level --version {version} --level {level}")
+            print("!" * 80 + "\n")
+            break
 
         logger.append(record)
 
