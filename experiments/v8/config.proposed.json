@@ -212,7 +212,7 @@
   "matched_control_protocol": {
     "control_version": "v7",
     "delay_seconds": 5.0,
-    "requirement": "Contemporaneous matched frozen V7 control preregistered for observational comparison; within-run pre/post scoring is the primary causal measurement of active evidence verification effect."
+    "requirement": "Contemporaneous matched frozen V7 control preregistered for observational comparison; within-run pre/post scoring is the primary within-run intervention measurement of active evidence verification effect."
   }
 }
 

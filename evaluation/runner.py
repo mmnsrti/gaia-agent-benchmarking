@@ -672,8 +672,6 @@ def execute_task(
         "python_fallback": python_fallback,
         "llm_generation_count": llm_generation_count,
 
-        # Router metadata (V4 & V5)
-        "router_requested": True if (is_v4 or is_v5 or is_v6) else False,
         # Router metadata (V4, V5, V6, V7 & V8)
         "router_requested": True if (is_v4 or is_v5 or is_v6 or is_v7 or is_v8) else False,
         "router_decision": router_decision,
