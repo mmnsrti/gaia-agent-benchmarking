@@ -170,7 +170,7 @@ The audit confirms that all core invariants, non-destructive safety mechanisms, 
 ### 9. Public Serialization & Privacy
 - Public predictions JSONL records:
   - Serialized under `schema_version = 7`.
-  - Comprehensive safe telemetry: `pre_active_verification_answer`, `post_active_verification_answer`, `active_verification_eligible`, `active_verification_triggered`, `active_verification_search_attempted`, `active_verification_search_success`, `active_verification_search_query`, `active_verification_search_result_count`, `active_verification_usable_evidence`, `active_verification_adjudication_attempted`, `active_verification_generation_success`, `active_verification_action`, `active_verification_answer_changed`, `active_verification_error_type`, `active_verification_finish_reason`, tokens, and latencies.
+  - Comprehensive safe telemetry: `pre_active_verification_answer`, `post_active_verification_answer`, `active_verification_eligible`, `active_verification_triggered`, `active_verification_search_attempted`, `active_verification_search_success`, `active_verification_query`, `active_verification_search_result_count`, `active_verification_usable_evidence`, `active_verification_adjudication_attempted`, `active_verification_generation_success`, `active_verification_action`, `active_verification_answer_changed`, `active_verification_error_type`, `active_verification_finish_reason`, tokens, and latencies.
   - **Strictly Omitted:** `active_verification_prompt` and `active_verification_raw_response`.
 
 ### 10. Test Suite Validation
