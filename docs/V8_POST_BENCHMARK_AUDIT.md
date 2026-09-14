@@ -237,3 +237,4 @@ V8 active evidence verification failed to provide a net positive within-run bene
 - **Do NOT tag or release V8**.
 - **Do NOT merge `v8-active-evidence-verification` into `main`**.
 - All benchmark artifacts, predictions, summaries, and telemetry are preserved in `experiments/v8/` and `experiments/v8_matched_v7/` for scientific audit and future research.
+
