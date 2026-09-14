@@ -86,7 +86,9 @@ def run_level(
     expected_tasks = EXPECTED_VALIDATION_COUNTS.get(level)
     is_partial = bool(limit or (expected_tasks and total_tasks < expected_tasks))
     run_tag = f"PARTIAL RUN (--limit {limit})" if limit else ("PARTIAL RUN" if is_partial else "COMPLETE BENCHMARK RUN")
-    if version == "v7":
+    if version == "v8":
+        version_desc = "v8 (Frozen V7 + bounded active evidence verification)"
+    elif version == "v7":
         version_desc = "v7 (Frozen V6 + SUSPECT-triggered one-shot targeted repair)"
     elif version == "v6":
         version_desc = "v6 (Frozen V5 + read-only post-answer self-evaluation)"
@@ -249,7 +251,7 @@ if __name__ == "__main__":
     parser.add_argument("--level", type=int, required=True, choices=[1, 2, 3], help="GAIA level to run (1, 2, or 3)")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
-    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"], help="Agent version to evaluate (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: SUSPECT-triggered targeted repair; required)")
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"], help="Agent version to evaluate (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: SUSPECT-triggered targeted repair, v8: bounded active evidence verification; required)")
     parser.add_argument("--data", type=str, default=None, help="Path to local GAIA dataset file")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of tasks to execute")
     parser.add_argument("--task-id", type=str, default=None, help="Run single specific task ID")

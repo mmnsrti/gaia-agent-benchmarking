@@ -33,6 +33,9 @@ from evaluation.metrics import (
 from evaluation.experiment_logger import get_git_metadata
 from evaluation.self_evaluation_metrics import calculate_self_evaluation_metrics
 from evaluation.targeted_repair_metrics import calculate_targeted_repair_metrics
+from evaluation.active_verification_metrics import (
+    calculate_active_verification_metrics,
+)
 
 
 def calculate_metrics(
@@ -119,7 +122,7 @@ def calculate_metrics(
     if predictions and predictions[0].get("project_version"):
         resolved_pv = predictions[0].get("project_version")
 
-    has_python = (resolved_pv in ("v3", "v4", "v5", "v6", "v7")) or any(
+    has_python = (resolved_pv in ("v3", "v4", "v5", "v6", "v7", "v8")) or any(
         pred.get("python_requested") or pred.get("python_executed") or pred.get("python_prompt_version")
         for pred in predictions
     )
@@ -134,7 +137,7 @@ def calculate_metrics(
     python_not_executed_count = 0
     python_not_executed_correct = 0
 
-    has_router = (resolved_pv in ("v4", "v5", "v6", "v7")) or any(
+    has_router = (resolved_pv in ("v4", "v5", "v6", "v7", "v8")) or any(
         pred.get("router_requested") or pred.get("router_decision")
         for pred in predictions
     )
@@ -149,20 +152,28 @@ def calculate_metrics(
     worker_latencies: List[float] = []
     total_llm_generations_list: List[int] = []
 
-    has_verifier = (resolved_pv in ("v5", "v6", "v7")) or any(
+    has_verifier = (resolved_pv in ("v5", "v6", "v7", "v8")) or any(
         pred.get("verifier_attempted") or pred.get("verifier_eligible") or pred.get("verifier_verdict")
         for pred in predictions
     )
-    has_self_evaluator = (resolved_pv in ("v6", "v7")) or any(
+    has_self_evaluator = (resolved_pv in ("v6", "v7", "v8")) or any(
         pred.get("self_eval_attempted") or pred.get("self_eval_eligible") or pred.get("self_eval_prompt_version")
         for pred in predictions
     )
-    has_targeted_repair = (resolved_pv == "v7") or any(
+    has_targeted_repair = (resolved_pv in ("v7", "v8")) or any(
         pred.get("repair_attempted") or pred.get("repair_eligible") or pred.get("repair_triggered") or pred.get("repair_prompt_version")
+        for pred in predictions
+    )
+    has_active_verification = (resolved_pv == "v8") or any(
+        pred.get("active_verification_eligible")
+        or pred.get("active_verification_triggered")
+        or pred.get("pre_active_verification_answer") is not None
+        or pred.get("active_verification_prompt_version")
         for pred in predictions
     )
     self_evaluation_records: List[Dict[str, Any]] = []
     targeted_repair_records: List[Dict[str, Any]] = []
+    active_verification_records: List[Dict[str, Any]] = []
     pre_verification_correct_tasks = 0
     verifier_eligible_count = 0
     verifier_attempted_count = 0
@@ -265,6 +276,65 @@ def calculate_metrics(
                 "repair_total_tokens": pred.get("repair_total_tokens"),
                 "self_eval_risk_type": pred.get("self_eval_risk_type"),
                 "repair_transition": repair_transition,
+            })
+
+        pre_active_ans = pred.get("pre_active_verification_answer")
+        post_active_ans = pred.get("post_active_verification_answer") or final_ans
+        pre_active_verification_correct = False
+        post_active_verification_correct = is_correct
+        active_verification_transition = "NOT_TRIGGERED"
+
+        if has_active_verification or pred.get("pre_active_verification_answer") is not None:
+            if comp_success and pre_active_ans is not None and str(pre_active_ans).strip():
+                pre_active_verification_correct = gaia_question_scorer(str(pre_active_ans), gt)
+            else:
+                pre_active_verification_correct = False
+
+            if pred.get("active_verification_triggered"):
+                if not pre_active_verification_correct and post_active_verification_correct:
+                    active_verification_transition = "IMPROVEMENT"
+                elif pre_active_verification_correct and not post_active_verification_correct:
+                    active_verification_transition = "REGRESSION"
+                elif pre_active_verification_correct and post_active_verification_correct:
+                    active_verification_transition = "STABLE_CORRECT"
+                else:
+                    active_verification_transition = "STABLE_FAILURE"
+            else:
+                active_verification_transition = "NOT_TRIGGERED"
+
+            active_verification_records.append({
+                "task_id": task_id,
+                "pre_active_verification_answer": pre_active_ans,
+                "post_active_verification_answer": post_active_ans,
+                "pre_active_verification_correct": pre_active_verification_correct,
+                "post_active_verification_correct": post_active_verification_correct,
+                "correct": post_active_verification_correct,
+                "active_verification_eligible": bool(pred.get("active_verification_eligible")),
+                "active_verification_triggered": bool(pred.get("active_verification_triggered")),
+                "active_verification_search_attempted": bool(pred.get("active_verification_search_attempted")),
+                "active_verification_search_success": bool(pred.get("active_verification_search_success")),
+                "active_verification_search_usable": bool(pred.get("active_verification_search_usable")),
+                "active_verification_search_error_type": pred.get("active_verification_search_error_type"),
+                "active_verification_search_latency_seconds": pred.get("active_verification_search_latency_seconds"),
+                "active_verification_search_result_count": pred.get("active_verification_search_result_count", 0),
+                "active_verification_adjudication_attempted": bool(pred.get("active_verification_adjudication_attempted")),
+                "active_verification_adjudication_success": bool(pred.get("active_verification_adjudication_success")),
+                "active_verification_action": pred.get("active_verification_action"),
+                "active_verification_error_type": pred.get("active_verification_error_type"),
+                "active_verification_finish_reason": pred.get("active_verification_finish_reason"),
+                "active_verification_generation_attempts": pred.get("active_verification_generation_attempts", 0),
+                "active_verification_generation_success": bool(pred.get("active_verification_generation_success")),
+                "active_verification_latency_seconds": pred.get("active_verification_latency_seconds"),
+                "active_verification_input_tokens": pred.get("active_verification_input_tokens"),
+                "active_verification_output_tokens": pred.get("active_verification_output_tokens"),
+                "active_verification_thinking_tokens": pred.get("active_verification_thinking_tokens"),
+                "active_verification_total_tokens": pred.get("active_verification_total_tokens"),
+                "active_verification_answer_changed": bool(pred.get("active_verification_answer_changed")),
+                "active_verification_total_stage_latency_seconds": pred.get("active_verification_total_stage_latency_seconds"),
+                "self_eval_assessment": pred.get("self_eval_assessment"),
+                "self_eval_risk_type": pred.get("self_eval_risk_type"),
+                "self_eval_success": bool(pred.get("self_eval_success")),
+                "active_verification_transition": active_verification_transition,
             })
 
         # V6 scorer firewall: correctness reaches diagnostic metrics only here,
@@ -653,6 +723,37 @@ def calculate_metrics(
                 "repair_total_tokens": pred.get("repair_total_tokens"),
                 "repair_prompt_version": pred.get("repair_prompt_version"),
             })
+        if has_active_verification or pred.get("active_verification_attempted") or pred.get("active_verification_eligible") or pred.get("pre_active_verification_answer") is not None:
+            detailed_entry.update({
+                "pre_active_verification_answer": pre_active_ans,
+                "pre_active_verification_correct": pre_active_verification_correct,
+                "post_active_verification_answer": post_active_ans,
+                "post_active_verification_correct": post_active_verification_correct,
+                "active_verification_transition": active_verification_transition,
+                "active_verification_eligible": pred.get("active_verification_eligible", False),
+                "active_verification_triggered": pred.get("active_verification_triggered", False),
+                "active_verification_query": pred.get("active_verification_query"),
+                "active_verification_search_attempted": pred.get("active_verification_search_attempted", False),
+                "active_verification_search_success": pred.get("active_verification_search_success", False),
+                "active_verification_search_usable": pred.get("active_verification_search_usable", False),
+                "active_verification_search_error_type": pred.get("active_verification_search_error_type"),
+                "active_verification_search_result_count": pred.get("active_verification_search_result_count", 0),
+                "active_verification_adjudication_attempted": pred.get("active_verification_adjudication_attempted", False),
+                "active_verification_adjudication_success": pred.get("active_verification_adjudication_success", False),
+                "active_verification_action": pred.get("active_verification_action"),
+                "active_verification_error_type": pred.get("active_verification_error_type"),
+                "active_verification_finish_reason": pred.get("active_verification_finish_reason"),
+                "active_verification_generation_attempts": pred.get("active_verification_generation_attempts", 0),
+                "active_verification_generation_success": pred.get("active_verification_generation_success", False),
+                "active_verification_answer_changed": pred.get("active_verification_answer_changed", False),
+                "active_verification_search_latency_seconds": pred.get("active_verification_search_latency_seconds"),
+                "active_verification_latency_seconds": pred.get("active_verification_latency_seconds"),
+                "active_verification_total_stage_latency_seconds": pred.get("active_verification_total_stage_latency_seconds"),
+                "active_verification_input_tokens": pred.get("active_verification_input_tokens"),
+                "active_verification_output_tokens": pred.get("active_verification_output_tokens"),
+                "active_verification_thinking_tokens": pred.get("active_verification_thinking_tokens"),
+                "active_verification_total_tokens": pred.get("active_verification_total_tokens"),
+            })
         detailed_eval.append(detailed_entry)
 
     accuracy = round(correct_tasks / total_tasks, 4) if total_tasks > 0 else 0.0
@@ -693,7 +794,14 @@ def calculate_metrics(
 
     # Determine prompt version provenance
     # Avoid recording entire run as 'baseline-v1' if task 0 experienced search fallback
-    if resolved_pv == "v7" or (has_targeted_repair and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5", "v6")):
+    if resolved_pv == "v8" or (has_active_verification and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7")):
+        primary_pv = "capability-router-v1"
+        fallback_pv = "router-direct-worker-v1" if any(p.get("router_fallback") for p in predictions) else None
+        prompt_pv = "active-evidence-verification-v1"
+        if distinct_primary and len(distinct_primary) == 1:
+            primary_pv = distinct_primary[0]
+            fallback_pv = distinct_fallback[0] if distinct_fallback else fallback_pv
+    elif resolved_pv == "v7" or (has_targeted_repair and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5", "v6")):
         primary_pv = "capability-router-v1"
         fallback_pv = "router-direct-worker-v1" if any(p.get("router_fallback") for p in predictions) else None
         prompt_pv = "targeted-repair-v1"
@@ -955,6 +1063,19 @@ def calculate_metrics(
         for metric_name, metric_value in repair_metrics.items():
             summary[metric_name] = metric_value
 
+    if has_active_verification:
+        active_verification_metrics = calculate_active_verification_metrics(
+            active_verification_records,
+            total_benchmark_tasks=total_tasks,
+        )
+        summary["active_verification_enabled"] = True
+        summary["active_verification_prompt_version"] = next(
+            (p.get("active_verification_prompt_version") for p in predictions if p.get("active_verification_prompt_version")),
+            "active-evidence-verification-v1",
+        )
+        for metric_name, metric_value in active_verification_metrics.items():
+            summary[metric_name] = metric_value
+
     return {
         "summary": summary,
         "detailed": detailed_eval,
@@ -1114,6 +1235,19 @@ def evaluate_predictions(
         print(f"Post-Repair Accuracy:{summary.get('post_repair_accuracy', 0.0) * 100:.2f}% ({summary.get('post_repair_correct_tasks')}/{summary.get('total_tasks')})")
         print(f"Net Repair Delta:    {summary.get('net_repair_correct_delta', 0):+d} tasks ({summary.get('net_repair_accuracy_delta', 0.0) * 100:+.2f} pp)")
         print(f"Repair Harms:        {summary.get('repair_harm_count')} ({summary.get('repair_harm_rate', 0.0) * 100:.1f}%)")
+    if summary.get("active_verification_enabled"):
+        print(f"Active Ver Prompt:   {summary.get('active_verification_prompt_version')}")
+        print(f"Active Ver Triggered:{summary.get('active_verification_triggered_count')}/{summary.get('total_tasks')} ({summary.get('active_verification_triggered_count', 0) / summary.get('total_tasks', 1) * 100:.1f}%)")
+        print(f"Search Attempted:    {summary.get('active_verification_search_attempted_count')}")
+        print(f"Search Usable:       {summary.get('active_verification_search_usable_count')} (rate: {summary.get('usable_evidence_rate', 0.0) * 100 if summary.get('usable_evidence_rate') is not None else 0.0:.1f}%)")
+        print(f"Adjudications Att:   {summary.get('active_verification_adjudication_attempted_count')} (valid: {summary.get('active_verification_valid_adjudication_count')}, failed: {summary.get('active_verification_failed_adjudication_count')})")
+        print(f"KEEP / REPLACE:      {summary.get('active_verification_keep_count')} KEEP / {summary.get('active_verification_replace_count')} REPLACE")
+        print(f"Answers Changed:     {summary.get('active_verification_answers_changed_count')} (change rate: {summary.get('change_rate', 0.0) * 100 if summary.get('change_rate') is not None else 0.0:.1f}%)")
+        print(f"Transitions:         +{summary.get('improvements')} improvements, -{summary.get('regressions')} regressions (stable correct: {summary.get('stable_correct')}, stable failure: {summary.get('stable_failure')})")
+        print(f"Pre-Active Accuracy: {summary.get('pre_active_verification_accuracy', 0.0) * 100:.2f}% ({summary.get('pre_active_verification_correct_count')}/{summary.get('total_tasks')})")
+        print(f"Post-Active Accuracy:{summary.get('post_active_verification_accuracy', 0.0) * 100:.2f}% ({summary.get('post_active_verification_correct_count')}/{summary.get('total_tasks')})")
+        print(f"Net Active Delta:    {summary.get('net_active_verification_delta', 0):+d} tasks ({summary.get('accuracy_delta', 0.0) * 100:+.2f} pp)")
+        print(f"Correction / Harm:   Correction Rate: {summary.get('correction_rate', 0.0) * 100 if summary.get('correction_rate') is not None else 0.0:.1f}% | Harm Rate: {summary.get('harm_rate', 0.0) * 100 if summary.get('harm_rate') is not None else 0.0:.1f}%")
     print("=" * 65 + "\n")
 
     # Write safe summary if requested
@@ -1139,7 +1273,7 @@ if __name__ == "__main__":
     parser.add_argument("--level", type=int, default=1, help="Benchmark level (1, 2, or 3)")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
-    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: targeted repair; default: v1)")
+    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: targeted repair, v8: active evidence verification; default: v1)")
     parser.add_argument("--predictions", type=str, default=None, help="Path to predictions JSONL file")
     parser.add_argument("--data", type=str, default=None, help="Path to local ground-truth dataset")
     parser.add_argument("--summary-output", type=str, default=None, help="Output path for safe public summary JSON")
