@@ -261,7 +261,8 @@ Anchored strictly to `pre_repair_correct` (the exact candidate evaluated by V6):
 - **Matched V7 L1 Commit**: `39d216200de831e39cccc610a31f190ac6171a83` (`git_dirty=False`)
 - **Matched V7 L2 Commit**: `8ae57c21762cfc91f6cc22e73550294dde41429f`
 - **Matched V7 L3 Commit**: `d0c770aa8976b5043228762257c27b179ac5aafe` (`git_dirty=False`)
-- **Final Freeze Commit**: `467a3a16ad3d8fb217f2ba4a706852bb33f9586a`
+- **Initial Freeze Commit**: `467a3a16ad3d8fb217f2ba4a706852bb33f9586a`
+  - Subsequent documentation-only cleanup commits do not alter the frozen runtime, benchmark artifacts, or scientific result.
 
 ---
 

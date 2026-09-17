@@ -219,7 +219,6 @@ The contemporaneous run of Matched Frozen V7 was executed side-by-side across al
 
 ---
 
-## 13. Scientific Decision Rule & Recommendation
 ## 13. Scientific Decision Rule & Governance Verdict
 
 ### Preregistered Decision Rule
@@ -228,28 +227,25 @@ The contemporaneous run of Matched Frozen V7 was executed side-by-side across al
 - $\text{Improvements} < \text{Regressions} \implies \text{Harmful Net Intervention Effect}$
 
 ### Result
-$$\text{Improvements} (0) < \text{Regressions} (1) \implies \text{Harmful Net Intervention Effect (-1 task)}$$
-$$\text{Improvements} (0) < \text{Regressions} (1) \implies \text{Harmful Net Intervention Effect (-1 task, -0.61 pp)}$$
+$$\text{Improvements } (0) < \text{Regressions } (1) \implies \text{Harmful Net Intervention Effect (-1 task, -0.61 pp)}$$
 
-### Verdict: **REJECT / DO NOT FREEZE**
+0 improvements < 1 regression $\rightarrow$ negative net within-run intervention result.
+
 ### Governance Verdicts
 
-V8 active evidence verification failed to provide a net positive within-run benefit on the GAIA benchmark.
-- **Do NOT freeze V8**.
-- **Do NOT generate `experiments/v8/FROZEN.md`**.
-- **Do NOT tag or release V8**.
-- **Do NOT merge `v8-active-evidence-verification` into `main`**.
-- All benchmark artifacts, predictions, summaries, and telemetry are preserved in `experiments/v8/` and `experiments/v8_matched_v7/` for scientific audit and future research.
 - **Research Verdict**: `REJECTED_AS_AN_IMPROVEMENT`
 - **Freeze Verdict**: `FROZEN_WITH_DOCUMENTED_NEGATIVE_RESULT`
 - **Promotion Verdict**: `DO_NOT_PROMOTE`
 - **Successor Baseline**: `Frozen V7`
 
-### Final Governance Explanation
+### Governance Explanation
 1. **Freezing vs. Promotion**:
    - `FROZEN` does not mean successful; it means the experiment is complete, its architecture and results are immutable, and future modifications belong to a new version.
-   - V8 is being **frozen** because its experiment is complete and all empirical evidence must remain immutable for open scientific provenance.
-   - V8 is **NOT being promoted** as the baseline for V9 because the preregistered within-run intervention result was negative ($0$ improvements, $1$ regression, net delta $= -1$ task).
+   - V8 is **frozen** because the experiment is complete and its results must remain immutable for open scientific provenance.
+   - V8 is **not promoted** because its preregistered within-run intervention result was negative:
+     - 0 improvements
+     - 1 regression
+     - net delta = -1 task (-0.61 pp)
 2. **Successor Handoff**:
    - The successor research experiment (V9) must branch from **Frozen V7**, not V8.
    - Do NOT merge V8 into `main`.

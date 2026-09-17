@@ -29,7 +29,13 @@ V8 = Frozen V7 + at most one bounded active web evidence retrieval + at most one
    - Upstream V7 reaches a non-empty answer.
    - The upstream self-evaluator produced a valid `SUSPECT` assessment with `risk_type: EVIDENCE`.
    - `PASS` evaluations, non-`EVIDENCE` risks (`REASONING`, `CALCULATION`, etc.), and empty candidate answers **never** trigger active verification.
-3. **Deterministic Query Formulation**: Query is strictly constructed as `f"{question.strip()}\n{current_answer.strip()}"`. No LLM query reformulation, no search tuning.
+3. **Deterministic Query Formulation**: Query is strictly constructed using the conceptual contract:
+   ```python
+   f"{question.strip()}\n\n"
+   f"Candidate answer to independently verify:\n"
+   f"{current_answer.strip()}"
+   ```
+   No LLM query reformulation, no search tuning.
 4. **Bounded Search Budget**: At most **1** additional Tavily web search (`search_depth="basic"`, `max_results=5`). Total task search calls $\le 2$. Search retries = 0. If search returns empty or fails, verification aborts and preserves the upstream answer.
 5. **Bounded Adjudication Budget**: Exactly **1** LLM adjudication attempt (`mode="NONE"`, zero tools, zero Python, zero file operations, provider retries = 0). Allowed actions: `KEEP` or `REPLACE`. Overall task LLM generation attempts capped at $\le 6$.
 6. **Deterministic Fallback Safety**: If search fails or adjudication fails, the upstream Frozen V7 answer is preserved verbatim (`active_verification_answer_changed = False`).
@@ -41,7 +47,7 @@ V8 = Frozen V7 + at most one bounded active web evidence retrieval + at most one
 
 ### Primary Within-Run Intervention Measurement
 
-Because V8 logs both `pre_active_verification_answer` / `pre_active_verification_correct` and `post_active_verification_answer` / `final_correct` within the exact same execution trace, the causal effect of active evidence verification is evaluated with zero cross-run sampling variance:
+Because V8 logs both `pre_active_verification_answer` / `pre_active_verification_correct` and `post_active_verification_answer` / `final_correct` within the exact same execution trace, the within-run intervention effect of active evidence verification is evaluated directly without cross-run sampling variance:
 
 | Metric | Level 1 (N=53) | Level 2 (N=86) | Level 3 (N=26) | Overall (N=165) |
 | :--- | :---: | :---: | :---: | :---: |
@@ -49,14 +55,14 @@ Because V8 logs both `pre_active_verification_answer` / `pre_active_verification
 | **Post-Active-Verification Correct** | 20 (37.74%) | 25 (29.07%) | 3 (11.54%) | **48 (29.09%)** |
 | **Net Within-Run Intervention Delta** | **0 (0.00 pp)** | **0 (0.00 pp)** | **-1 (-3.85 pp)** | **-1 task (-0.61 pp)** |
 | Completed Tasks | 53 (100.0%) | 86 (100.0%) | 26 (100.0%) | **165 (100.0%)** |
-| Triggered Interventions | 5 | 7 | 3 | **15** |
+| Triggered Interventions | 6 | 6 | 3 | **15** |
 | Improvements ($0 \rightarrow 1$) | 0 | 0 | 0 | **0** |
 | Regressions ($1 \rightarrow 0$) | 0 | 0 | 1 | **1** |
-| Stable Correct ($1 \rightarrow 1$) | 0 | 0 | 1 | **1** |
-| Stable Failure ($0 \rightarrow 0$) | 5 | 7 | 1 | **13** |
-| Not Triggered | 48 | 79 | 23 | **150** |
-| **Correction Rate** ($0 \rightarrow 1$ / Triggered Erroneous) | 0.00% (0/5) | 0.00% (0/7) | 0.00% (0/1) | **0.00% (0/13)** |
-| **Harm Rate** ($1 \rightarrow 0$ / Triggered Correct) | N/A (0/0) | N/A (0/0) | 50.0% (1/2) | **50.0% (1/2)** |
+| Stable Correct ($1 \rightarrow 1$) | 0 | 1 | 0 | **1** |
+| Stable Failure ($0 \rightarrow 0$) | 6 | 5 | 2 | **13** |
+| Not Triggered | 47 | 80 | 23 | **150** |
+| **Correction Rate** ($0 \rightarrow 1$ / Triggered Erroneous) | 0.00% (0/6) | 0.00% (0/5) | 0.00% (0/2) | **0.00% (0/13)** |
+| **Harm Rate** ($1 \rightarrow 0$ / Triggered Correct) | N/A (0/0) | 0.00% (0/1) | 100.0% (1/1) | **50.0% (1/2)** |
 
 > **Primary Scientific Finding**: In this canonical benchmark run, bounded active evidence verification produced **0 improvements**, **1 regression**, and a net within-run change of **-1 task (-0.61 pp)** across 165 GAIA tasks.
 
@@ -148,7 +154,7 @@ A contemporaneous matched run of Frozen V7 was executed alongside V8 under ident
 - **Total Tasks**: $35 + 107 + 13 + 10 = 165$
 
 > **Methodological Note on Cross-Run vs Within-Run Deltas:**
-> The cross-run difference (+3 tasks, +1.82 pp) is strictly **observational and non-causal**. Within the V8 run itself, the active verification intervention directly caused **-1 task (-0.61 pp)**. The positive cross-run difference is driven by upstream sampling stochasticity in the worker/router stages between separate executions, not by active verification.
+> The cross-run difference (+3 tasks, +1.82 pp) is strictly **observational and non-causal**. Within the V8 run itself, the active verification intervention produced a net within-run pre/post change of **-1 task (-0.61 pp)**. The positive cross-run difference is driven by upstream sampling stochasticity in the worker/router stages between separate executions, not by active verification.
 
 ---
 
