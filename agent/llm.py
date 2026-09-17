@@ -4,10 +4,12 @@ import re
 import time
 from dataclasses import dataclass, field
 from typing import Optional, Any, List, Tuple
+from dotenv import load_dotenv
 from dotenv import load_dotenv, find_dotenv
 from google import genai
 from google.genai import types
 
+load_dotenv()
 # Automatically load environment variables from .env if present
 load_dotenv(find_dotenv() or ".env")
 
@@ -146,6 +148,8 @@ class LLMClient:
         thinking_level: Optional[str] = None,
         env_path: Optional[str] = None,
     ):
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
         self._explicit_key = api_key is not None
         self.api_keys = discover_gemini_api_keys(api_key, env_path=env_path)
         if not self.api_keys:
@@ -190,6 +194,7 @@ class LLMClient:
         else:
             self.thinking_level = "medium"
 
+        self._client = genai.Client(api_key=self.api_key)
         self._client = None
         self._client_key = None
         if self.api_key:
@@ -273,6 +278,13 @@ class LLMClient:
         else:
             contents = prompt
 
+        for attempt in range(total_provider_attempts):
+            try:
+                response = self._client.models.generate_content(
+                    model=self.model,
+                    contents=contents,
+                    config=config,
+                )
         num_keys = len(self.api_keys) if self.api_keys else 1
         last_error: Optional[Exception] = None
 
@@ -280,6 +292,13 @@ class LLMClient:
             current_key = self.api_key
             if not current_key:
                 break
+            except Exception as e:
+                err_str = str(e)
+                is_transient = "503" in err_str or "UNAVAILABLE" in err_str or "high demand" in err_str or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str
+                is_daily_cap = "GenerateRequestsPerDay" in err_str
+                if is_transient and not is_daily_cap and attempt < total_provider_attempts - 1:
+                    sleep_time = 2.0 * (attempt + 1)
+                    time.sleep(sleep_time)
             masked_key = (current_key[:8] + "..." + current_key[-4:]) if len(current_key) > 12 else "***"
 
             if self._client is None or getattr(self, "_client_key", None) != current_key:
@@ -334,6 +353,7 @@ class LLMClient:
                     if not self._explicit_key:
                         LLMClient._shared_key_index = next_index
                     continue
+                raise RuntimeError(f"LLM generation failed on model '{self.model}': {e}") from e
                 else:
                     if num_keys > 1:
                         raise RuntimeError(
