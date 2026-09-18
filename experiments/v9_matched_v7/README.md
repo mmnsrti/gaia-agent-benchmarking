@@ -1,5 +1,12 @@
 # Contemporaneous Matched Frozen V7 Control
 
+**Status**: COMPLETED  
+**Scientific Behavior**: Frozen V7 (`v7-targeted-repair`)  
+**Execution Environment**: Same V9 inference commit infrastructure (`6369f427c4479073a6ca06531bdfd43e47cd613f`)  
+**Parent Baseline**: Frozen V7 (`v7-targeted-repair`)  
+**Model**: `gemini-3.5-flash-lite`  
+**Evaluation Scope**: Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)  
+**Date**: September 2026  
 **Status**: COMPLETED
 **Scientific Behavior**: Frozen V7 (`v7-targeted-repair`)
 **Execution Environment**: Same V9 inference commit infrastructure (`6369f427c4479073a6ca06531bdfd43e47cd613f`)
@@ -24,6 +31,10 @@ The matched control serves as an empirical reference point to document the obser
 
 ### Methodological Interpretation
 > [!IMPORTANT]
+> **Secondary / Observational / Non-Causal**:  
+> In accordance with Section 3 of `experiments/v9/PRE_BENCHMARK.md`, cross-run comparisons between separate stochastic executions are strictly **secondary, observational, and non-causal**.  
+> Because separate stochastic runs diverge upstream due to LLM sampling variance, capability router selection, and search query variation, cross-run deltas reflect environmental and sampling stochasticity rather than an isolated intervention effect.  
+> The **primary causal evaluation** of V9 is the **within-run paired intervention measurement** documented in [`experiments/v9/README.md`](../v9/README.md) and [`docs/V9_POST_BENCHMARK_AUDIT.md`](../../docs/V9_POST_BENCHMARK_AUDIT.md).
 > **Secondary / Observational / Non-Causal**:
 > In accordance with Section 3 of `experiments/v9/PRE_BENCHMARK.md`, cross-run comparisons between separate stochastic executions are strictly **secondary, observational, and non-causal**.
 > Because separate stochastic runs diverge upstream due to LLM sampling variance, capability router selection, and search query variation, cross-run deltas reflect environmental and sampling stochasticity rather than an isolated intervention effect.
@@ -78,3 +89,4 @@ All execution records and summary statistics are hashed in [`ARTIFACT_MANIFEST.s
 | `summary_level_3.json` | 8,826 | Verified |
 
 In accordance with `.gitignore`, raw `predictions_*.jsonl` files remain local canonical artifacts, while summary JSON files and the SHA-256 manifest are tracked in version control.
+

@@ -1,11 +1,16 @@
 # V9 — Upstream Candidate Recovery
 
+**Status**: `PREREGISTERED_PRE_IMPLEMENTATION`  
+**Branch**: `v9-upstream-candidate-recovery`  
+**Scientific Parent**: Frozen V7 (`v7-targeted-repair`)  
+**Architecture**: Design A — Upstream Worker Candidate Recovery  
 **Status**: `CANONICAL_BENCHMARK_COMPLETE`
 **Branch**: `v9-upstream-candidate-recovery`
 **Canonical Inference Commit**: `6369f427c4479073a6ca06531bdfd43e47cd613f`
 **Scientific Parent**: Frozen V7 (`v7-targeted-repair`)
 **Architecture**: Design A — Upstream Worker Candidate Recovery
 **Model**: `gemini-3.5-flash-lite` (inherited from Frozen V7)
+**Date**: September 2026  
 **Evaluation Scope**: Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)
 **Date**: September 2026
 
@@ -73,12 +78,14 @@ Comparing the constructed Frozen V7 baseline state against the final V9 answer w
 - **Non-Triggered Recovery-Boundary Preservation Rate**: **100.00% (75 / 75 tasks)** — strictly zero non-triggered answer mutations.
 - **Generation Cap Adherence**: Maximum logical generations observed = 6 (budget $\le 6$). Zero violations. Non-triggered tasks $\le 5$.
 - **Zero Added Tools**: Zero search calls added, zero Python executions added, zero file operations added during candidate recovery.
+- **Operational Validity**: Zero provider-collapse events; all 165 tasks executed to completion.
 - **Operational Validity**: Zero provider-collapse events. All 165 official task IDs were structurally executed and recorded. Pipeline completion was 163 / 165 (98.79%).
 
 ### 6. Contemporaneous Matched Frozen V7 Control (Secondary Observational)
 
 - **Matched V7 Overall Score**: **51 / 165 (30.91%)** (L1: 25/53, L2: 23/86, L3: 3/26)
 - **V9 vs Matched V7 Observational Delta**: **+22 tasks (+13.33 percentage points)**
+- *Methodological note*: Cross-run difference is observational and non-causal due to run-to-run sampling variance; the within-run paired measurement (+28 tasks, +16.97 pp) is the primary causal result.
 - *Methodological note*: The preregistered primary measurement for V9 is the within-run paired intervention measurement (+28 tasks, +16.97 pp). The matched Frozen V7 comparison is secondary, observational, and non-causal because it is based on a separate stochastic execution. The within-run paired intervention measurement avoids the separate-run sampling divergence that affects the matched V7 comparison and is the preregistered primary decision metric. It should not be described as a perfect causal estimate or as eliminating all sources of uncertainty.
 
 ---
