@@ -244,6 +244,7 @@ class AgentResult:
     planner_input_tokens: Optional[int] = None
     planner_output_tokens: Optional[int] = None
     planner_thinking_tokens: Optional[int] = None
+    planner_total_tokens: Optional[int] = None
     planner_generation_attempts: int = 0
     planner_generation_success: bool = False
 
@@ -259,6 +260,7 @@ class AgentResult:
     executor_input_tokens: Optional[int] = None
     executor_output_tokens: Optional[int] = None
     executor_thinking_tokens: Optional[int] = None
+    executor_total_tokens: Optional[int] = None
     executor_generation_attempts: int = 0
     executor_generation_success: bool = False
 
@@ -766,10 +768,6 @@ class GAIARouterAgent(GAIAFileAgent):
         self.prompt_version = ROUTER_PROMPT_VERSION
         self.primary_prompt_version = ROUTER_PROMPT_VERSION
         self.fallback_prompt_version = None
-
-    def run(self, question: str, file_path: Optional[str] = None) -> AgentResult:
-        """Runs the V4 two-stage capability-routing pipeline."""
-        import time
 
     def _prepare_upstream_context(self, question: str, file_path: Optional[str] = None) -> UpstreamContext:
         """Retrieves web evidence and processes file attachments into a shared UpstreamContext."""
@@ -1685,6 +1683,11 @@ class GAIATargetedRepairAgent(GAIASelfEvaluationAgent):
 
         max_v7_gens = 6 if getattr(self, "_is_v9", False) else 5
         max_v7_gens = 6 if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False)) else 5
+        max_v7_gens = (
+            6
+            if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False))
+            else 5
+        )
         assert v6_result.llm_generation_attempts <= max_v7_gens, f"Exceeds generation cap ({max_v7_gens})"
         return v6_result
 
@@ -2136,6 +2139,8 @@ class GAIAPlannerExecutorAgent(GAIAUpstreamCandidateRecoveryAgent):
                 planner_raw_response = planner_llm_resp.raw_text if planner_llm_resp.raw_text else planner_llm_resp.text
                 if planner_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
                     planner_error_type = "malformed_function_call_finish_reason"
+                elif planner_llm_resp.finish_reason not in (None, "", "STOP"):
+                    planner_error_type = "unexpected_finish_reason"
             else:
                 planner_raw_response = str(planner_llm_resp)
         except Exception as e:
@@ -2152,6 +2157,9 @@ class GAIAPlannerExecutorAgent(GAIAUpstreamCandidateRecoveryAgent):
         planner_input_tokens = getattr(planner_llm_resp, "input_tokens", None) if planner_llm_resp else None
         planner_output_tokens = getattr(planner_llm_resp, "output_tokens", None) if planner_llm_resp else None
         planner_thinking_tokens = getattr(planner_llm_resp, "thinking_tokens", None) if planner_llm_resp else None
+        planner_total_tokens = getattr(planner_llm_resp, "total_tokens", None) if planner_llm_resp else None
+        if planner_total_tokens is None and (planner_input_tokens is not None or planner_output_tokens is not None):
+            planner_total_tokens = (planner_input_tokens or 0) + (planner_output_tokens or 0) + (planner_thinking_tokens or 0)
 
         # Parse planner output
         if planner_error_type is not None:
@@ -2232,6 +2240,9 @@ class GAIAPlannerExecutorAgent(GAIAUpstreamCandidateRecoveryAgent):
         executor_input_tokens = getattr(executor_llm_resp, "input_tokens", None) if executor_llm_resp else None
         executor_output_tokens = getattr(executor_llm_resp, "output_tokens", None) if executor_llm_resp else None
         executor_thinking_tokens = getattr(executor_llm_resp, "thinking_tokens", None) if executor_llm_resp else None
+        executor_total_tokens = getattr(executor_llm_resp, "total_tokens", None) if executor_llm_resp else None
+        if executor_total_tokens is None and (executor_input_tokens is not None or executor_output_tokens is not None):
+            executor_total_tokens = (executor_input_tokens or 0) + (executor_output_tokens or 0) + (executor_thinking_tokens or 0)
 
         # 3. Extract Answer / Execute Python
         py_result: Optional[PythonResult] = None
@@ -2341,6 +2352,7 @@ class GAIAPlannerExecutorAgent(GAIAUpstreamCandidateRecoveryAgent):
             planner_input_tokens=planner_input_tokens,
             planner_output_tokens=planner_output_tokens,
             planner_thinking_tokens=planner_thinking_tokens,
+            planner_total_tokens=planner_total_tokens,
             planner_generation_attempts=planner_generation_attempts,
             planner_generation_success=planner_generation_success,
 
@@ -2356,6 +2368,7 @@ class GAIAPlannerExecutorAgent(GAIAUpstreamCandidateRecoveryAgent):
             executor_input_tokens=executor_input_tokens,
             executor_output_tokens=executor_output_tokens,
             executor_thinking_tokens=executor_thinking_tokens,
+            executor_total_tokens=executor_total_tokens,
             executor_generation_attempts=executor_generation_attempts,
             executor_generation_success=executor_generation_success,
 

@@ -22,9 +22,17 @@ from agent.agent import (
 from agent.llm import LLMResponse
 from evaluation.dataset import GAIATask
 from evaluation.evaluate import calculate_metrics
+import inspect
+import tempfile
+from unittest.mock import patch
+
 from evaluation.runner import execute_task
-from evaluation.run_v10_paired import run_paired_ablation
-from evaluation.evaluate_v10_paired import evaluate_paired_ablation
+from evaluation.run_v10_paired import (
+    run_paired_ablation,
+    hash_shared_search_context,
+    hash_shared_file_context,
+)
+from evaluation.evaluate_v10_paired import evaluate_paired_ablation, calculate_paired_metrics
 from prompts.planner import (
     PLANNER_PROMPT_VERSION,
     build_planner_prompt,
@@ -689,34 +697,113 @@ class TestV10DeterministicSmoke(unittest.TestCase):
     # Scenario 21: Shared Context Delivery: Search Hash Invariance
     def test_scenario_21_search_hash_invariance(self):
         st = StubSearchTool(success=True, snippet="Unique search evidence 12345")
-        llm_client = SequencedLLM([])
-        agent = GAIAPlannerExecutorAgent(
-            llm_client=llm_client,
+        v9_llm = SequencedLLM([
+            make_resp("DECISION: DIRECT"),
+            make_resp("FINAL_ANSWER: 42"),
+        ])
+        v10_llm = SequencedLLM([
+            make_resp("MODE: DIRECT\nOBJECTIVE: Answer\nEVIDENCE_NEEDED: None\nPLAN:\n1. Output answer\nANSWER_TYPE: number"),
+            make_resp("FINAL_ANSWER: 42"),
+        ])
+        ft = CountingFileTool()
+        pt = MockPythonTool()
+        v9_agent = GAIAUpstreamCandidateRecoveryAgent(
+            llm_client=v9_llm,
             search_tool=st,
-            file_tool=CountingFileTool(),
-            python_tool=MockPythonTool(),
+            file_tool=ft,
+            python_tool=pt,
         )
-        ctx = agent._prepare_upstream_context("Test query?")
-        hash_1 = hashlib.sha256(ctx.web_evidence.encode("utf-8")).hexdigest()
-        hash_2 = hashlib.sha256(ctx.web_evidence.encode("utf-8")).hexdigest()
-        self.assertEqual(hash_1, hash_2)
-        self.assertEqual(st.calls, 1, "Only 1 search call should occur during context acquisition")
+        v10_agent = GAIAPlannerExecutorAgent(
+            llm_client=v10_llm,
+            search_tool=st,
+            file_tool=ft,
+            python_tool=pt,
+        )
+
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, suffix=".jsonl") as f:
+            out_file = f.name
+
+        mock_tasks = [
+            GAIATask(task_id="search_hash_t1", question="Query needing web search?", final_answer="42", level=1),
+        ]
+        try:
+            with patch("evaluation.run_v10_paired.load_gaia_tasks", return_value=mock_tasks):
+                run_paired_ablation(
+                    output_file=out_file,
+                    resume=False,
+                    delay=0.0,
+                    v9_agent=v9_agent,
+                    v10_agent=v10_agent,
+                )
+
+            with open(out_file, "r", encoding="utf-8") as f:
+                rec = json.loads(f.readline())
+
+            self.assertEqual(st.calls, 1, "Exactly 1 search call should occur during context acquisition")
+            self.assertEqual(rec["v9_shared_context_search_hash"], rec["v10_shared_context_search_hash"])
+            self.assertEqual(rec["shared_context_search_hash"], rec["v9_shared_context_search_hash"])
+            tasks_by_id = {"search_hash_t1": mock_tasks[0]}
+            metrics = calculate_paired_metrics([rec], tasks_by_id)
+            self.assertEqual(metrics["summary"]["shared_search_hash_mismatch_count"], 0)
+        finally:
+            if os.path.exists(out_file):
+                os.remove(out_file)
 
     # Scenario 22: Shared Context Delivery: File Hash Invariance
     def test_scenario_22_file_hash_invariance(self):
+        st = StubSearchTool(success=True)
         ft = CountingFileTool(success=True, content="Document text for hashing ABCDE")
-        llm_client = SequencedLLM([])
-        agent = GAIAPlannerExecutorAgent(
-            llm_client=llm_client,
-            search_tool=StubSearchTool(),
+        pt = MockPythonTool()
+        v9_llm = SequencedLLM([
+            make_resp("DECISION: DIRECT"),
+            make_resp("FINAL_ANSWER: 100"),
+        ])
+        v10_llm = SequencedLLM([
+            make_resp("MODE: DIRECT\nOBJECTIVE: Parse file\nEVIDENCE_NEEDED: doc\nPLAN:\n1. Read doc\nANSWER_TYPE: number"),
+            make_resp("FINAL_ANSWER: 100"),
+        ])
+        v9_agent = GAIAUpstreamCandidateRecoveryAgent(
+            llm_client=v9_llm,
+            search_tool=st,
             file_tool=ft,
-            python_tool=MockPythonTool(),
+            python_tool=pt,
         )
-        ctx = agent._prepare_upstream_context("Test question?", file_path="test.txt")
-        hash_1 = hashlib.sha256(ctx.file_evidence.encode("utf-8")).hexdigest()
-        hash_2 = hashlib.sha256(ctx.file_evidence.encode("utf-8")).hexdigest()
-        self.assertEqual(hash_1, hash_2)
-        self.assertEqual(ft.calls, 1, "Only 1 file processing call should occur during context acquisition")
+        v10_agent = GAIAPlannerExecutorAgent(
+            llm_client=v10_llm,
+            search_tool=st,
+            file_tool=ft,
+            python_tool=pt,
+        )
+
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, suffix=".jsonl") as f:
+            out_file = f.name
+
+        mock_tasks = [
+            GAIATask(task_id="file_hash_t1", question="What does file say?", final_answer="100", level=1, file_name="doc.txt"),
+        ]
+        try:
+            with patch("evaluation.run_v10_paired.load_gaia_tasks", return_value=mock_tasks), \
+                 patch("evaluation.run_v10_paired.resolve_attachment_path", return_value="doc.txt"):
+                run_paired_ablation(
+                    output_file=out_file,
+                    resume=False,
+                    delay=0.0,
+                    v9_agent=v9_agent,
+                    v10_agent=v10_agent,
+                )
+
+            with open(out_file, "r", encoding="utf-8") as f:
+                rec = json.loads(f.readline())
+
+            self.assertEqual(ft.calls, 1, "Exactly 1 file processing call should occur during context acquisition")
+            self.assertEqual(rec["v9_shared_context_file_hash"], rec["v10_shared_context_file_hash"])
+            self.assertEqual(rec["shared_context_file_hash"], rec["v9_shared_context_file_hash"])
+            tasks_by_id = {"file_hash_t1": mock_tasks[0]}
+            metrics = calculate_paired_metrics([rec], tasks_by_id)
+            self.assertEqual(metrics["summary"]["shared_file_hash_mismatch_count"], 0)
+        finally:
+            if os.path.exists(out_file):
+                os.remove(out_file)
 
     # Scenario 23: Paired Upstream Transition Scoring
     def test_scenario_23_paired_upstream_transition_scoring(self):
@@ -841,6 +928,187 @@ class TestV10DeterministicSmoke(unittest.TestCase):
 
         if os.path.exists(out_file):
             os.remove(out_file)
+
+
+class TestV10HardenedInvariants(unittest.TestCase):
+    """Focused tests for hardened implementation invariants beyond the 24 smoke scenarios."""
+
+    def test_single_gaiarouteragent_run_definition(self):
+        """Asserts that GAIARouterAgent contains exactly 1 'def run(' definition in source code."""
+        src = inspect.getsource(GAIARouterAgent)
+        run_count = src.count("def run(")
+        self.assertEqual(run_count, 1, f"Expected exactly 1 run() definition in GAIARouterAgent, found {run_count}")
+
+    def test_single_max_v7_gens_assignment(self):
+        """Asserts that GAIATargetedRepairAgent.run contains exactly 1 'max_v7_gens = (' assignment."""
+        src = inspect.getsource(GAIATargetedRepairAgent.run)
+        assign_count = src.count("max_v7_gens = (")
+        self.assertEqual(assign_count, 1, f"Expected exactly 1 max_v7_gens assignment, found {assign_count}")
+
+    def test_native_multimodal_file_context_hash(self):
+        """Asserts that native_bytes contribute deterministically to shared-context file hash."""
+        file_res_1 = FileResult(
+            file_name="image.png",
+            file_extension=".png",
+            success=True,
+            content_mode="native_multimodal",
+            mime_type="image/png",
+            native_bytes=b"RAW_PNG_DATA_VERSION_A",
+        )
+        file_res_2 = FileResult(
+            file_name="image.png",
+            file_extension=".png",
+            success=True,
+            content_mode="native_multimodal",
+            mime_type="image/png",
+            native_bytes=b"RAW_PNG_DATA_VERSION_B",
+        )
+        ctx_1 = UpstreamContext(
+            question="Analyze image",
+            file_path="image.png",
+            file_res=file_res_1,
+            file_evidence="[Attached file provided as native multimodal input: image.png (image/png)]",
+            attachment_filename="image.png",
+        )
+        ctx_2 = UpstreamContext(
+            question="Analyze image",
+            file_path="image.png",
+            file_res=file_res_2,
+            file_evidence="[Attached file provided as native multimodal input: image.png (image/png)]",
+            attachment_filename="image.png",
+        )
+        hash_1 = hash_shared_file_context(ctx_1)
+        hash_2 = hash_shared_file_context(ctx_2)
+        self.assertNotEqual(hash_1, hash_2, "Different native_bytes must yield different file context hashes")
+
+        # Invariance check: same native_bytes must yield identical hash
+        hash_1_again = hash_shared_file_context(ctx_1)
+        self.assertEqual(hash_1, hash_1_again)
+
+    def test_strict_planner_numbering_starts_at_1(self):
+        """Plan starting with step 2 is rejected."""
+        raw = "MODE: DIRECT\nOBJECTIVE: Obj\nEVIDENCE_NEEDED: None\nPLAN:\n2. Step two\nANSWER_TYPE: text"
+        res = parse_planner_result(raw)
+        self.assertFalse(res.success)
+        self.assertTrue(res.fallback_used)
+        self.assertEqual(res.error_message, "non_consecutive_plan_steps")
+        self.assertEqual(res.error_type, "PlannerStepNumberingError")
+
+    def test_strict_planner_numbering_is_consecutive(self):
+        """Plan skipping step 2 is rejected."""
+        raw = "MODE: DIRECT\nOBJECTIVE: Obj\nEVIDENCE_NEEDED: None\nPLAN:\n1. Step one\n3. Step three\nANSWER_TYPE: text"
+        res = parse_planner_result(raw)
+        self.assertFalse(res.success)
+        self.assertTrue(res.fallback_used)
+        self.assertEqual(res.error_message, "non_consecutive_plan_steps")
+        self.assertEqual(res.error_type, "PlannerStepNumberingError")
+
+    def test_strict_planner_duplicate_step_numbers_rejected(self):
+        """Plan with duplicate step 1 is rejected."""
+        raw = "MODE: DIRECT\nOBJECTIVE: Obj\nEVIDENCE_NEEDED: None\nPLAN:\n1. Step one\n1. Duplicate step\nANSWER_TYPE: text"
+        res = parse_planner_result(raw)
+        self.assertFalse(res.success)
+        self.assertTrue(res.fallback_used)
+        self.assertEqual(res.error_message, "non_consecutive_plan_steps")
+        self.assertEqual(res.error_type, "PlannerStepNumberingError")
+
+    def test_strict_planner_unnumbered_lines_rejected(self):
+        """Plan with unnumbered line is rejected."""
+        raw = "MODE: DIRECT\nOBJECTIVE: Obj\nEVIDENCE_NEEDED: None\nPLAN:\nFirst do this\nANSWER_TYPE: text"
+        res = parse_planner_result(raw)
+        self.assertFalse(res.success)
+        self.assertTrue(res.fallback_used)
+        self.assertEqual(res.error_message, "non_consecutive_plan_steps")
+        self.assertEqual(res.error_type, "PlannerStepNumberingError")
+
+    def test_strict_planner_bullet_only_steps_rejected(self):
+        """Plan with bullets is rejected."""
+        raw = "MODE: DIRECT\nOBJECTIVE: Obj\nEVIDENCE_NEEDED: None\nPLAN:\n- Bullet step one\n- Bullet step two\nANSWER_TYPE: text"
+        res = parse_planner_result(raw)
+        self.assertFalse(res.success)
+        self.assertTrue(res.fallback_used)
+        self.assertEqual(res.error_message, "non_consecutive_plan_steps")
+        self.assertEqual(res.error_type, "PlannerStepNumberingError")
+
+    def test_strict_planner_exceeding_5_steps_rejected(self):
+        """Plan with >5 steps is rejected."""
+        raw = "MODE: DIRECT\nOBJECTIVE: Obj\nEVIDENCE_NEEDED: None\nPLAN:\n1. S1\n2. S2\n3. S3\n4. S4\n5. S5\n6. S6\nANSWER_TYPE: text"
+        res = parse_planner_result(raw)
+        self.assertFalse(res.success)
+        self.assertTrue(res.fallback_used)
+        self.assertEqual(res.error_message, "plan_step_count_exceeded")
+        self.assertEqual(res.error_type, "PlannerStepCountError")
+
+    def test_strict_planner_mode_parsing(self):
+        """Non-exact mode statements must trigger DIRECT fallback."""
+        prose_raw = "MODE: I think DIRECT is best\nOBJECTIVE: Obj\nEVIDENCE_NEEDED: None\nPLAN:\n1. Step\nANSWER_TYPE: text"
+        res = parse_planner_result(prose_raw)
+        self.assertFalse(res.success)
+        self.assertTrue(res.fallback_used)
+        self.assertEqual(res.plan.mode, "DIRECT")
+        self.assertEqual(res.error_type, "PlannerInvalidModeError")
+
+        valid_direct = "MODE: DIRECT\nOBJECTIVE: Obj\nEVIDENCE_NEEDED: None\nPLAN:\n1. Step\nANSWER_TYPE: text"
+        self.assertTrue(parse_planner_result(valid_direct).success)
+
+        valid_python = "MODE: PYTHON\nOBJECTIVE: Obj\nEVIDENCE_NEEDED: None\nPLAN:\n1. Step\nANSWER_TYPE: text"
+        self.assertTrue(parse_planner_result(valid_python).success)
+
+    def test_truncated_or_unexpected_planner_finish_reason(self):
+        """Planner with non-STOP finish reason triggers fallback to DIRECT with 1 planner and 1 executor call."""
+        raw_plan = "MODE: DIRECT\nOBJECTIVE: Compute\nEVIDENCE_NEEDED: None\nPLAN:\n1. Step\nANSWER_TYPE: text"
+        llm = SequencedLLM([
+            make_resp(raw_plan, finish_reason="MAX_TOKENS"),  # Truncated planner response
+            make_resp("FINAL: recovered_value"),               # Fallback executor direct
+            make_resp("VERDICT: KEEP\nCONFIDENCE: 0.9"),         # Verifier
+            make_resp("ASSESSMENT: CORRECT\nRISK_TYPE: NONE\nCONFIDENCE: 0.9"), # Self-eval
+        ])
+        agent = GAIAPlannerExecutorAgent(
+            llm_client=llm,
+            search_tool=StubSearchTool(),
+            file_tool=CountingFileTool(),
+            python_tool=MockPythonTool(),
+        )
+        res = agent.run("Calculate answer")
+        self.assertTrue(res.planner_attempted)
+        self.assertFalse(res.planner_success)
+        self.assertFalse(res.planner_parse_success)
+        self.assertTrue(res.planner_fallback_used)
+        self.assertEqual(res.planner_error_type, "unexpected_finish_reason")
+        self.assertEqual(res.planner_mode, "DIRECT")
+        self.assertEqual(res.planner_generation_attempts, 1)
+        self.assertEqual(res.executor_generation_attempts, 1)
+        self.assertEqual(res.final_answer, "recovered_value")
+        self.assertLessEqual(res.llm_generation_attempts, 5)
+
+    def test_total_token_telemetry(self):
+        """Asserts planner_total_tokens and executor_total_tokens are recorded in AgentResult and runner output."""
+        llm = SequencedLLM([
+            make_resp("MODE: DIRECT\nOBJECTIVE: Obj\nEVIDENCE_NEEDED: None\nPLAN:\n1. Step\nANSWER_TYPE: number", input_tokens=150, output_tokens=50, thinking_tokens=20),
+            make_resp("FINAL_ANSWER: 99", input_tokens=200, output_tokens=30, thinking_tokens=10),
+            make_resp("VERDICT: KEEP\nCONFIDENCE: 0.9", input_tokens=100, output_tokens=20),
+            make_resp("ASSESSMENT: CORRECT\nRISK_TYPE: NONE\nCONFIDENCE: 0.9", input_tokens=100, output_tokens=20),
+        ])
+        agent = GAIAPlannerExecutorAgent(
+            llm_client=llm,
+            search_tool=StubSearchTool(),
+            file_tool=CountingFileTool(),
+            python_tool=MockPythonTool(),
+        )
+        rec = execute_task(
+            task_id="token_test_t1",
+            question="What is 99?",
+            level=1,
+            agent=agent,
+            llm=llm,
+            project_version="v10",
+        )
+        self.assertEqual(rec["planner_input_tokens"], 150)
+        self.assertEqual(rec["planner_output_tokens"], 50)
+        self.assertEqual(rec["planner_total_tokens"], 220)  # 150 + 50 + 20
+        self.assertEqual(rec["executor_input_tokens"], 200)
+        self.assertEqual(rec["executor_output_tokens"], 30)
+        self.assertEqual(rec["executor_total_tokens"], 240)  # 200 + 30 + 10
 
 
 if __name__ == "__main__":

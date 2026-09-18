@@ -31,35 +31,11 @@ from evaluation.dataset import load_gaia_tasks
 from evaluation.metrics import gaia_question_scorer, check_exact_match
 
 
-def evaluate_paired_ablation(
-    input_file: str,
-    data_path: Optional[str] = None,
-    summary_output: Optional[str] = None,
-    detailed_output: Optional[str] = None,
+def calculate_paired_metrics(
+    records: List[Dict[str, Any]],
+    tasks_by_id: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Evaluates raw paired execution JSONL records and produces structured summaries."""
-    if not os.path.exists(input_file):
-        raise FileNotFoundError(f"Paired execution file not found at: {input_file}")
-
-    # 1. Read raw paired records
-    records: List[Dict[str, Any]] = []
-    with open(input_file, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            records.append(json.loads(line))
-
-    if not records:
-        raise ValueError(f"No paired records found in {input_file}")
-
-    # 2. Load ground truth tasks across levels
-    tasks_by_id: Dict[str, Any] = {}
-    for lvl in (1, 2, 3):
-        for task in load_gaia_tasks(data_path=data_path, level=lvl):
-            tasks_by_id[task.task_id] = task
-
-    # 3. Post-hoc scoring and transition assignment
+    """Calculates paired metrics, transition counts, and detailed records."""
     detailed_records: List[Dict[str, Any]] = []
     v9_correct_count = 0
     v10_correct_count = 0
@@ -77,6 +53,10 @@ def evaluate_paired_ablation(
     v10_planner_attempted_count = 0
     v10_planner_parse_success_count = 0
     v10_planner_fallback_count = 0
+    v9_empty_candidate_count = 0
+    v10_empty_candidate_count = 0
+    search_hash_mismatch_count = 0
+    file_hash_mismatch_count = 0
 
     for rec in records:
         tid = rec.get("task_id")
@@ -88,8 +68,25 @@ def evaluate_paired_ablation(
         if not gt or not gt.strip():
             raise ValueError(f"Ground truth answer is missing or empty for task_id: {tid}")
 
-        v9_cand = rec.get("v9_upstream_candidate") or ""
-        v10_cand = rec.get("v10_upstream_candidate") or ""
+        raw_v9_cand = rec.get("v9_upstream_candidate")
+        raw_v10_cand = rec.get("v10_upstream_candidate")
+        if raw_v9_cand is None or str(raw_v9_cand).strip() == "":
+            v9_empty_candidate_count += 1
+        if raw_v10_cand is None or str(raw_v10_cand).strip() == "":
+            v10_empty_candidate_count += 1
+
+        v9_s_hash = rec.get("v9_shared_context_search_hash") or rec.get("shared_context_search_hash")
+        v10_s_hash = rec.get("v10_shared_context_search_hash") or rec.get("shared_context_search_hash")
+        if v9_s_hash != v10_s_hash:
+            search_hash_mismatch_count += 1
+
+        v9_f_hash = rec.get("v9_shared_context_file_hash") or rec.get("shared_context_file_hash")
+        v10_f_hash = rec.get("v10_shared_context_file_hash") or rec.get("shared_context_file_hash")
+        if v9_f_hash != v10_f_hash:
+            file_hash_mismatch_count += 1
+
+        v9_cand = raw_v9_cand or ""
+        v10_cand = raw_v10_cand or ""
 
         # Post-hoc score with official scorer
         v9_correct = bool(gaia_question_scorer(v9_cand, gt)) if str(v9_cand).strip() else False
@@ -169,6 +166,12 @@ def evaluate_paired_ablation(
         "v10_upstream_candidates_correct": v10_correct_count,
         "v10_upstream_accuracy": v10_acc,
         "net_accuracy_delta": round(v10_acc - v9_acc, 4),
+        "v9_empty_candidate_count": v9_empty_candidate_count,
+        "v10_empty_candidate_count": v10_empty_candidate_count,
+        "shared_search_hash_mismatch_count": search_hash_mismatch_count,
+        "shared_file_hash_mismatch_count": file_hash_mismatch_count,
+        "v9_python_execution_count": v9_python_exec_count,
+        "v10_python_execution_count": v10_python_exec_count,
         "v9_routing": {
             "direct_count": v9_direct_count,
             "python_count": v9_python_count,
@@ -186,6 +189,59 @@ def evaluate_paired_ablation(
         },
     }
 
+    return {
+        "summary": summary,
+        "detailed": detailed_records,
+    }
+
+
+def evaluate_paired_ablation(
+    input_file: str,
+    data_path: Optional[str] = None,
+    summary_output: Optional[str] = None,
+    detailed_output: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Evaluates raw paired execution JSONL records and produces structured summaries."""
+    if not os.path.exists(input_file):
+        raise FileNotFoundError(f"Paired execution file not found at: {input_file}")
+
+    # 1. Read raw paired records
+    records: List[Dict[str, Any]] = []
+    with open(input_file, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            records.append(json.loads(line))
+
+    if not records:
+        raise ValueError(f"No paired records found in {input_file}")
+
+    # 2. Load ground truth tasks across levels
+    tasks_by_id: Dict[str, Any] = {}
+    for lvl in (1, 2, 3):
+        for task in load_gaia_tasks(data_path=data_path, level=lvl):
+            tasks_by_id[task.task_id] = task
+
+    # 3. Post-hoc scoring and transition assignment
+    res = calculate_paired_metrics(records, tasks_by_id)
+    summary = res["summary"]
+    detailed_records = res["detailed"]
+    total_tasks = summary["total_paired_tasks"]
+    v9_correct_count = summary["v9_upstream_candidates_correct"]
+    v10_correct_count = summary["v10_upstream_candidates_correct"]
+    v9_acc = summary["v9_upstream_accuracy"]
+    v10_acc = summary["v10_upstream_accuracy"]
+    upstream_improvements = summary["upstream_improvements"]
+    upstream_regressions = summary["upstream_regressions"]
+    upstream_stable_correct = summary["upstream_stable_correct"]
+    upstream_stable_failure = summary["upstream_stable_failure"]
+    v9_empty_candidate_count = summary["v9_empty_candidate_count"]
+    v10_empty_candidate_count = summary["v10_empty_candidate_count"]
+    search_hash_mismatch_count = summary["shared_search_hash_mismatch_count"]
+    file_hash_mismatch_count = summary["shared_file_hash_mismatch_count"]
+    delta_upstream = summary["delta_upstream"]
+
     print("\n" + "=" * 60)
     print("V10 SHARED-CONTEXT PAIRED UPSTREAM ABLATION RESULTS")
     print("=" * 60)
@@ -197,6 +253,11 @@ def evaluate_paired_ablation(
     print(f"  UPSTREAM_REGRESSION:        {upstream_regressions}")
     print(f"  UPSTREAM_STABLE_CORRECT:    {upstream_stable_correct}")
     print(f"  UPSTREAM_STABLE_FAILURE:    {upstream_stable_failure}")
+    print("-" * 60)
+    print(f"  V9 Empty Candidates:        {v9_empty_candidate_count}")
+    print(f"  V10 Empty Candidates:       {v10_empty_candidate_count}")
+    print(f"  Search Hash Mismatches:     {search_hash_mismatch_count}")
+    print(f"  File Hash Mismatches:       {file_hash_mismatch_count}")
     print("-" * 60)
     print(f"PRIMARY METRIC: Delta_upstream = {delta_upstream}")
     if delta_upstream > 0:

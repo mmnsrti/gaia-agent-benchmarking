@@ -784,6 +784,7 @@ def calculate_metrics(
                 "planner_input_tokens": pred.get("planner_input_tokens"),
                 "planner_output_tokens": pred.get("planner_output_tokens"),
                 "planner_thinking_tokens": pred.get("planner_thinking_tokens"),
+                "planner_total_tokens": pred.get("planner_total_tokens"),
                 "planner_generation_attempts": pred.get("planner_generation_attempts", 1),
                 "planner_generation_success": pred.get("planner_generation_success", False),
                 "executor_mode": pred.get("executor_mode"),
@@ -797,6 +798,7 @@ def calculate_metrics(
                 "executor_input_tokens": pred.get("executor_input_tokens"),
                 "executor_output_tokens": pred.get("executor_output_tokens"),
                 "executor_thinking_tokens": pred.get("executor_thinking_tokens"),
+                "executor_total_tokens": pred.get("executor_total_tokens"),
                 "llm_generation_attempts": pred.get("llm_generation_attempts", 2),
                 "llm_generation_success_count": pred.get("llm_generation_success_count", 0),
             })

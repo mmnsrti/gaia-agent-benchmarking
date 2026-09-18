@@ -233,13 +233,6 @@ def execute_task(
     latency = round(time.time() - start_time, 2)
 
     # Prompt provenance extraction
-    is_v9 = (project_version == "v9") or isinstance(agent, GAIAUpstreamCandidateRecoveryAgent)
-    is_v7 = ((project_version == "v7") or isinstance(agent, GAIATargetedRepairAgent)) and not is_v9
-    is_v6 = ((project_version == "v6") or isinstance(agent, GAIASelfEvaluationAgent)) and not is_v7 and not is_v9
-    is_v5 = ((project_version == "v5") or isinstance(agent, GAIAVerificationAgent)) and not is_v6 and not is_v7 and not is_v9
-    is_v4 = (((project_version == "v4") or isinstance(agent, GAIARouterAgent)) and not is_v5 and not is_v6 and not is_v7 and not is_v9)
-    is_v3 = (((project_version == "v3") or isinstance(agent, GAIAPythonAgent)) and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v9)
-    file_enabled = (((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3 and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v9)
     is_v10 = (project_version == "v10") or isinstance(agent, GAIAPlannerExecutorAgent)
     is_v9 = ((project_version == "v9") or isinstance(agent, GAIAUpstreamCandidateRecoveryAgent)) and not is_v10
     is_v7 = ((project_version == "v7") or isinstance(agent, GAIATargetedRepairAgent)) and not is_v9 and not is_v10
@@ -562,6 +555,7 @@ def execute_task(
     planner_input_tokens = getattr(result, "planner_input_tokens", None) if result else None
     planner_output_tokens = getattr(result, "planner_output_tokens", None) if result else None
     planner_thinking_tokens = getattr(result, "planner_thinking_tokens", None) if result else None
+    planner_total_tokens = getattr(result, "planner_total_tokens", None) if result else None
 
     # Plan-Guided Executor telemetry (V10)
     executor_mode = getattr(result, "executor_mode", None) if result else None
@@ -575,6 +569,7 @@ def execute_task(
     executor_input_tokens = getattr(result, "executor_input_tokens", None) if result else None
     executor_output_tokens = getattr(result, "executor_output_tokens", None) if result else None
     executor_thinking_tokens = getattr(result, "executor_thinking_tokens", None) if result else None
+    executor_total_tokens = getattr(result, "executor_total_tokens", None) if result else None
 
     default_gen_success = (
         ((1 if planner_generation_success else 0) + (1 if executor_generation_success else 0) + (1 if candidate_recovery_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0))
@@ -861,6 +856,7 @@ def execute_task(
         "planner_input_tokens": planner_input_tokens,
         "planner_output_tokens": planner_output_tokens,
         "planner_thinking_tokens": planner_thinking_tokens,
+        "planner_total_tokens": planner_total_tokens,
 
         # Plan-Guided Executor metadata (V10)
         "executor_mode": executor_mode,
@@ -874,6 +870,7 @@ def execute_task(
         "executor_input_tokens": executor_input_tokens,
         "executor_output_tokens": executor_output_tokens,
         "executor_thinking_tokens": executor_thinking_tokens,
+        "executor_total_tokens": executor_total_tokens,
 
         # Generation counts
         "llm_generation_attempts": llm_generation_attempts,

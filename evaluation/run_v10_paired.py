@@ -19,6 +19,57 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
+
+# Add repository root to python search path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+# Ensure Unicode output compatibility on Windows consoles
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+    except Exception:
+        pass
+
+
+from agent import (
+    GAIAUpstreamCandidateRecoveryAgent,
+    GAIAPlannerExecutorAgent,
+    LLMClient,
+    UpstreamContext,
+)
+from tools.python_tool import PythonTool
+from evaluation.dataset import load_gaia_tasks
+from evaluation.runner import resolve_attachment_path
+
+
+def hash_shared_search_context(context: UpstreamContext) -> str:
+    """Computes a deterministic SHA-256 hash of shared search context."""
+    return hashlib.sha256((context.web_evidence or "").encode("utf-8")).hexdigest()
+
+
+def hash_shared_file_context(context: UpstreamContext) -> str:
+    """Computes a deterministic SHA-256 hash of shared file context without re-reading from disk.
+
+    Hashes:
+    - file_evidence text
+    - attachment_filename
+    - mime_type (if available from file_res)
+    - content_mode (if available from file_res)
+    - native_bytes (if available from file_res, without disk re-read)
+    """
+    hasher = hashlib.sha256()
+    hasher.update((context.file_evidence or "").encode("utf-8"))
+    hasher.update((context.attachment_filename or "").encode("utf-8"))
+    if context.file_res is not None:
+        if context.file_res.mime_type:
+            hasher.update(context.file_res.mime_type.encode("utf-8"))
+        if context.file_res.content_mode:
+            hasher.update(context.file_res.content_mode.encode("utf-8"))
+        if context.file_res.native_bytes:
+            hasher.update(context.file_res.native_bytes)
+    return hasher.hexdigest()
+
 # Add repository root to python search path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -137,13 +188,9 @@ def run_paired_ablation(
                 file_path=resolved_file_path,
             )
 
-            # Compute SHA-256 hashes of shared contexts
-            search_hash = hashlib.sha256(
-                (shared_context.web_evidence or "").encode("utf-8")
-            ).hexdigest()
-            file_hash = hashlib.sha256(
-                (shared_context.file_evidence or "").encode("utf-8")
-            ).hexdigest()
+            # Compute SHA-256 hashes of shared contexts via deterministic helpers
+            search_hash = hash_shared_search_context(shared_context)
+            file_hash = hash_shared_file_context(shared_context)
 
             # 2. BRANCH A: Frozen V9 Upstream (Capability Router -> Worker)
             v9_start = time.time()
@@ -168,6 +215,10 @@ def run_paired_ablation(
                 "file_name": task.file_name,
                 "shared_context_search_hash": search_hash,
                 "shared_context_file_hash": file_hash,
+                "v9_shared_context_search_hash": search_hash,
+                "v10_shared_context_search_hash": search_hash,
+                "v9_shared_context_file_hash": file_hash,
+                "v10_shared_context_file_hash": file_hash,
                 "v9_upstream_candidate": v9_candidate,
                 "v10_upstream_candidate": v10_candidate,
                 "v9_router_mode": v9_mode,

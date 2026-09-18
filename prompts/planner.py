@@ -108,19 +108,18 @@ def parse_planner_result(raw_text: Optional[str]) -> PlannerParseResult:
         return PlannerParseResult(success=False, plan_spec=fallback, error_message="missing_mode_key", error_type="PlannerMissingKeyError")
 
     raw_mode = mode_match.group(1).strip().strip("*_` ")
-    # Check for valid DIRECT or PYTHON
+    # Strict mode check: must be exactly DIRECT or PYTHON after standard formatting cleanup
     mode_upper = raw_mode.upper()
     if mode_upper in ("DIRECT", "PYTHON"):
         mode = mode_upper
     else:
-        # Check if mode contains unambiguous DIRECT or PYTHON
-        matches = re.findall(r"\b(DIRECT|PYTHON)\b", mode_upper)
-        unique_matches = set(matches)
-        if len(unique_matches) == 1:
-            mode = unique_matches.pop()
-        else:
-            fallback = build_fallback_plan(raw_text=text, error_message="unsupported_mode")
-            return PlannerParseResult(success=False, plan_spec=fallback, error_message="unsupported_mode", error_type="PlannerInvalidModeError")
+        fallback = build_fallback_plan(raw_text=text, error_message="unsupported_mode")
+        return PlannerParseResult(
+            success=False,
+            plan_spec=fallback,
+            error_message="unsupported_mode",
+            error_type="PlannerInvalidModeError",
+        )
 
     # 2. Parse OBJECTIVE
     obj_match = re.search(r"(?:^|\n)\s*(?:\*{1,2})?OBJECTIVE(?:\*{1,2})?\s*:\s*([^\n\r]+)", text, re.IGNORECASE)
@@ -159,49 +158,52 @@ def parse_planner_result(raw_text: Optional[str]) -> PlannerParseResult:
         fallback = build_fallback_plan(raw_text=text, error_message="empty_or_missing_plan")
         return PlannerParseResult(success=False, plan_spec=fallback, error_message="empty_or_missing_plan", error_type="PlannerEmptyPlanError")
 
-    # Split steps by numbered lines, bullets, or semicolons
+    # Strict line-by-line validation:
+    # Grammar requires consecutive numbering starting from 1 with '1. ...', '2. ...' up to at most 5 steps.
     raw_lines = [line.strip() for line in plan_body.splitlines() if line.strip()]
-    plan_steps: List[str] = []
-
-    for line in raw_lines:
-        cleaned_line = line.strip("*_` ")
-        # Check if line looks like a step (e.g. 1. step, 1) step, - step, * step, or text)
-        if cleaned_line:
-            plan_steps.append(cleaned_line)
-
-    # If steps were not found line-by-line (e.g. single line separated by semicolons or numbers)
-    if len(plan_steps) == 1 and (";" in plan_steps[0] or re.search(r"\b\d+[\.\)]\s+", plan_steps[0])):
-        if ";" in plan_steps[0]:
-            sub_steps = [s.strip() for s in plan_steps[0].split(";") if s.strip()]
-            if sub_steps:
-                plan_steps = sub_steps
-        else:
-            split_parts = re.split(r"(?=\b\d+[\.\)]\s+)", plan_steps[0])
-            sub_steps = [s.strip() for s in split_parts if s.strip()]
-            if sub_steps:
-                plan_steps = sub_steps
-
-    step_count = len(plan_steps)
-    if step_count == 0:
+    if not raw_lines:
         fallback = build_fallback_plan(raw_text=text, error_message="empty_or_missing_plan")
-        return PlannerParseResult(success=False, plan_spec=fallback, error_message="empty_or_missing_plan", error_type="PlannerEmptyPlanError")
+        return PlannerParseResult(
+            success=False,
+            plan_spec=fallback,
+            error_message="empty_or_missing_plan",
+            error_type="PlannerEmptyPlanError",
+        )
 
+    step_count = len(raw_lines)
     if step_count > 5:
         fallback = build_fallback_plan(raw_text=text, error_message="plan_step_count_exceeded")
-        return PlannerParseResult(success=False, plan_spec=fallback, error_message="plan_step_count_exceeded", error_type="PlannerStepCountError")
+        return PlannerParseResult(
+            success=False,
+            plan_spec=fallback,
+            error_message="plan_step_count_exceeded",
+            error_type="PlannerStepCountError",
+        )
 
-    # Format step strings nicely (ensure 1. ..., 2. ... if not numbered)
     formatted_steps: List[str] = []
-    for i, step in enumerate(plan_steps, 1):
-        if re.match(r"^\d+[\.\)]\s*", step):
-            # Normalize to "i. Step"
-            step_clean = re.sub(r"^\d+[\.\)]\s*", "", step).strip()
-            formatted_steps.append(f"{i}. {step_clean}")
-        elif re.match(r"^[\-\*]\s*", step):
-            step_clean = re.sub(r"^[\-\*]\s*", "", step).strip()
-            formatted_steps.append(f"{i}. {step_clean}")
-        else:
-            formatted_steps.append(f"{i}. {step}")
+    for expected_idx, line in enumerate(raw_lines, start=1):
+        cleaned_line = line.strip("*_` ")
+        # Strict pattern: strictly digits followed by '.' and step text. No bullets, no missing numbering.
+        step_match = re.match(r"^(\d+)\.\s*(.+)$", cleaned_line)
+        if not step_match:
+            fallback = build_fallback_plan(raw_text=text, error_message="non_consecutive_plan_steps")
+            return PlannerParseResult(
+                success=False,
+                plan_spec=fallback,
+                error_message="non_consecutive_plan_steps",
+                error_type="PlannerStepNumberingError",
+            )
+        step_num = int(step_match.group(1))
+        step_desc = step_match.group(2).strip()
+        if step_num != expected_idx or not step_desc:
+            fallback = build_fallback_plan(raw_text=text, error_message="non_consecutive_plan_steps")
+            return PlannerParseResult(
+                success=False,
+                plan_spec=fallback,
+                error_message="non_consecutive_plan_steps",
+                error_type="PlannerStepNumberingError",
+            )
+        formatted_steps.append(f"{step_num}. {step_desc}")
 
     plan_spec = PlanSpec(
         mode=mode,
