@@ -1,15 +1,17 @@
 # V9 — Upstream Candidate Recovery
 
-**Status**: `CANONICAL_BENCHMARK_COMPLETE`
+**Status**: `FROZEN`
 **Branch**: `v9-upstream-candidate-recovery`
 **Canonical Inference Commit**: `6369f427c4479073a6ca06531bdfd43e47cd613f`
 **Scientific Parent**: Frozen V7 (`v7-targeted-repair`)
+**Freeze Verdict**: `FROZEN_AND_PROMOTED_AS_V10_BASELINE`
+**V10 Scientific Baseline**: Frozen V9
 **Architecture**: Design A — Upstream Worker Candidate Recovery
 **Model**: `gemini-3.5-flash-lite` (inherited from Frozen V7)
 **Evaluation Scope**: Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)
 **Date**: September 2026
 
-See [`docs/V9_POST_BENCHMARK_AUDIT.md`](../../docs/V9_POST_BENCHMARK_AUDIT.md) for the comprehensive scientific post-benchmark audit, within-run paired intervention analysis, downstream safeguard interactions, failure taxonomy breakdown, and promotion recommendation. Deterministic SHA-256 hashes are recorded in [`ARTIFACT_MANIFEST.sha256`](ARTIFACT_MANIFEST.sha256).
+See [`FROZEN.md`](./FROZEN.md) for the complete scientific freeze specification and baseline contract, and [`docs/V9_POST_BENCHMARK_AUDIT.md`](../../docs/V9_POST_BENCHMARK_AUDIT.md) for the comprehensive scientific post-benchmark audit, within-run paired intervention analysis, downstream safeguard interactions, failure taxonomy breakdown, and promotion recommendation. Deterministic SHA-256 hashes are recorded in [`ARTIFACT_MANIFEST.sha256`](ARTIFACT_MANIFEST.sha256).
 
 ---
 
@@ -87,6 +89,7 @@ Comparing the constructed Frozen V7 baseline state against the final V9 answer w
 
 | File | Purpose |
 | :--- | :--- |
+| [`FROZEN.md`](./FROZEN.md) | Formal scientific freeze specification, baseline contract, and V10 handoff. |
 | [`DESIGN.md`](./DESIGN.md) | Comprehensive technical design: architecture, state machine, eligibility function, mutually exclusive failure taxonomy, recovery prompt contract, schema, budgets, telemetry, and safety invariants. |
 | [`PRE_BENCHMARK.md`](./PRE_BENCHMARK.md) | Binding pre-benchmark preregistration: hypotheses, primary/secondary metrics, within-run paired intervention design, 18 deterministic smoke test scenarios, and scientific decision rule. |
 | [`ARTIFACT_MANIFEST.sha256`](./ARTIFACT_MANIFEST.sha256) | Deterministic SHA-256 digests for all predictions, detailed evals, and summary JSON files. |

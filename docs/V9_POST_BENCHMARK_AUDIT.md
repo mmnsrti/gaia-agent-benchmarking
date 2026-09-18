@@ -317,3 +317,18 @@ PROMOTION RECOMMENDATION: PROMOTE_V9_AS_V10_BASELINE
 1. Record and commit canonical benchmark artifacts on `v9-upstream-candidate-recovery`.
 2. Push branch to remote.
 3. Await independent governance review before branch merge or baseline freezing.
+
+---
+
+## 17. Governance Closure
+
+V9 was subsequently frozen after independent consistency review.
+
+```text
+================================================================================
+FREEZE VERDICT:           FROZEN_AND_PROMOTED_AS_V10_BASELINE
+V10 SCIENTIFIC BASELINE:  Frozen V9 (v9-upstream-candidate-recovery)
+================================================================================
+```
+
+See [`experiments/v9/FROZEN.md`](../experiments/v9/FROZEN.md) for the complete scientific freeze specification and baseline contract.
