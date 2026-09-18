@@ -23,10 +23,10 @@ $$\text{V10} = \text{Frozen V9 with coarse Router replaced by Structured Planner
 
 The audit confirms that:
 1. Upstream generation slots are strictly equalized at 2 (Slot 1: Planner, Slot 2: Executor), introducing **zero additional LLM generations** beyond the replaced router slot.
-2. All tool budgets are strictly frozen: $\le 1$ Tavily search, $\le 1$ file processing, $\le 1$ Python execution. The planner operates with 0 tools.
+2. All tool budgets are strictly frozen: $\le 1$ Tavily search, $\le 1$ file processing, $\le 1$ Python execution per agent branch. The planner operates with 0 tools.
 3. All downstream stages from Frozen V9 (Candidate Recovery, V5 Verifier, V6 Self-Evaluator, V7 Targeted Repair) are preserved verbatim.
-4. The information firewall is unbreached: zero access to ground truth, test labels, or the official scorer.
-5. Binding hypotheses, evaluation protocols, transition taxonomies, decision rules, and 20 deterministic smoke scenarios are fully preregistered in `experiments/v10/`.
+4. The information firewall is unbreached: zero access to ground truth, test labels, or the official scorer across both paired branches.
+5. Binding hypotheses ($H_1, H_2, H_{3a\dots 3e}$), two-tier evaluation protocols, transition taxonomies, decision rules, and 24 deterministic smoke scenarios are fully preregistered in `experiments/v10/`.
 
 ---
 
@@ -37,15 +37,15 @@ The audit confirms that:
 | **1. Scientific parent = Frozen V9?** | Must inherit from Frozen V9 (`6369f427...`) | **YES** | `experiments/v10/config.json`: `parent_version: "v9"`, `experiments/v9/` is immutable. |
 | **2. Single intervention clearly isolated?** | Only Router $\to$ Planner and Worker $\to$ Executor replaced | **YES** | `experiments/v10/DESIGN.md` Section 1 & 4; downstream pipeline preserved. |
 | **3. Extra web search?** | Web search calls $\le 1$ total; Planner = 0 | **NO** | `search_call_count_max: 1`, planner has `search: false`. |
-| **4. Extra Python execution?** | Python executions $\le 1$ total; Planner = 0 | **NO** | `max_executions_per_task: 1`, planner has `python: false`. |
+| **4. Extra Python execution?** | Python executions $\le 1$ per agent branch; Planner = 0 | **NO** | `max_executions_per_task: 1`, `python_execution_count_per_agent_branch: 1`. |
 | **5. Extra file read?** | File operations $\le 1$ total; Planner = 0 | **NO** | `file_call_count_max: 1`, planner has `file_reread: false`. |
 | **6. Extra planner generation beyond replaced router slot?** | Upstream generation slots == 2 | **NO** | Router slot replaced by Planner slot; upstream generation count = 2. |
 | **7. Frozen V9 recovery preserved?** | Triggers on eligible empty candidates only | **YES** | `candidate_recovery_configuration.enabled: true`, identical trigger semantics. |
 | **8. Frozen V5/V6/V7 downstream preserved?** | Verifier, self-evaluator, repair active | **YES** | Configured with `answer-verifier-v1`, `self-evaluator-v1`, `targeted-repair-v1`. |
 | **9. Ground-truth firewall preserved?** | Zero access to labels/scorer in prompts/agent | **YES** | Prompts strictly assembled without ground truth or test split metadata. |
-| **10. Comparison protocol preregistered?** | Contemporaneous matched Frozen V9 control | **YES** | `experiments/v10/PRE_BENCHMARK.md` Section 3; observational status declared. |
-| **11. Promotion rule preregistered?** | Quantitative decision boundary fixed | **YES** | `experiments/v10/PRE_BENCHMARK.md` Section 6; requires $\Delta_{\text{net}} > 0$ and $> 44.24\%$. |
-| **12. Ready for implementation?** | Design and preregistration complete | **YES** | All 5 required documents authored and verified. |
+| **10. Comparison protocol preregistered?** | Two-tier: Paired Upstream Ablation (Primary) & Matched Control (Secondary) | **YES** | `experiments/v10/PRE_BENCHMARK.md` Section 3; observational status declared for cross-run. |
+| **11. Promotion rule preregistered?** | Anchored to paired $\Delta_{\text{upstream}} > 0$ AND canonical accuracy $> 44.24\%$ | **YES** | `experiments/v10/PRE_BENCHMARK.md` Section 6; both conditions mandatory. |
+| **12. Ready for implementation?** | Design and preregistration complete | **YES** | All 5 required documents authored, verified, and aligned. |
 
 ---
 
@@ -82,12 +82,12 @@ V10 Upstream:
   - Non-recovery path: $\le 5$ logical generations (Planner + Executor + Verifier + Self-Eval + Repair).
   - Recovery path: $\le 6$ logical generations (Planner + Executor + Recovery + Verifier + Self-Eval + Repair).
 
-### 3.4 Tool Budgets & Sandbox Constraints
-- Web search calls per task: $\le 1$ (Planner = 0, Recovery = 0, Downstream = 0).
-- File processing calls per task: $\le 1$ (Planner = 0, Recovery = 0, Downstream = 0).
-- Python executions per task: $\le 1$ (Planner = 0, Recovery = 0, Downstream = 0).
-- Python execution timeout: 15.0 seconds.
-- Disallowed Python modules: `multiprocessing`, `ctypes`.
+### 3.4 Tool Budgets & Evaluation Harness Constraints
+- Web search calls per task: $\le 1$ total (Planner = 0, Recovery = 0, Downstream = 0).
+- File processing calls per task: $\le 1$ total (Planner = 0, Recovery = 0, Downstream = 0).
+- Python executions per task: $\le 1$ per agent branch in evaluation harness (Planner = 0, Recovery = 0, Downstream = 0).
+- Neither deployed agent receives double retrieval or file execution.
+- Python execution timeout: 15.0 seconds; disallowed modules: `multiprocessing`, `ctypes`.
 
 ### 3.5 Deterministic Fallback Policy & Generation Safety
 If the planner fails (provider timeout, API error, malformed output, unsupported mode, or missing keys):
@@ -101,15 +101,21 @@ If the planner fails (provider timeout, API error, malformed output, unsupported
 - The executor executes this fallback plan in `MODE: DIRECT`.
 - The failed planner attempt is recorded as 1 attempt; total upstream generations remain strictly 2.
 
-### 3.6 Evaluation Protocol & Non-Causal Cross-Run Declaration
-- Primary comparison: Contemporaneous matched Frozen V9 control run (165 tasks) executed under identical rate limits (5.0s delay) and model configurations.
-- Cross-run comparison is explicitly classified as **observational and non-causal** due to run-to-run sampling variance.
-- Primary decision metric: Net Task Delta ($\Delta_{\text{net}} = N_{\text{IMPROVEMENT}} - N_{\text{REGRESSION}} > 0$) alongside official accuracy exceeding $44.24\%$.
+### 3.6 Two-Tier Evaluation Methodology & Non-Causal Cross-Run Declaration
+- **Primary Intervention Evaluation**: Shared-context paired upstream ablation.
+  - Controls: identical question, search evidence, file context, tool budgets, and model configuration.
+  - Focuses on candidate quality emitted at the upstream boundary: $\Delta_{\text{upstream}} = N_{\text{UPSTREAM\_IMPROVEMENT}} - N_{\text{UPSTREAM\_REGRESSION}}$.
+  - Interpretation: Removes retrieval/context divergence and directly compares replaced upstream stages, while residual generation stochasticity remains (not described as a "perfect causal estimate").
+- **Secondary Matched Full-Run Comparison**: Contemporaneous full Frozen V9 run.
+  - Interpretation: Explicitly classified as **observational and non-causal** due to run-to-run sampling variance across separate stochastic executions.
+  - Not used as the isolated intervention criterion.
+- **Promotion Rule**: Anchored to BOTH paired upstream $\Delta_{\text{upstream}} > 0$ AND canonical V10 official accuracy $> 44.24\%$.
 
 ### 3.7 Telemetry & Schema 8 Invariants
 - Schema version is updated to **8**.
-- Public prediction records include structured planner fields (`planner_attempted`, `planner_mode`, `plan_step_count`, `plan_answer_type`, `planner_fallback_used`, etc.).
+- Paired harness records include: `shared_context_search_hash`, `shared_context_file_hash`, `v9_upstream_candidate`, `v10_upstream_candidate`, `upstream_transition`, etc.
 - Strict privacy: No hidden thinking tokens, chain-of-thought traces, or raw prompt templates are logged to public JSONL records.
+- Ground truth firewall: All scoring and transition labeling is computed strictly post-hoc.
 
 ---
 
@@ -125,15 +131,17 @@ Intervention:                         Structured Planner -> Plan-Guided Executor
 Upstream Generation Slots:            2 (Slot 1: Planner, Slot 2: Executor)
 Additional Planner Generation:        NO
 Search Budget Changed:                NO (<= 1)
-Python Budget Changed:                NO (<= 1)
+Python Budget Changed:                NO (<= 1 per agent branch)
 File Budget Changed:                  NO (<= 1)
 Candidate Recovery Preserved:         YES
 Downstream V5/V6/V7 Preserved:        YES
 Ground-Truth Firewall Intact:         YES
 Deterministic Fallback Preregistered: YES
-Comparison Protocol Preregistered:    YES
-Promotion Rule Preregistered:         YES
-Smoke Scenarios Preregistered:        20 scenarios
+Primary Intervention Evaluation:      Shared-context paired upstream ablation
+Secondary Matched Full-Run Control:   Contemporaneous Frozen V9 (observational/non-causal)
+Matched Cross-Run Delta Causal:       NO (observational only)
+Promotion Rule Anchored To:           Delta_upstream > 0 AND Canonical Accuracy > 44.24%
+Smoke Scenarios Preregistered:        24 scenarios
 Runtime Code Modified:                NO (0 runtime files modified)
 Benchmark Executed:                   NO (0 tasks executed)
 Frozen V9 Modified:                   NO (0 modifications in experiments/v9/)
@@ -141,4 +149,3 @@ Frozen V9 Modified:                   NO (0 modifications in experiments/v9/)
 FINAL VERDICT:                        READY_FOR_IMPLEMENTATION
 ===============================================================================
 ```
-

@@ -288,7 +288,7 @@ All downstream stages from Frozen V9 are preserved verbatim:
 | :--- | :---: | :---: | :--- |
 | **Web Searches** | $\le 1$ | $\le 1$ | Frozen tool budget. Planner has 0 searches. |
 | **File Processing** | $\le 1$ | $\le 1$ | Frozen tool budget. Planner has 0 file reads. |
-| **Python Executions** | $\le 1$ | $\le 1$ | Frozen tool budget. Planner has 0 executions. |
+| **Python Executions** | $\le 1$ | $\le 1$ per agent branch | Frozen tool budget. Planner has 0 executions. |
 | **Planner Generations** | N/A (Router = 1) | 1 | Replaces Router slot. |
 | **Executor Generations** | N/A (Worker = 1) | 1 | Replaces Worker slot. |
 | **Upstream Generations** | 2 | 2 | Zero added upstream generations. |
@@ -302,11 +302,53 @@ All downstream stages from Frozen V9 are preserved verbatim:
 
 ---
 
-## 10. Telemetry Schema (Schema Version 8)
+## 10. Shared-Context Paired Upstream Ablation Harness Specification
 
-To support forensic post-benchmark analysis and regression auditing, V10 introduces Schema Version 8.
+To measure the isolated impact of replacing the `Router → Worker` pair with `Structured Planner → Plan-Guided Executor`, V10 defines a **Shared-Context Paired Upstream Ablation Harness**:
 
-### New Telemetry Fields
+```text
+[GAIA Task: Question + Attachment]
+                 │
+                 ▼
+     SHARED CONTEXT ACQUISITION
+     - Execute at most 1 Tavily Search (snapshotted)
+     - Execute at most 1 File Parse (snapshotted)
+                 │
+                 ├────────────────────────────────────────┐
+                 ▼                                        ▼
+    BRANCH A (Frozen V9 Upstream)            BRANCH B (V10 Upstream)
+    - Receives: Question, Search, File       - Receives: Question, Search, File
+    - Capability Router (Slot 1)             - Structured Planner (Slot 1)
+    - Worker (DIRECT / PYTHON) (Slot 2)      - Plan-Guided Executor (Slot 2)
+                 │                                        │
+                 ▼                                        ▼
+        V9 Upstream Candidate                    V10 Upstream Candidate
+                 │                                        │
+                 └───────────────────┬────────────────────┘
+                                     │
+                                     ▼
+                      OFFICIAL GAIA SCORER (Post-Hoc)
+                      (Reference answers kept isolated)
+                                     │
+                                     ▼
+                      PRIMARY PAIRED UPSTREAM METRIC:
+         Δ_upstream = N(UPSTREAM_IMPROVEMENT) - N(UPSTREAM_REGRESSION)
+```
+
+### 10.1 Key Evaluation Harness Invariants
+1. **Shared Immutable Context**: Both branches receive the exact same snapshotted question, web search evidence, and file context. No duplicate web retrieval occurs.
+2. **Upstream Candidate Boundary**: The evaluation measures the candidate answer emitted directly by the upstream stages before any candidate recovery, verification, self-evaluation, or repair occurs.
+3. **Agent Runtime Tool Budgets**: The evaluation harness feeds shared context into two counterfactual agent branches. Each branch is permitted at most 1 Python execution within the harness (`Python <= 1 per branch`). Neither branch receives multiple search or file operations.
+4. **Post-Hoc Scoring & Firewall**: Ground-truth answers and the official scorer are strictly isolated from both runtime execution branches. Correctness and transitions are computed strictly post-hoc.
+5. **Methodological Interpretation**: This paired protocol removes retrieval and context divergence and directly compares the replaced upstream stages, while residual generation stochasticity remains. It is not described as a "perfect causal estimate" or "fully causal."
+
+---
+
+## 11. Telemetry Schema (Schema Version 8)
+
+To support forensic post-benchmark analysis and paired regression auditing, V10 introduces Schema Version 8.
+
+### 11.1 Standard Upstream Telemetry Fields
 ```json
 {
   "schema_version": 8,
@@ -342,8 +384,22 @@ To support forensic post-benchmark analysis and regression auditing, V10 introdu
 }
 ```
 
-### Privacy & Serialization Safeguards
+### 11.2 Paired Harness Telemetry Fields
+For paired ablation executions, the following structured fields are serialized:
+- `task_id`: Official GAIA task identifier.
+- `shared_context_search_hash`: SHA-256 digest of retrieved search evidence.
+- `shared_context_file_hash`: SHA-256 digest of extracted file context.
+- `v9_upstream_candidate`: Candidate string emitted by Branch A.
+- `v10_upstream_candidate`: Candidate string emitted by Branch B.
+- `v9_upstream_candidate_correct`: Boolean post-hoc score of Branch A candidate.
+- `v10_upstream_candidate_correct`: Boolean post-hoc score of Branch B candidate.
+- `upstream_transition`: Categorical transition (`UPSTREAM_IMPROVEMENT`, `UPSTREAM_REGRESSION`, `UPSTREAM_STABLE_CORRECT`, `UPSTREAM_STABLE_FAILURE`).
+- `v9_router_mode`: Decision from Branch A router (`DIRECT` vs `PYTHON`).
+- `v10_planner_mode`: Decision from Branch B planner (`DIRECT` vs `PYTHON`).
+- `v9_python_executed`: Boolean indicating whether Branch A executed Python code.
+- `v10_python_executed`: Boolean indicating whether Branch B executed Python code.
+
+### 11.3 Privacy & Serialization Safeguards
 - No hidden chain-of-thought or raw reasoning tokens are logged or serialized.
 - Raw system prompts are excluded from output JSONL lines.
 - Only structured, parsed planning keys and telemetry token counts are stored.
-

@@ -46,7 +46,7 @@ To ensure rigorous scientific attribution, V10 enforces a strict slot replacemen
 - **Tool Budgets Strictly Frozen**:
   - Web searches: $\le 1$ (Planner: 0, Executor: 0 beyond initial tool phase)
   - File processing: $\le 1$
-  - Python executions: $\le 1$ (Planner: 0, Executor: $\le 1$ when mode is `PYTHON`)
+  - Python executions: $\le 1$ per agent branch (Planner: 0, Executor: $\le 1$ when mode is `PYTHON`)
 
 V10 tests whether **structured task decomposition and explicit plan guidance** improve upstream accuracy under identical compute, tool, and generation budgets.
 
@@ -118,17 +118,33 @@ Tasks flagged with `EXECUTION` ($78.3\%$ error rate) and `EVIDENCE` ($88.9\%$ er
 
 ---
 
-## 5. Preregistered Evaluation & Decision Framework
+## 5. Preregistered Two-Tier Evaluation & Decision Framework
 
-Because planning operates before any candidate answer exists, V10 affects all tasks upstream. Unlike V9's starvation-gated candidate recovery:
-- $1 \to 0$ regressions are physically possible if a plan misguides an otherwise straightforward question.
-- Primary comparison: Contemporaneous matched Frozen V9 control run conducted under identical conditions, evaluated via transition matrix:
-  - $\text{Improvements } (0 \to 1)$
-  - $\text{Regressions } (1 \to 0)$
-  - $\text{Stable Correct } (1 \to 1)$
-  - $\text{Stable Failure } (0 \to 0)$
-  - **Net Correctness Delta**: $\Delta_{\text{net}} = N_{\text{Improvements}} - N_{\text{Regressions}}$
-- Cross-run comparisons are explicitly classified as observational and non-causal due to LLM sampling variance across separate runs.
+Because the scientific intervention occurs upstream and directly replaces the `Router → Worker` pair, V10 preregisters two distinct evaluation layers:
+
+### 5.1 Primary Evaluation: Shared-Context Paired Upstream Ablation
+- **Structure**: For each task, the question, web search evidence, and file context are acquired once and snapshotted. This identical context is fed into both:
+  - **Branch A**: Frozen V9 Capability Router $\to$ Frozen V9 Worker $\to$ V9 upstream candidate
+  - **Branch B**: V10 Structured Planner $\to$ V10 Plan-Guided Executor $\to$ V10 upstream candidate
+- **Primary Metric**: Evaluates the candidate answers produced at the upstream boundary using the official GAIA scorer:
+  - $\text{UPSTREAM\_IMPROVEMENT}$: V9 candidate wrong/empty $\to$ V10 candidate correct
+  - $\text{UPSTREAM\_REGRESSION}$: V9 candidate correct $\to$ V10 candidate wrong/empty
+  - $\text{UPSTREAM\_STABLE\_CORRECT}$: both correct
+  - $\text{UPSTREAM\_STABLE\_FAILURE}$: both wrong
+  - **Primary Paired Upstream Delta**:
+    $$\Delta_{\text{upstream}} = N_{\text{UPSTREAM\_IMPROVEMENT}} - N_{\text{UPSTREAM\_REGRESSION}}$$
+- **Methodological Status**: This paired protocol removes retrieval and context divergence and directly compares the replaced upstream stages, while residual generation stochasticity remains. It is not described as a "perfect causal estimate" or "fully causal."
+
+### 5.2 Secondary Evaluation: Contemporaneous Full Frozen V9 Matched Control
+- A canonical V10 full 165-task benchmark is paired with a contemporaneous Frozen V9 full 165-task run executed under identical environment settings and 5.0s rate-limit delays.
+- Evaluates the full end-to-end pipeline through downstream verification, self-evaluation, and repair.
+- **Methodological Status**: Explicitly classified as **observational and non-causal** due to run-to-run sampling variance across separate stochastic executions. It is reported for broader context and is NOT used as the isolated intervention criterion.
+
+### 5.3 Promotion Rule
+Promotion of V10 as the baseline for V11 requires meeting BOTH:
+1. **Primary Paired Intervention Criterion**: $\Delta_{\text{upstream}} > 0$
+2. **Canonical Benchmark Performance Criterion**: Canonical V10 official accuracy $> 44.24\%$ ($> 73 / 165$ correct)
+alongside all frozen resource budgets and invariants.
 
 ---
 
@@ -136,8 +152,7 @@ Because planning operates before any candidate answer exists, V10 affects all ta
 
 | File | Description |
 | :--- | :--- |
-| [`config.json`](./config.json) | Complete experimental configuration and frozen parameters (Schema version 8). |
-| [`DESIGN.md`](./DESIGN.md) | In-depth technical architecture, planner/executor contracts, deterministic parsing grammar, fallback policy, generation budgets, and safety invariants. |
-| [`PRE_BENCHMARK.md`](./PRE_BENCHMARK.md) | Formal binding preregistration: hypotheses $H_1, H_{2a\dots 2e}$, evaluation protocol, transition taxonomy, decision rule, and 20 deterministic smoke scenarios. |
+| [`config.json`](./config.json) | Complete experimental configuration, two-tier evaluation specification, and frozen parameters (Schema version 8). |
+| [`DESIGN.md`](./DESIGN.md) | In-depth technical architecture, shared-context paired harness, contracts, deterministic grammar, fallback policy, generation budgets, and safety invariants. |
+| [`PRE_BENCHMARK.md`](./PRE_BENCHMARK.md) | Formal binding preregistration: hypotheses $H_1, H_2, H_{3a\dots 3e}$, evaluation protocol, transition taxonomy, decision rule, and 24 deterministic smoke scenarios. |
 | [`../../docs/V10_PRE_IMPLEMENTATION_AUDIT.md`](../../docs/V10_PRE_IMPLEMENTATION_AUDIT.md) | Pre-implementation governance audit answering all mandatory pre-flight checks. |
-
