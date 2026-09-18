@@ -445,5 +445,106 @@ class TestLLMPartDiagnostics(unittest.TestCase):
         self.assertTrue(hfc)
 
 
+class TestLLMMultiKey(unittest.TestCase):
+    """Tests for multi-key discovery, failover rotation, and shared index in LLMClient."""
+
+    def setUp(self):
+        LLMClient._shared_key_index = 0
+
+    def test_multi_key_rotation_on_failure(self):
+        call_keys = []
+
+        class MockGenAIClient:
+            def __init__(self, api_key):
+                self.api_key = api_key
+                call_keys.append(api_key)
+                self.models = MagicMock()
+                if api_key == "bad-key":
+                    self.models.generate_content.side_effect = Exception("GenerateRequestsPerDay quota exceeded")
+                else:
+                    mock_resp = MagicMock()
+                    mock_resp.text = "Success"
+                    mock_resp.candidates = [MagicMock(finish_reason="STOP", content=MagicMock(parts=[]))]
+                    mock_resp.usage_metadata = None
+                    self.models.generate_content.return_value = mock_resp
+
+        with patch("google.genai.Client", side_effect=MockGenAIClient):
+            client = LLMClient(api_key="bad-key,good-key")
+            res = client.generate("hello")
+            self.assertEqual(res.text, "Success")
+            self.assertEqual(call_keys, ["bad-key", "good-key"])
+            self.assertEqual(client.api_key, "good-key")
+
+    def test_multi_key_all_fail(self):
+        class FailingClient:
+            def __init__(self, api_key):
+                self.models = MagicMock()
+                self.models.generate_content.side_effect = Exception("403 API_KEY_INVALID")
+
+        with patch("google.genai.Client", side_effect=FailingClient):
+            client = LLMClient(api_key="key1,key2")
+            with self.assertRaises(RuntimeError) as ctx:
+                client.generate("hello")
+            self.assertIn("across all 2 API keys", str(ctx.exception))
+
+    def test_multi_key_shared_active_index(self):
+        LLMClient._shared_key_index = 0
+        call_keys = []
+
+        class MockGenAIClient:
+            def __init__(self, api_key):
+                self.api_key = api_key
+                call_keys.append(api_key)
+                self.models = MagicMock()
+                if api_key == "key-1":
+                    self.models.generate_content.side_effect = Exception("GenerateRequestsPerDay")
+                else:
+                    mock_resp = MagicMock()
+                    mock_resp.text = "Answer from key-2"
+                    mock_resp.candidates = [MagicMock(finish_reason="STOP", content=MagicMock(parts=[]))]
+                    mock_resp.usage_metadata = None
+                    self.models.generate_content.return_value = mock_resp
+
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "key-1,key-2"}, clear=True):
+            with patch("google.genai.Client", side_effect=MockGenAIClient):
+                client1 = LLMClient(env_path="nonexistent_test.env")
+                res1 = client1.generate("first prompt")
+                self.assertEqual(res1.text, "Answer from key-2")
+                self.assertEqual(client1.api_key, "key-2")
+
+                # Next client instance should start directly with the working key-2
+                client2 = LLMClient(env_path="nonexistent_test.env")
+                self.assertEqual(client2.api_key, "key-2")
+                res2 = client2.generate("second prompt")
+                self.assertEqual(res2.text, "Answer from key-2")
+                self.assertEqual(call_keys, ["key-1", "key-2", "key-2"])
+
+    def test_multi_key_discovery_from_dotenv_file(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8") as f:
+            f.write("GEMINI_API_KEY=key-alpha\n")
+            f.write("GEMINI_API_KEY=key-beta\n")
+            f.write("GEMINI_API_KEY_3=key-gamma\n")
+            temp_path = f.name
+
+        try:
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "key-alpha"}, clear=True):
+                with patch("google.genai.Client"):
+                    client = LLMClient(env_path=temp_path)
+                    self.assertEqual(client.api_keys, ["key-alpha", "key-beta", "key-gamma"])
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def test_api_key_property_setter(self):
+        with patch("google.genai.Client"):
+            client = LLMClient(api_key="initial-key")
+            self.assertEqual(client.api_key, "initial-key")
+            client.api_key = "updated-key"
+            self.assertEqual(client.api_key, "updated-key")
+            self.assertIn("updated-key", client.api_keys)
+
+
 if __name__ == "__main__":
     unittest.main()
+

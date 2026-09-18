@@ -197,6 +197,86 @@ class TestTavilySearchTool(unittest.TestCase):
         self.assertIn("URL: https://example2.com", formatted)
         self.assertIn("Snippet: Snippet 2", formatted)
 
+    def test_multi_key_rotation_on_failure(self):
+        call_keys = []
+
+        class MockClient:
+            def __init__(self, api_key):
+                self.api_key = api_key
+                call_keys.append(api_key)
+
+            def search(self, **kwargs):
+                if self.api_key == "bad-key":
+                    raise RuntimeError("Forbidden: usage limit exceeded")
+                return {"results": [{"title": "Success", "url": "https://ok.com", "content": "it works"}]}
+
+        with patch("tools.web_search.TavilyClient", side_effect=MockClient):
+            tool = TavilySearchTool(api_key="bad-key,good-key")
+            res = tool.search("hello")
+            self.assertTrue(res.success)
+            self.assertEqual(len(res.results), 1)
+            self.assertEqual(res.results[0].title, "Success")
+            self.assertEqual(call_keys, ["bad-key", "good-key"])
+            self.assertEqual(tool.api_key, "good-key")
+
+    def test_multi_key_all_fail(self):
+        class FailingClient:
+            def __init__(self, api_key):
+                pass
+
+            def search(self, **kwargs):
+                raise RuntimeError("Plan quota reached")
+
+        with patch("tools.web_search.TavilyClient", side_effect=FailingClient):
+            tool = TavilySearchTool(api_key="key1,key2")
+            res = tool.search("hello")
+            self.assertFalse(res.success)
+            self.assertIn("All 2 Tavily API keys failed", res.error_message)
+
+    def test_multi_key_shared_active_index(self):
+        TavilySearchTool._shared_key_index = 0
+        call_keys = []
+
+        class MockClient:
+            def __init__(self, api_key):
+                self.api_key = api_key
+                call_keys.append(api_key)
+
+            def search(self, **kwargs):
+                if self.api_key == "key-1":
+                    raise RuntimeError("Rate limit")
+                return {"results": []}
+
+        with patch.dict(os.environ, {"TAVILY_API_KEY": "key-1,key-2"}):
+            with patch("tools.web_search.TavilyClient", side_effect=MockClient):
+                tool1 = TavilySearchTool(env_path="")
+                res1 = tool1.search("first search")
+                self.assertTrue(res1.success)
+                self.assertEqual(tool1.api_key, "key-2")
+
+                # Next tool instance should start directly with the working key-2
+                tool2 = TavilySearchTool(env_path="")
+                self.assertEqual(tool2.api_key, "key-2")
+                res2 = tool2.search("second search")
+                self.assertTrue(res2.success)
+                self.assertEqual(call_keys, ["key-1", "key-2", "key-2"])
+
+    def test_multi_key_discovery_from_dotenv_file(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8") as f:
+            f.write("TAVILY_API_KEY=key-alpha\n")
+            f.write("TAVILY_API_KEY=key-beta\n")
+            f.write("TAVILY_API_KEY_3=key-gamma\n")
+            temp_path = f.name
+
+        try:
+            with patch.dict(os.environ, {"TAVILY_API_KEY": "key-alpha"}):
+                tool = TavilySearchTool(env_path=temp_path)
+                self.assertEqual(tool.api_keys, ["key-alpha", "key-beta", "key-gamma"])
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
 
 class TestGAIAWebAgent(unittest.TestCase):
     """Tests for the V1 GAIAWebAgent and retrieval execution flow."""

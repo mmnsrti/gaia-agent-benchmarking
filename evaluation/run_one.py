@@ -64,6 +64,10 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
             print("Note: v5 evaluates question and attachments using capability routing and one-shot verification.")
         elif version == "v6":
             print("Note: v6 preserves the V5 answer and adds read-only self-evaluation telemetry.")
+        elif version == "v7":
+            print("Note: v7 evaluates question using SUSPECT-triggered targeted repair and Frozen V6 pipeline.")
+        elif version == "v9":
+            print("Note: v9 evaluates question using upstream candidate recovery and Frozen V7 pipeline.")
     print("-" * 80)
 
     record = execute_task(
@@ -132,6 +136,20 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
         print(f"Post-Repair Answer: {record.get('post_repair_answer')}")
         print(f"Repair Latency: {record.get('repair_latency_seconds')}s")
         print(f"Repair Generation Attempts: {record.get('repair_generation_attempts')}")
+    if record.get("candidate_recovery_eligible") or record.get("candidate_recovery_attempted") or record.get("candidate_recovery_triggered"):
+        print(f"Recovery Eligible: {record.get('candidate_recovery_eligible')}")
+        print(f"Recovery Triggered: {record.get('candidate_recovery_triggered')}")
+        print(f"Recovery Attempted: {record.get('candidate_recovery_attempted')}")
+        print(f"Recovery Success: {record.get('candidate_recovery_success')}")
+        print(f"Recovery Failure Class: {record.get('candidate_recovery_failure_class')}")
+        print(f"Recovery Action: {record.get('candidate_recovery_action')}")
+        print(f"Recovery Recovered: {record.get('candidate_recovery_recovered')}")
+        if record.get("candidate_recovery_error_type"):
+            print(f"Recovery Error: {record.get('candidate_recovery_error_type')}")
+        print(f"Pre-Recovery Candidate: {record.get('pre_recovery_candidate')}")
+        print(f"Post-Recovery Candidate: {record.get('post_recovery_candidate')}")
+        print(f"Recovery Latency: {record.get('candidate_recovery_latency_seconds')}s")
+        print(f"Recovery Generation Attempts: {record.get('candidate_recovery_generation_attempts')}")
     if record.get("search_enabled"):
         print(f"Search Provider: {record['search_provider']}")
         print(f"Search Success: {record['search_success']}")
@@ -187,7 +205,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--task-id", type=str, default=None, help="Specific task ID to run")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
-    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: SUSPECT-triggered targeted repair; required)")
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: SUSPECT-triggered targeted repair, v9: upstream candidate recovery; required)")
     parser.add_argument("--no-log", action="store_true", help="Do not write record to experiments/runs.jsonl")
     args = parser.parse_args()
 

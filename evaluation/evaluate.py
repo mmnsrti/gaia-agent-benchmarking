@@ -33,6 +33,7 @@ from evaluation.metrics import (
 from evaluation.experiment_logger import get_git_metadata
 from evaluation.self_evaluation_metrics import calculate_self_evaluation_metrics
 from evaluation.targeted_repair_metrics import calculate_targeted_repair_metrics
+from evaluation.candidate_recovery_metrics import calculate_candidate_recovery_metrics
 
 
 def calculate_metrics(
@@ -119,7 +120,7 @@ def calculate_metrics(
     if predictions and predictions[0].get("project_version"):
         resolved_pv = predictions[0].get("project_version")
 
-    has_python = (resolved_pv in ("v3", "v4", "v5", "v6", "v7")) or any(
+    has_python = (resolved_pv in ("v3", "v4", "v5", "v6", "v7", "v9")) or any(
         pred.get("python_requested") or pred.get("python_executed") or pred.get("python_prompt_version")
         for pred in predictions
     )
@@ -134,7 +135,7 @@ def calculate_metrics(
     python_not_executed_count = 0
     python_not_executed_correct = 0
 
-    has_router = (resolved_pv in ("v4", "v5", "v6", "v7")) or any(
+    has_router = (resolved_pv in ("v4", "v5", "v6", "v7", "v9")) or any(
         pred.get("router_requested") or pred.get("router_decision")
         for pred in predictions
     )
@@ -149,20 +150,25 @@ def calculate_metrics(
     worker_latencies: List[float] = []
     total_llm_generations_list: List[int] = []
 
-    has_verifier = (resolved_pv in ("v5", "v6", "v7")) or any(
+    has_verifier = (resolved_pv in ("v5", "v6", "v7", "v9")) or any(
         pred.get("verifier_attempted") or pred.get("verifier_eligible") or pred.get("verifier_verdict")
         for pred in predictions
     )
-    has_self_evaluator = (resolved_pv in ("v6", "v7")) or any(
+    has_self_evaluator = (resolved_pv in ("v6", "v7", "v9")) or any(
         pred.get("self_eval_attempted") or pred.get("self_eval_eligible") or pred.get("self_eval_prompt_version")
         for pred in predictions
     )
-    has_targeted_repair = (resolved_pv == "v7") or any(
+    has_targeted_repair = (resolved_pv in ("v7", "v9")) or any(
         pred.get("repair_attempted") or pred.get("repair_eligible") or pred.get("repair_triggered") or pred.get("repair_prompt_version")
+        for pred in predictions
+    )
+    has_candidate_recovery = (resolved_pv == "v9") or any(
+        pred.get("candidate_recovery_attempted") or pred.get("candidate_recovery_eligible") or pred.get("candidate_recovery_triggered") or pred.get("candidate_recovery_prompt_version")
         for pred in predictions
     )
     self_evaluation_records: List[Dict[str, Any]] = []
     targeted_repair_records: List[Dict[str, Any]] = []
+    candidate_recovery_records: List[Dict[str, Any]] = []
     pre_verification_correct_tasks = 0
     verifier_eligible_count = 0
     verifier_attempted_count = 0
@@ -265,6 +271,37 @@ def calculate_metrics(
                 "repair_total_tokens": pred.get("repair_total_tokens"),
                 "self_eval_risk_type": pred.get("self_eval_risk_type"),
                 "repair_transition": repair_transition,
+            })
+
+        if has_candidate_recovery or pred.get("candidate_recovery_eligible") or pred.get("candidate_recovery_triggered") or pred.get("pre_recovery_candidate") is not None:
+            candidate_recovery_records.append({
+                "task_id": task_id,
+                "ground_truth": gt,
+                "pre_recovery_candidate": pred.get("pre_recovery_candidate"),
+                "post_recovery_candidate": pred.get("post_recovery_candidate"),
+                "pre_verification_answer": pred.get("pre_verification_answer"),
+                "final_answer": final_ans,
+                "completion_success": comp_success,
+                "candidate_recovery_eligible": bool(pred.get("candidate_recovery_eligible")),
+                "candidate_recovery_triggered": bool(pred.get("candidate_recovery_triggered")),
+                "candidate_recovery_attempted": bool(pred.get("candidate_recovery_attempted")),
+                "candidate_recovery_success": bool(pred.get("candidate_recovery_success")),
+                "candidate_recovery_failure_class": pred.get("candidate_recovery_failure_class"),
+                "candidate_recovery_action": pred.get("candidate_recovery_action"),
+                "candidate_recovery_recovered": bool(pred.get("candidate_recovery_recovered")),
+                "candidate_recovery_error_type": pred.get("candidate_recovery_error_type"),
+                "candidate_recovery_finish_reason": pred.get("candidate_recovery_finish_reason"),
+                "candidate_recovery_latency_seconds": pred.get("candidate_recovery_latency_seconds"),
+                "candidate_recovery_input_tokens": pred.get("candidate_recovery_input_tokens"),
+                "candidate_recovery_output_tokens": pred.get("candidate_recovery_output_tokens"),
+                "candidate_recovery_thinking_tokens": pred.get("candidate_recovery_thinking_tokens"),
+                "candidate_recovery_total_tokens": pred.get("candidate_recovery_total_tokens"),
+                "candidate_recovery_prompt_version": pred.get("candidate_recovery_prompt_version"),
+                "candidate_recovery_non_triggered_preserved": bool(pred.get("candidate_recovery_non_triggered_preserved", True)),
+                "candidate_recovery_searches_added": pred.get("candidate_recovery_searches_added", 0),
+                "candidate_recovery_python_runs_added": pred.get("candidate_recovery_python_runs_added", 0),
+                "repair_triggered": bool(pred.get("repair_triggered")),
+                "self_eval_risk_type": pred.get("self_eval_risk_type"),
             })
 
         # V6 scorer firewall: correctness reaches diagnostic metrics only here,
@@ -653,6 +690,29 @@ def calculate_metrics(
                 "repair_total_tokens": pred.get("repair_total_tokens"),
                 "repair_prompt_version": pred.get("repair_prompt_version"),
             })
+        if has_candidate_recovery or pred.get("candidate_recovery_attempted") or pred.get("candidate_recovery_eligible") or pred.get("pre_recovery_candidate") is not None:
+            detailed_entry.update({
+                "pre_recovery_candidate": pred.get("pre_recovery_candidate"),
+                "post_recovery_candidate": pred.get("post_recovery_candidate"),
+                "candidate_recovery_eligible": pred.get("candidate_recovery_eligible", False),
+                "candidate_recovery_triggered": pred.get("candidate_recovery_triggered", False),
+                "candidate_recovery_attempted": pred.get("candidate_recovery_attempted", False),
+                "candidate_recovery_success": pred.get("candidate_recovery_success", False),
+                "candidate_recovery_failure_class": pred.get("candidate_recovery_failure_class"),
+                "candidate_recovery_action": pred.get("candidate_recovery_action"),
+                "candidate_recovery_recovered": pred.get("candidate_recovery_recovered", False),
+                "candidate_recovery_error_type": pred.get("candidate_recovery_error_type"),
+                "candidate_recovery_finish_reason": pred.get("candidate_recovery_finish_reason"),
+                "candidate_recovery_latency_seconds": pred.get("candidate_recovery_latency_seconds"),
+                "candidate_recovery_input_tokens": pred.get("candidate_recovery_input_tokens"),
+                "candidate_recovery_output_tokens": pred.get("candidate_recovery_output_tokens"),
+                "candidate_recovery_thinking_tokens": pred.get("candidate_recovery_thinking_tokens"),
+                "candidate_recovery_total_tokens": pred.get("candidate_recovery_total_tokens"),
+                "candidate_recovery_prompt_version": pred.get("candidate_recovery_prompt_version"),
+                "candidate_recovery_non_triggered_preserved": pred.get("candidate_recovery_non_triggered_preserved", True),
+                "candidate_recovery_searches_added": pred.get("candidate_recovery_searches_added", 0),
+                "candidate_recovery_python_runs_added": pred.get("candidate_recovery_python_runs_added", 0),
+            })
         detailed_eval.append(detailed_entry)
 
     accuracy = round(correct_tasks / total_tasks, 4) if total_tasks > 0 else 0.0
@@ -693,7 +753,14 @@ def calculate_metrics(
 
     # Determine prompt version provenance
     # Avoid recording entire run as 'baseline-v1' if task 0 experienced search fallback
-    if resolved_pv == "v7" or (has_targeted_repair and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5", "v6")):
+    if resolved_pv == "v9" or (has_candidate_recovery and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7")):
+        primary_pv = "capability-router-v1"
+        fallback_pv = "router-direct-worker-v1" if any(p.get("router_fallback") for p in predictions) else None
+        prompt_pv = "candidate-recovery-v1"
+        if distinct_primary and len(distinct_primary) == 1:
+            primary_pv = distinct_primary[0]
+            fallback_pv = distinct_fallback[0] if distinct_fallback else fallback_pv
+    elif resolved_pv == "v7" or (has_targeted_repair and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5", "v6")):
         primary_pv = "capability-router-v1"
         fallback_pv = "router-direct-worker-v1" if any(p.get("router_fallback") for p in predictions) else None
         prompt_pv = "targeted-repair-v1"
@@ -955,6 +1022,16 @@ def calculate_metrics(
         for metric_name, metric_value in repair_metrics.items():
             summary[metric_name] = metric_value
 
+    if has_candidate_recovery:
+        recovery_metrics = calculate_candidate_recovery_metrics(candidate_recovery_records, total_benchmark_tasks=total_tasks)
+        summary["candidate_recovery_enabled"] = True
+        summary["candidate_recovery_prompt_version"] = next(
+            (p.get("candidate_recovery_prompt_version") for p in predictions if p.get("candidate_recovery_prompt_version")),
+            "candidate-recovery-v1",
+        )
+        for metric_name, metric_value in recovery_metrics.items():
+            summary[metric_name] = metric_value
+
     return {
         "summary": summary,
         "detailed": detailed_eval,
@@ -1114,6 +1191,12 @@ def evaluate_predictions(
         print(f"Post-Repair Accuracy:{summary.get('post_repair_accuracy', 0.0) * 100:.2f}% ({summary.get('post_repair_correct_tasks')}/{summary.get('total_tasks')})")
         print(f"Net Repair Delta:    {summary.get('net_repair_correct_delta', 0):+d} tasks ({summary.get('net_repair_accuracy_delta', 0.0) * 100:+.2f} pp)")
         print(f"Repair Harms:        {summary.get('repair_harm_count')} ({summary.get('repair_harm_rate', 0.0) * 100:.1f}%)")
+    if summary.get("candidate_recovery_enabled"):
+        print(f"Recovery Prompt:     {summary.get('candidate_recovery_prompt_version')}")
+        print(f"Recovery Triggered:  {summary.get('candidate_recovery_triggered_count')}/{summary.get('total_tasks')} ({summary.get('candidate_recovery_trigger_rate', 0.0) * 100:.1f}%)")
+        print(f"Recovery Success:    {summary.get('candidate_recovery_recovered_count')}/{summary.get('candidate_recovery_attempted_count', 0)} ({summary.get('candidate_recovery_attempt_success_rate', 0.0) * 100:.1f}%)")
+        print(f"Reachability Delta:  {summary.get('reachability_rate_pre_recovery', 0.0)*100:.1f}% -> {summary.get('reachability_rate_post_recovery', 0.0)*100:.1f}%")
+        print(f"Preservation Rate:   {summary.get('candidate_recovery_non_triggered_preservation_rate', 0.0) * 100:.1f}%")
     print("=" * 65 + "\n")
 
     # Write safe summary if requested
@@ -1139,7 +1222,7 @@ if __name__ == "__main__":
     parser.add_argument("--level", type=int, default=1, help="Benchmark level (1, 2, or 3)")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
-    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: targeted repair; default: v1)")
+    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: targeted repair, v9: upstream candidate recovery; default: v1)")
     parser.add_argument("--predictions", type=str, default=None, help="Path to predictions JSONL file")
     parser.add_argument("--data", type=str, default=None, help="Path to local ground-truth dataset")
     parser.add_argument("--summary-output", type=str, default=None, help="Output path for safe public summary JSON")
