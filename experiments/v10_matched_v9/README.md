@@ -1,10 +1,10 @@
 # Contemporaneous Matched Frozen V9 Control — Validity Notice
 
-**Status:** `INVALID_SECONDARY_CONTROL_PROVIDER_COLLAPSE`
-**Date:** September 19, 2026
-**Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`
-**Execution Type:** Secondary Matched Control (Contemporaneous Full Run)
-**Interpretation:** `EXCLUDED_FROM_SCIENTIFIC_INTERPRETATION`
+**Status:** `INVALID_SECONDARY_CONTROL_PROVIDER_COLLAPSE`  
+**Date:** September 19, 2026  
+**Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`  
+**Execution Type:** Secondary Matched Control (Contemporaneous Full Run)  
+**Interpretation:** `EXCLUDED_FROM_SCIENTIFIC_INTERPRETATION`  
 
 ---
 
@@ -40,3 +40,4 @@ Across the 165 tasks executed in this matched control run:
    - **Canonical V10 Full Benchmark:** 84 / 165 = 50.91% (Valid, zero provider errors, 161 / 165 completion).
    - **Historical Frozen V9 Canonical Baseline:** 73 / 165 = 44.24%.
 4. **Promotion Decision:** In accordance with the binding preregistration in `experiments/v10/PRE_BENCHMARK.md`, the contemporaneous matched V9 run is classified as **Secondary / Observational / Non-Causal** and is **not** a binding promotion gate. Its invalidation does not block promotion.
+

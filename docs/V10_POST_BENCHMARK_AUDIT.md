@@ -1,15 +1,15 @@
 # V10 — Formal Post-Benchmark Audit
 
-**Status:** `READY_FOR_FREEZE`
-**Date:** September 19, 2026
-**Auditor:** Automated Benchmark Integrity Suite / Antigravity Agent
-**Branch:** `v10-planner-executor`
-**Scientific Parent:** Frozen V9 (`v9-upstream-candidate-recovery`)
-**Historical Parent Reference:** `6369f427c4479073a6ca06531bdfd43e47cd613f` (73 / 165 = 44.24%)
-**Canonical Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`
-**Canonical Results Commit:** `c8f76b3fa8a1775da710665c0f683d4843a817dd`
-**Artifact Completion Commit:** `390ac11f422e1b124806a6442c55ce54117ae87b`
-**Evaluation Schema Version:** 8
+**Status:** `READY_FOR_FREEZE`  
+**Date:** September 19, 2026  
+**Auditor:** Automated Benchmark Integrity Suite / Antigravity Agent  
+**Branch:** `v10-planner-executor`  
+**Scientific Parent:** Frozen V9 (`v9-upstream-candidate-recovery`)  
+**Historical Parent Reference:** `6369f427c4479073a6ca06531bdfd43e47cd613f` (73 / 165 = 44.24%)  
+**Canonical Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`  
+**Canonical Results Commit:** `c8f76b3fa8a1775da710665c0f683d4843a817dd`  
+**Artifact Completion Commit:** `390ac11f422e1b124806a6442c55ce54117ae87b`  
+**Evaluation Schema Version:** 8  
 
 ---
 
@@ -105,7 +105,7 @@ $$\Delta_{\text{upstream}} = N(\text{UPSTREAM\_IMPROVEMENT}) - N(\text{UPSTREAM\
 | **Level 3** | 26 | 8 | **30.77%** | 6 / 26 (23.08%) | +2 tasks (+7.69 pp) |
 | **Overall** | **165** | **84** | **50.91%** | **73 / 165 (44.24%)** | **+11 tasks (+6.67 pp)** |
 
-Arithmetic check: $33 + 43 + 8 = 84$.
+Arithmetic check: $33 + 43 + 8 = 84$.  
 **Result:** **`PASS`** (Satisfies Gate 2: $\text{Accuracy}_{\text{V10}} > 44.24\%$).
 
 ### 4.2 Audit of the Four Canonical Completion Failures
@@ -216,3 +216,4 @@ experiments/v10_matched_v9/README.md                    (Notice created)   VERIF
 1. **Python Script Execution Reliability (H3e):** While more Python execution was attempted (44 tasks), script crashes, missing libraries, or syntax issues resulted in only a $38.64\%$ execution success rate.
 2. **Evidence Sufficiency (H3a):** EVIDENCE-risk failure remained high ($88.89\%$). While planning structures the task, it cannot compensate for unretrieved information or shallow search results.
 3. **Targeted Repair Stagnation:** Targeted Repair triggered on SUSPECT candidates but rarely replaced answers ($16 \text{ KEEP} / 0 \text{ REPLACE}$ on L1; $32 \text{ KEEP} / 2 \text{ REPLACE}$ on L2; $14 \text{ KEEP} / 2 \text{ REPLACE}$ on L3), yielding only $+1$ net improvement overall.
+
