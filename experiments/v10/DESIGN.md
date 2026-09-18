@@ -288,7 +288,6 @@ All downstream stages from Frozen V9 are preserved verbatim:
 | :--- | :---: | :---: | :--- |
 | **Web Searches** | $\le 1$ | $\le 1$ | Frozen tool budget. Planner has 0 searches. |
 | **File Processing** | $\le 1$ | $\le 1$ | Frozen tool budget. Planner has 0 file reads. |
-| **Python Executions** | $\le 1$ | $\le 1$ | Frozen tool budget. Planner has 0 executions. |
 | **Python Executions** | $\le 1$ | $\le 1$ per agent branch | Frozen tool budget. Planner has 0 executions. |
 | **Planner Generations** | N/A (Router = 1) | 1 | Replaces Router slot. |
 | **Executor Generations** | N/A (Worker = 1) | 1 | Replaces Worker slot. |
@@ -303,13 +302,10 @@ All downstream stages from Frozen V9 are preserved verbatim:
 
 ---
 
-## 10. Telemetry Schema (Schema Version 8)
 ## 10. Shared-Context Paired Upstream Ablation Harness Specification
 
-To support forensic post-benchmark analysis and regression auditing, V10 introduces Schema Version 8.
 To measure the isolated impact of replacing the `Router → Worker` pair with `Structured Planner → Plan-Guided Executor`, V10 defines a **Shared-Context Paired Upstream Ablation Harness**:
 
-### New Telemetry Fields
 ```text
 [GAIA Task: Question + Attachment]
                  │
@@ -388,7 +384,6 @@ To support forensic post-benchmark analysis and paired regression auditing, V10 
 }
 ```
 
-### Privacy & Serialization Safeguards
 ### 11.2 Paired Harness Telemetry Fields
 For paired ablation executions, the following structured fields are serialized:
 - `task_id`: Official GAIA task identifier.
@@ -408,4 +403,3 @@ For paired ablation executions, the following structured fields are serialized:
 - No hidden chain-of-thought or raw reasoning tokens are logged or serialized.
 - Raw system prompts are excluded from output JSONL lines.
 - Only structured, parsed planning keys and telemetry token counts are stored.
-

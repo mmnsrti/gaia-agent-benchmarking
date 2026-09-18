@@ -46,7 +46,6 @@ To ensure rigorous scientific attribution, V10 enforces a strict slot replacemen
 - **Tool Budgets Strictly Frozen**:
   - Web searches: $\le 1$ (Planner: 0, Executor: 0 beyond initial tool phase)
   - File processing: $\le 1$
-  - Python executions: $\le 1$ (Planner: 0, Executor: $\le 1$ when mode is `PYTHON`)
   - Python executions: $\le 1$ per agent branch (Planner: 0, Executor: $\le 1$ when mode is `PYTHON`)
 
 V10 tests whether **structured task decomposition and explicit plan guidance** improve upstream accuracy under identical compute, tool, and generation budgets.
@@ -119,18 +118,8 @@ Tasks flagged with `EXECUTION` ($78.3\%$ error rate) and `EVIDENCE` ($88.9\%$ er
 
 ---
 
-## 5. Preregistered Evaluation & Decision Framework
 ## 5. Preregistered Two-Tier Evaluation & Decision Framework
 
-Because planning operates before any candidate answer exists, V10 affects all tasks upstream. Unlike V9's starvation-gated candidate recovery:
-- $1 \to 0$ regressions are physically possible if a plan misguides an otherwise straightforward question.
-- Primary comparison: Contemporaneous matched Frozen V9 control run conducted under identical conditions, evaluated via transition matrix:
-  - $\text{Improvements } (0 \to 1)$
-  - $\text{Regressions } (1 \to 0)$
-  - $\text{Stable Correct } (1 \to 1)$
-  - $\text{Stable Failure } (0 \to 0)$
-  - **Net Correctness Delta**: $\Delta_{\text{net}} = N_{\text{Improvements}} - N_{\text{Regressions}}$
-- Cross-run comparisons are explicitly classified as observational and non-causal due to LLM sampling variance across separate runs.
 Because the scientific intervention occurs upstream and directly replaces the `Router → Worker` pair, V10 preregisters two distinct evaluation layers:
 
 ### 5.1 Primary Evaluation: Shared-Context Paired Upstream Ablation
@@ -163,11 +152,7 @@ alongside all frozen resource budgets and invariants.
 
 | File | Description |
 | :--- | :--- |
-| [`config.json`](./config.json) | Complete experimental configuration and frozen parameters (Schema version 8). |
-| [`DESIGN.md`](./DESIGN.md) | In-depth technical architecture, planner/executor contracts, deterministic parsing grammar, fallback policy, generation budgets, and safety invariants. |
-| [`PRE_BENCHMARK.md`](./PRE_BENCHMARK.md) | Formal binding preregistration: hypotheses $H_1, H_{2a\dots 2e}$, evaluation protocol, transition taxonomy, decision rule, and 20 deterministic smoke scenarios. |
 | [`config.json`](./config.json) | Complete experimental configuration, two-tier evaluation specification, and frozen parameters (Schema version 8). |
 | [`DESIGN.md`](./DESIGN.md) | In-depth technical architecture, shared-context paired harness, contracts, deterministic grammar, fallback policy, generation budgets, and safety invariants. |
 | [`PRE_BENCHMARK.md`](./PRE_BENCHMARK.md) | Formal binding preregistration: hypotheses $H_1, H_2, H_{3a\dots 3e}$, evaluation protocol, transition taxonomy, decision rule, and 24 deterministic smoke scenarios. |
 | [`../../docs/V10_PRE_IMPLEMENTATION_AUDIT.md`](../../docs/V10_PRE_IMPLEMENTATION_AUDIT.md) | Pre-implementation governance audit answering all mandatory pre-flight checks. |
-

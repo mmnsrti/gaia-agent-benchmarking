@@ -186,10 +186,6 @@
       2,
       6
     ],
-    "python_execution_count_range": [
-      0,
-      1
-    ],
     "python_execution_count_per_agent_branch": 1,
     "search_call_count_max": 1,
     "file_call_count_max": 1,
@@ -219,7 +215,6 @@
     "name": "official-gaia-leaderboard",
     "commit": "9f133d71362e77b3539f1514f31b9c101a545fec"
   },
-  "matched_control_protocol": {
   "primary_evaluation_protocol": {
     "name": "shared_context_paired_upstream_ablation",
     "metric": "delta_upstream",
@@ -245,9 +240,7 @@
     "name": "contemporaneous_frozen_v9_full_run",
     "control_version": "v9",
     "delay_seconds": 5.0,
-    "requirement": "Contemporaneous matched Frozen V9 control run preregistered for observational comparison; cross-run comparisons are classified as observational/non-causal due to run-to-run stochasticity."
     "interpretation": "observational_non_causal",
     "requirement": "Contemporaneous matched Frozen V9 full run executed under identical infrastructure and delay for observational context; cross-run metrics are non-causal due to run-to-run sampling variance and are not used as the causal intervention criterion."
   }
 }
-
