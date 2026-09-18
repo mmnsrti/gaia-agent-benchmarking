@@ -1,14 +1,14 @@
 # V10 — Pre-Benchmark Audit
 
-**Status:** `READY_FOR_CANONICAL_BENCHMARK`
-**Date:** September 18, 2026
-**Auditor:** Automated Benchmark Integrity Suite / Antigravity Agent
-**Branch:** `v10-planner-executor`
-**Scientific Parent:** Frozen V9 (`v9-upstream-candidate-recovery`)
-**Parent Inference Baseline:** `6369f427c4479073a6ca06531bdfd43e47cd613f` (Score: 73 / 165 = 44.24%)
-**Preregistration Baseline Commit:** `5132ad8a9122f057dc6156f878e4c697a35f505b`
-**Canonical Inference Candidate:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`
-**Evaluation Schema Version:** 8
+**Status:** `READY_FOR_CANONICAL_BENCHMARK`  
+**Date:** September 18, 2026  
+**Auditor:** Automated Benchmark Integrity Suite / Antigravity Agent  
+**Branch:** `v10-planner-executor`  
+**Scientific Parent:** Frozen V9 (`v9-upstream-candidate-recovery`)  
+**Parent Inference Baseline:** `6369f427c4479073a6ca06531bdfd43e47cd613f` (Score: 73 / 165 = 44.24%)  
+**Preregistration Baseline Commit:** `5132ad8a9122f057dc6156f878e4c697a35f505b`  
+**Canonical Inference Candidate:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`  
+**Evaluation Schema Version:** 8  
 
 ---
 
@@ -239,3 +239,4 @@ Following this pre-benchmark audit approval, three canonical runs will be execut
   ```
 - **Scope**: Full 165 tasks contemporaneously matched.
 - **Output**: Observational, non-causal cross-run comparison for environmental context.
+
