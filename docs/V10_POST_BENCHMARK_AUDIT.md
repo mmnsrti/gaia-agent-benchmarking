@@ -1,15 +1,15 @@
 # V10 — Formal Post-Benchmark Audit
 
-**Status:** `READY_FOR_FREEZE`  
-**Date:** September 19, 2026  
-**Auditor:** Automated Benchmark Integrity Suite / Antigravity Agent  
-**Branch:** `v10-planner-executor`  
-**Scientific Parent:** Frozen V9 (`v9-upstream-candidate-recovery`)  
-**Historical Parent Reference:** `6369f427c4479073a6ca06531bdfd43e47cd613f` (73 / 165 = 44.24%)  
-**Canonical Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`  
-**Canonical Results Commit:** `c8f76b3fa8a1775da710665c0f683d4843a817dd`  
-**Artifact Completion Commit:** `390ac11f422e1b124806a6442c55ce54117ae87b`  
-**Evaluation Schema Version:** 8  
+**Status:** `READY_FOR_FREEZE`
+**Date:** September 19, 2026
+**Auditor:** Automated Benchmark Integrity Suite / Antigravity Agent
+**Branch:** `v10-planner-executor`
+**Scientific Parent:** Frozen V9 (`v9-upstream-candidate-recovery`)
+**Historical Parent Reference:** `6369f427c4479073a6ca06531bdfd43e47cd613f` (73 / 165 = 44.24%)
+**Canonical Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`
+**Canonical Results Commit:** `c8f76b3fa8a1775da710665c0f683d4843a817dd`
+**Artifact Completion Commit:** `390ac110bfce264b802b5db42f81884d41e64b49`
+**Evaluation Schema Version:** 8
 
 ---
 
@@ -32,7 +32,7 @@ All 8 binding promotion criteria are satisfied:
 5. **Upstream Generation Slots:** Exactly 2 slots equalized between Slot 1 (Structured Planner) and Slot 2 (Plan-Guided Executor) (**PASS**).
 6. **Preserved Downstream Stages:** Frozen V9 Candidate Recovery, Frozen V5 Answer Verifier, Frozen V6 Self-Evaluator, and Frozen V7 Targeted Repair preserved verbatim (**PASS**).
 7. **Canonical Operational Validity:** All 165 official GAIA validation tasks structurally evaluated with 0 request failures and 0 unhandled provider errors (**PASS**).
-8. **Artifact Completeness:** All 12 previously ignored raw prediction and detailed evaluation JSONL artifacts force-added, verified, and locked against the canonical run manifest (**PASS**).
+8. **Artifact Completeness:** All 12 previously ignored raw prediction and detailed evaluation JSONL artifacts force-added, verified, and locked. 24 / 24 manifest-listed non-manifest artifacts were independently SHA-256 verified with 0 mismatches against `CANONICAL_RUN_MANIFEST.json` (which is tracked in Git as the provenance manifest) (**PASS**).
 
 ---
 
@@ -52,7 +52,9 @@ All 8 binding promotion criteria are satisfied:
 
 ## 3. Primary Evaluation: Shared-Context Paired Upstream Ablation
 
-The primary causal experiment evaluated whether replacing the coarse capability router with the structured planner improves upstream candidate quality when retrieval and tool evidence are strictly identical.
+The primary shared-context paired upstream ablation evaluated whether replacing the coarse capability router with the structured planner improves upstream candidate quality when retrieval and tool evidence are strictly identical.
+
+As preregistered in `experiments/v10/DESIGN.md`, this paired ablation removes retrieval and context divergence by feeding identical search and file snapshots to both branches, while acknowledging that residual generation stochasticity remains. It is designed as an intervention-oriented ablation rather than a claim of complete or perfect causal isolation.
 
 - **Harness:** `evaluation/run_v10_paired.py`
 - **Output:** `experiments/v10/paired_upstream_raw.jsonl`, `experiments/v10/paired_summary.json`, `experiments/v10/paired_detailed.jsonl`
@@ -66,7 +68,7 @@ The primary causal experiment evaluated whether replacing the coarse capability 
 | :--- | :--- | :---: | :---: |
 | **Branch A** | Frozen V9 Capability Router → Worker | 46 / 165 | 27.88% |
 | **Branch B** | V10 Structured Planner → Plan-Guided Executor | 54 / 165 | 32.73% |
-| **Difference** | Interventional Net Impact | **+8 tasks** | **+4.85 pp** |
+| **Difference** | Paired Net Difference | **+8 tasks** | **+4.85 pp** |
 
 ### 3.2 Paired Transition Matrix
 | Transition State | Definition | Count | % of Dataset |
@@ -100,12 +102,12 @@ $$\Delta_{\text{upstream}} = N(\text{UPSTREAM\_IMPROVEMENT}) - N(\text{UPSTREAM\
 ### 4.1 Canonical Official Accuracy Breakdown
 | Level | Tasks | Correct | Canonical V10 Accuracy | Frozen V9 Canonical Baseline | Absolute Delta |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Level 1** | 53 | 33 | **62.26%** | 31 / 53 (58.49%) | +2 tasks (+3.77 pp) |
-| **Level 2** | 86 | 43 | **50.00%** | 36 / 86 (41.86%) | +7 tasks (+8.14 pp) |
+| **Level 1** | 53 | 33 | **62.26%** | 33 / 53 (62.26%) | +0 tasks (+0.00 pp) |
+| **Level 2** | 86 | 43 | **50.00%** | 34 / 86 (39.53%) | +9 tasks (+10.47 pp) |
 | **Level 3** | 26 | 8 | **30.77%** | 6 / 26 (23.08%) | +2 tasks (+7.69 pp) |
 | **Overall** | **165** | **84** | **50.91%** | **73 / 165 (44.24%)** | **+11 tasks (+6.67 pp)** |
 
-Arithmetic check: $33 + 43 + 8 = 84$.  
+Arithmetic check: $33 + 43 + 8 = 84$.
 **Result:** **`PASS`** (Satisfies Gate 2: $\text{Accuracy}_{\text{V10}} > 44.24\%$).
 
 ### 4.2 Audit of the Four Canonical Completion Failures
@@ -125,14 +127,18 @@ Four tasks failed pipeline completion ($161 / 165$ completion success):
 | :--- | :--- | :---: | :---: | :---: |
 | **H1** | Paired upstream improvement | $\Delta_{\text{upstream}} > 0$ | **+8** ($13 - 5$) | **PASS** |
 | **H2** | Canonical accuracy vs Frozen V9 | $> 73 / 165$ ($> 44.24\%$) | **84 / 165 (50.91%)** | **PASS** |
-| **H3a** | Error rate reduction on diagnosed risks | EXECUTION $< 78.3\%$<br>EVIDENCE $< 88.9\%$ | EXECUTION: **59.26%** (16/27)<br>EVIDENCE: **88.89%** (32/36) | **PARTIALLY_SUPPORTED** |
+| **H3a** | Error rate reduction on diagnosed risks | EXECUTION $< 78.3\%$<br>EVIDENCE $< 88.9\%$ | EXECUTION: **62.96%** (17/27)<br>EVIDENCE: **88.89%** (32/36) | **PARTIALLY_SUPPORTED** |
 | **H3b** | Post-recovery candidate reachability | $\ge 90.0\%$ | **97.58%** (161/165) | **PASS** |
 | **H3c** | Candidate recovery trigger rate | $< 54.55\%$ (baseline: 90/165) | **30.91%** (51/165) | **PASS** |
 | **H3d** | Planner strict grammar parse rate | $\ge 95.0\%$ | **99.39%** (164/165) | **PASS** |
 | **H3e** | Python execution success rate | $\ge 80.0\%$ | **38.64%** (17/44) | **FAIL** |
 
 ### Hypothesis Commentary
-- **H3a (Risk Reductions):** EXECUTION error rate dropped significantly from $78.3\%$ in Frozen V9 to $59.26\%$ in V10, validating that structured step-by-step planning mitigated execution confusion. However, EVIDENCE error rate remained essentially unchanged ($88.89\%$ vs $88.9\%$), reflecting that upstream planning cannot overcome unretrieved or missing evidence.
+- **H3a (Risk Reductions):** Evaluated strictly against the preregistered self-evaluator conditional error metric (`self_eval_risk_type_conditional_error_rates`), matching the methodology of the Frozen V9 baseline:
+  - **EXECUTION Risk:** 17 incorrect out of 27 assessed = **62.96%** (Level 1: 2/6, Level 2: 8/13, Level 3: 7/8). This represents a material reduction from the Frozen V9 baseline of **78.3%** (**IMPROVED**).
+  - **EVIDENCE Risk:** 32 incorrect out of 36 assessed = **88.89%** (Level 1: 10/10, Level 2: 16/19, Level 3: 6/7). This is virtually identical to the Frozen V9 baseline of **88.9%** (**ESSENTIALLY UNCHANGED**).
+  - *Downstream outcome context:* One Level 3 task (`c526d8d6-5987-4da9-b24c-83466fa172f3`) assessed with EXECUTION risk was subsequently repaired by Targeted Repair, yielding a final post-repair EXECUTION error of 16 / 27 = 59.26%. The preregistered H3a comparison strictly adheres to the self-evaluation-stage metric of 17 / 27 = 62.96%.
+  - Overall status: **`PARTIALLY_SUPPORTED`**.
 - **H3e (Python Execution Reliability):** While Python requests/executions rose to 44, only 17 executed without non-zero exit codes or script exceptions (38.64% success rate). This secondary hypothesis failure highlights the key technical frontier for V11.
 
 ---
@@ -171,7 +177,7 @@ Detailed inspection of the prediction JSONL records confirmed that in **127 of 1
 
 ## 8. Artifact Completeness & Repository Integrity
 
-All 25 canonical result artifacts are now tracked in Git and verified with identical SHA-256 digests against `experiments/v10/CANONICAL_RUN_MANIFEST.json`:
+All 24 manifest-listed non-manifest canonical result artifacts are tracked in Git and verified with identical SHA-256 digests against `experiments/v10/CANONICAL_RUN_MANIFEST.json` (which itself is tracked in Git as the provenance manifest):
 
 ```text
 experiments/v10/paired_upstream_raw.jsonl     (a91550a706d4...)  VERIFIED
@@ -187,7 +193,6 @@ experiments/v10/predictions_level_3.jsonl    (d9c234bc447e...)  VERIFIED
 experiments/v10/summary_level_3.json         (561527183dac...)  VERIFIED
 experiments/v10/detailed_eval_level_3.jsonl  (b99070fa2923...)  VERIFIED
 experiments/v10/overall_summary.json         (7d1d8613cc31...)  VERIFIED
-experiments/v10/CANONICAL_RUN_MANIFEST.json  (6d480053de5b...)  VERIFIED
 
 experiments/v10_matched_v9/predictions_level_1.jsonl    (238fc403c5d4...)  VERIFIED
 experiments/v10_matched_v9/summary_level_1.json         (5b2cc0d854fd...)  VERIFIED
@@ -200,7 +205,12 @@ experiments/v10_matched_v9/summary_level_3.json         (f2319a566c38...)  VERIF
 experiments/v10_matched_v9/detailed_eval_level_3.jsonl  (0fbb38517a3d...)  VERIFIED
 experiments/v10_matched_v9/overall_summary.json         (afbbdf40524b...)  VERIFIED
 experiments/v10_matched_v9/secondary_cross_run_summary.json (5b2cf319e70e...) VERIFIED
-experiments/v10_matched_v9/README.md                    (Notice created)   VERIFIED
+```
+
+Provenance Manifest:
+```text
+experiments/v10/CANONICAL_RUN_MANIFEST.json  (Git-tracked provenance manifest)
+experiments/v10_matched_v9/README.md         (Git-tracked validity notice)
 ```
 
 ---
@@ -216,4 +226,3 @@ experiments/v10_matched_v9/README.md                    (Notice created)   VERIF
 1. **Python Script Execution Reliability (H3e):** While more Python execution was attempted (44 tasks), script crashes, missing libraries, or syntax issues resulted in only a $38.64\%$ execution success rate.
 2. **Evidence Sufficiency (H3a):** EVIDENCE-risk failure remained high ($88.89\%$). While planning structures the task, it cannot compensate for unretrieved information or shallow search results.
 3. **Targeted Repair Stagnation:** Targeted Repair triggered on SUSPECT candidates but rarely replaced answers ($16 \text{ KEEP} / 0 \text{ REPLACE}$ on L1; $32 \text{ KEEP} / 2 \text{ REPLACE}$ on L2; $14 \text{ KEEP} / 2 \text{ REPLACE}$ on L3), yielding only $+1$ net improvement overall.
-
