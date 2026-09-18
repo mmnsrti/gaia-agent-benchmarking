@@ -1681,8 +1681,6 @@ class GAIATargetedRepairAgent(GAIASelfEvaluationAgent):
         v6_result.llm_generation_count = v6_result.llm_generation_attempts
         v6_result.llm_generation_success_count += 1 if repair_generation_success else 0
 
-        max_v7_gens = 6 if getattr(self, "_is_v9", False) else 5
-        max_v7_gens = 6 if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False)) else 5
         max_v7_gens = (
             6
             if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False))

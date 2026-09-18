@@ -22,8 +22,10 @@ from agent.agent import (
 from agent.llm import LLMResponse
 from evaluation.dataset import GAIATask
 from evaluation.evaluate import calculate_metrics
+import ast
 import inspect
 import tempfile
+import textwrap
 from unittest.mock import patch
 
 from evaluation.runner import execute_task
@@ -939,11 +941,50 @@ class TestV10HardenedInvariants(unittest.TestCase):
         run_count = src.count("def run(")
         self.assertEqual(run_count, 1, f"Expected exactly 1 run() definition in GAIARouterAgent, found {run_count}")
 
-    def test_single_max_v7_gens_assignment(self):
-        """Asserts that GAIATargetedRepairAgent.run contains exactly 1 'max_v7_gens = (' assignment."""
-        src = inspect.getsource(GAIATargetedRepairAgent.run)
-        assign_count = src.count("max_v7_gens = (")
-        self.assertEqual(assign_count, 1, f"Expected exactly 1 max_v7_gens assignment, found {assign_count}")
+    def test_max_v7_gens_assignments_ast(self):
+        """Asserts via AST that GAIATargetedRepairAgent.run contains exactly 2 max_v7_gens assignments:
+        one in skipped-repair path and one in post-repair path.
+        """
+        src = textwrap.dedent(inspect.getsource(GAIATargetedRepairAgent.run))
+        tree = ast.parse(src)
+        assignments = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id == "max_v7_gens":
+                        assignments.append(node)
+
+        self.assertEqual(
+            len(assignments),
+            2,
+            f"Expected exactly 2 max_v7_gens assignments in GAIATargetedRepairAgent.run, found {len(assignments)}",
+        )
+
+    def test_no_adjacent_duplicate_max_v7_gens_assignments(self):
+        """Asserts that no statement block contains adjacent duplicate assignments to max_v7_gens."""
+        src = textwrap.dedent(inspect.getsource(GAIATargetedRepairAgent.run))
+        tree = ast.parse(src)
+        adjacent_duplicates = 0
+        for node in ast.walk(tree):
+            for field_name, field_val in ast.iter_fields(node):
+                if isinstance(field_val, list):
+                    prev_is_max_v7_assign = False
+                    for item in field_val:
+                        is_max_v7_assign = False
+                        if isinstance(item, ast.Assign):
+                            for target in item.targets:
+                                if isinstance(target, ast.Name) and target.id == "max_v7_gens":
+                                    is_max_v7_assign = True
+                                    break
+                        if is_max_v7_assign and prev_is_max_v7_assign:
+                            adjacent_duplicates += 1
+                        prev_is_max_v7_assign = is_max_v7_assign
+
+        self.assertEqual(
+            adjacent_duplicates,
+            0,
+            f"Found {adjacent_duplicates} adjacent duplicate max_v7_gens assignments in GAIATargetedRepairAgent.run",
+        )
 
     def test_native_multimodal_file_context_hash(self):
         """Asserts that native_bytes contribute deterministically to shared-context file hash."""
