@@ -1,0 +1,142 @@
+# V10 — Structured Planner → Plan-Guided Executor
+
+**Status**: `PREREGISTERED_PRE_IMPLEMENTATION`
+**Branch**: `v10-planner-executor`
+**Baseline Main Commit**: `7e6f35bd27c83c23072e27a337d52e157d5904cd`
+**Scientific Parent**: Frozen V9 (`v9-upstream-candidate-recovery`)
+**Frozen V9 Inference Commit**: `6369f427c4479073a6ca06531bdfd43e47cd613f`
+**Frozen V9 Final Benchmark Result**: `73 / 165 = 44.24%`
+**Architecture**: Structured Planner → Plan-Guided Executor (+ Frozen V9 Downstream Pipeline)
+**Model**: `gemini-3.5-flash-lite` (inherited from Frozen V7/V9)
+**Evaluation Scope**: Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)
+**Date**: September 2026
+
+See [`DESIGN.md`](./DESIGN.md) for the complete architectural specification, contracts, and invariants; [`PRE_BENCHMARK.md`](./PRE_BENCHMARK.md) for binding hypotheses, evaluation protocol, and deterministic smoke scenarios; and [`../../docs/V10_PRE_IMPLEMENTATION_AUDIT.md`](../../docs/V10_PRE_IMPLEMENTATION_AUDIT.md) for the pre-implementation governance audit.
+
+---
+
+## 1. Overview & Research Focus
+
+Version 10 (V10) investigates **Structured Planning and Plan-Guided Execution** to address the empirical failure bottleneck identified in Frozen V9: **upstream execution and reasoning flaws**.
+
+In Frozen V9:
+- **Candidate Starvation was largely overcome**: Candidate reachability expanded from $45.45\%$ (75/165) to $96.36\%$ (159/165), achieving a net gain of $+50.91$ percentage points.
+- **Residual Bottleneck**: Only $26 / 84$ ($30.95\%$) of recovered candidates were correct upon generation, and over $65\%$ ($55 / 84$) remained incorrect after all downstream safeguards.
+- **Downstream Repair Limits**: Downstream V7 targeted repair triggered on 75 tasks across the benchmark, but generated only $1$ net improvement ($0 + 0 + 1$). Post-hoc text-only repair cannot resolve fundamental upstream failures where the task objective was misinterpreted, necessary evidence was ignored, or the execution strategy was unsound.
+
+V10 addresses this limitation at the source by replacing the coarse upstream:
+```text
+Router → Worker
+```
+with:
+```text
+Structured Planner → Plan-Guided Executor
+```
+
+---
+
+## 2. Strict Experimental Ablation Constraint
+
+To ensure rigorous scientific attribution, V10 enforces a strict slot replacement:
+- **Zero Additional Upstream Generations**: The coarse capability router (which merely emitted `DIRECT` or `PYTHON`) is converted into a **Structured Planner**. The worker generation becomes a **Plan-Guided Executor**.
+- **Upstream Generation Count**: Strictly preserved at **2 generations** (Slot 1: Planner, Slot 2: Executor).
+- **Generation Budget**: Maximum logical generation limits remain unchanged from Frozen V9:
+  - Non-recovery path: $\le 5$ logical generations (Planner $\to$ Executor $\to$ Verifier $\to$ Self-Eval $\to$ Repair)
+  - Recovery path: $\le 6$ logical generations (Planner $\to$ Executor $\to$ Candidate Recovery $\to$ Verifier $\to$ Self-Eval $\to$ Repair)
+- **Tool Budgets Strictly Frozen**:
+  - Web searches: $\le 1$ (Planner: 0, Executor: 0 beyond initial tool phase)
+  - File processing: $\le 1$
+  - Python executions: $\le 1$ (Planner: 0, Executor: $\le 1$ when mode is `PYTHON`)
+
+V10 tests whether **structured task decomposition and explicit plan guidance** improve upstream accuracy under identical compute, tool, and generation budgets.
+
+---
+
+## 3. Diagnostic Signal from Canonical V9 Data
+
+Canonical V9 self-evaluation risk diagnostics across all 165 tasks reveal high conditional error rates for tasks exhibiting execution or evidence deficiencies:
+
+| Assessed Risk Type | Assessed Tasks ($N$) | Incorrect Tasks | Correct Tasks | Conditional Error Rate |
+| :--- | :---: | :---: | :---: | :---: |
+| **`CALCULATION`** | 1 | 1 | 0 | **100.0%** |
+| **`REASONING`** | 1 | 1 | 0 | **100.0%** |
+| **`EVIDENCE`** | 27 | 24 | 3 | **88.9%** |
+| **`EXECUTION`** | 46 | 36 | 10 | **78.3%** |
+| **`NONE`** | 81 | 24 | 57 | **29.6%** |
+
+*(Total assessed = 156 tasks; 9 tasks unreached or omitted self-eval)*
+
+Tasks flagged with `EXECUTION` ($78.3\%$ error rate) and `EVIDENCE` ($88.9\%$ error rate) account for the vast majority of identifiable errors. Structuring the planner to explicitly specify the required evidence and the operational steps directly targets these dominant error classes.
+
+---
+
+## 4. Architectural Summary
+
+```text
+[GAIA Question + Attachment]
+            │
+            ▼
+┌────────────────────────────────────────────────────────┐
+│ INITIAL TOOL PHASE (Frozen V9)                         │
+│ - Tavily Search (at most 1)                            │
+│ - File / Attachment Processing (at most 1)             │
+└────────────────────────────────────────────────────────┘
+            │
+            ▼
+┌────────────────────────────────────────────────────────┐
+│ STRUCTURED PLANNER (Replaces Router Slot)             │
+│ - Zero tools, text-only generation                     │
+│ - Deterministic Line-Oriented Contract:                │
+│     MODE: DIRECT | PYTHON                              │
+│     OBJECTIVE: <single concise sentence>               │
+│     EVIDENCE_NEEDED: <key evidence identified>         │
+│     PLAN: 1. ... 2. ... 3. ...                         │
+│     ANSWER_TYPE: <number|name|list|date|short text>    │
+│ - Deterministic fallback on malformed output           │
+└────────────────────────────────────────────────────────┘
+            │
+            ▼
+┌────────────────────────────────────────────────────────┐
+│ PLAN-GUIDED EXECUTOR (Replaces Worker Slot)            │
+│ - Conditioned on Question, Evidence, and Plan          │
+│ - If DIRECT: Direct evidence-grounded answer           │
+│ - If PYTHON: Generates executable code (<=1 run)       │
+└────────────────────────────────────────────────────────┘
+            │
+            ▼
+┌────────────────────────────────────────────────────────┐
+│ FROZEN V9 DOWNSTREAM PIPELINE                          │
+│ 1. Candidate Recovery (at most 1, empty candidate only)│
+│ 2. V5 Answer Verifier (KEEP vs REVISE)                 │
+│ 3. V6 Self-Evaluator (PASS vs SUSPECT + Risk Diagnostic│
+│ 4. V7 Targeted Repair (KEEP vs REPLACE if SUSPECT)     │
+└────────────────────────────────────────────────────────┘
+            │
+            ▼
+      Final Answer
+```
+
+---
+
+## 5. Preregistered Evaluation & Decision Framework
+
+Because planning operates before any candidate answer exists, V10 affects all tasks upstream. Unlike V9's starvation-gated candidate recovery:
+- $1 \to 0$ regressions are physically possible if a plan misguides an otherwise straightforward question.
+- Primary comparison: Contemporaneous matched Frozen V9 control run conducted under identical conditions, evaluated via transition matrix:
+  - $\text{Improvements } (0 \to 1)$
+  - $\text{Regressions } (1 \to 0)$
+  - $\text{Stable Correct } (1 \to 1)$
+  - $\text{Stable Failure } (0 \to 0)$
+  - **Net Correctness Delta**: $\Delta_{\text{net}} = N_{\text{Improvements}} - N_{\text{Regressions}}$
+- Cross-run comparisons are explicitly classified as observational and non-causal due to LLM sampling variance across separate runs.
+
+---
+
+## 6. Directory Contents
+
+| File | Description |
+| :--- | :--- |
+| [`config.json`](./config.json) | Complete experimental configuration and frozen parameters (Schema version 8). |
+| [`DESIGN.md`](./DESIGN.md) | In-depth technical architecture, planner/executor contracts, deterministic parsing grammar, fallback policy, generation budgets, and safety invariants. |
+| [`PRE_BENCHMARK.md`](./PRE_BENCHMARK.md) | Formal binding preregistration: hypotheses $H_1, H_{2a\dots 2e}$, evaluation protocol, transition taxonomy, decision rule, and 20 deterministic smoke scenarios. |
+| [`../../docs/V10_PRE_IMPLEMENTATION_AUDIT.md`](../../docs/V10_PRE_IMPLEMENTATION_AUDIT.md) | Pre-implementation governance audit answering all mandatory pre-flight checks. |
