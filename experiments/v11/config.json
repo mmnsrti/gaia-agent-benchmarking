@@ -223,10 +223,10 @@
     "commit": "9f133d71362e77b3539f1514f31b9c101a545fec"
   },
   "primary_evaluation_protocol": {
-    "name": "triggered_cohort_shared_plan_paired_retrieval_ablation",
+    "name": "followup_eligible_shared_plan_paired_retrieval_ablation",
     "metric": "Delta_followup",
     "decision_criterion": "Delta_followup > 0",
-    "description": "Triggered-cohort shared-plan paired retrieval ablation where both Branch A (without follow-up search) and Branch B (with follow-up search) receive identical question, Search 1 evidence, file context, planner output, and plan.",
+    "description": "Follow-up-eligible shared-plan paired retrieval ablation where both Branch A (without follow-up search) and Branch B (with follow-up search) receive identical question, Search 1 evidence, file context, planner output, and plan.",
     "interpretation": "isolates_marginal_effect_of_search_2_evidence_residual_generation_stochasticity_remains",
     "boundary": "pre_recovery_upstream_candidate",
     "telemetry_fields": [
@@ -236,8 +236,14 @@
       "shared_plan_hash",
       "planner_evidence_status",
       "planner_followup_query",
+      "planner_requested_followup",
+      "followup_query_valid",
+      "followup_query_duplicate",
+      "followup_eligible",
       "second_search_triggered",
+      "second_search_attempted",
       "second_search_success",
+      "second_search_empty_results",
       "followup_search_hash",
       "candidate_without_followup",
       "candidate_with_followup",

@@ -1,16 +1,16 @@
 # V11 Pre-Implementation Audit Report
 
-**Date:** September 19, 2026  
-**Auditor:** Automated Benchmark Integrity Suite / Antigravity Agent  
-**Target Version:** `V11 — Planner-Guided Adaptive Evidence Retrieval`  
-**Scientific Parent Baseline:** `V10 — Structured Planner → Plan-Guided Executor` (Frozen `v10-planner-executor`)  
-**Parent Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`  
-**Parent Canonical Result:** `84 / 165 = 50.91%`  
-**Merged Main Baseline Commit:** `0761b81330540cdc67fe2d662aef049bc87d9d8f`  
-**Branch:** `v11-adaptive-evidence-retrieval`  
-**Evaluation Schema Version:** 9  
-**Audit Status:** `PRE_IMPLEMENTATION`  
-**Verdict:** `READY_FOR_IMPLEMENTATION`  
+**Date:** September 19, 2026
+**Auditor:** Automated Benchmark Integrity Suite / Antigravity Agent
+**Target Version:** `V11 — Planner-Guided Adaptive Evidence Retrieval`
+**Scientific Parent Baseline:** `V10 — Structured Planner → Plan-Guided Executor` (Frozen `v10-planner-executor`)
+**Parent Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`
+**Parent Canonical Result:** `84 / 165 = 50.91%`
+**Merged Main Baseline Commit:** `0761b81330540cdc67fe2d662aef049bc87d9d8f`
+**Branch:** `v11-adaptive-evidence-retrieval`
+**Evaluation Schema Version:** 9
+**Audit Status:** `PRE_IMPLEMENTATION`
+**Verdict:** `READY_FOR_IMPLEMENTATION`
 
 ---
 
@@ -45,7 +45,7 @@ The audit confirms that:
 | **7. Duplicate query protection?** | Search 2 query matching Search 1 is skipped | **YES** | `experiments/v11/DESIGN.md` Section 8; `second_search_skipped_duplicate_query`. |
 | **8. Frozen V10 downstream preserved?** | Recovery, Verifier, Self-Eval, Repair active | **YES** | Configured verbatim; zero downstream code/prompt edits. |
 | **9. Schema version 9 preregistered?** | Telemetry schema upgraded to version 9 | **YES** | `experiments/v11/config.json`: `evaluation_schema_version: 9`. |
-| **10. Paired methodology coherent?** | Triggered-cohort shared-plan paired ablation | **YES** | `experiments/v11/PRE_BENCHMARK.md` Section 3; isolates Search 2 at boundary. |
+| **10. Paired methodology coherent?** | Follow-up-eligible shared-plan paired ablation | **YES** | `experiments/v11/PRE_BENCHMARK.md` Section 3; evaluates Search 2 effect under shared plan. |
 | **11. Promotion rules preregistered?** | All 13 binding promotion gates defined before code | **YES** | `experiments/v11/PRE_BENCHMARK.md` Section 6. |
 | **12. Ground-truth firewall preserved?** | Zero runtime access to labels or scorer | **YES** | Strict post-hoc evaluation only; zero label leakage. |
 | **13. Deterministic smoke matrix defined?** | Exactly 28 zero-network smoke scenarios | **YES** | `experiments/v11/PRE_BENCHMARK.md` Section 9. |
@@ -108,12 +108,13 @@ If Planner v2 generation produces malformed text, times out, or fails parsing:
 - Executor prompts (`executor-direct-v1`, `executor-python-v1`) remain conceptually preserved from Frozen V10.
 
 ### 3.7 Evaluation Methodology & Attribution
-1. **Primary Protocol (Within-Task Paired Ablation):**  
-   Evaluates triggered tasks where both branches receive the exact same question, Search 1 evidence, file context, planner output, and plan. Branch A runs without Search 2; Branch B runs with Search 2. Both stop at the pre-recovery candidate boundary.
+1. **Primary Protocol (Follow-Up-Eligible Shared-Plan Paired Ablation):**
+   Evaluates follow-up-eligible tasks (parsed planner output, `EVIDENCE_STATUS: INSUFFICIENT`, and valid non-duplicate query) where both branches receive the exact same question, Search 1 evidence, file context, planner output, and plan. Branch A runs without Search 2; Branch B runs with Search 2 (or clean fallback). Both stop at the pre-recovery candidate boundary.
+   - The protocol provides an intervention-oriented estimate under identical context and plan, not a perfect causal estimate, as residual Executor generation stochasticity remains.
    - Primary metric: $\Delta_{\text{followup}} = N_{\text{RETRIEVAL\_IMPROVEMENT}} - N_{\text{RETRIEVAL\_REGRESSION}} > 0$.
-2. **Canonical Protocol (Full Benchmark):**  
+2. **Canonical Protocol (Full Benchmark):**
    Evaluates the full end-to-end V11 agent across all 165 GAIA validation tasks, requiring official accuracy $> 50.91\%$ ($> 84 / 165$).
-3. **Contemporaneous Matched Control Excluded:**  
+3. **Contemporaneous Matched Control Excluded:**
    A contemporaneous full-run matched V10 control is explicitly not required for promotion, eliminating separate-run sampling noise.
 
 ---

@@ -1,16 +1,16 @@
 # V11 — Formal Preregistration & Pre-Benchmark Protocol: Planner-Guided Adaptive Evidence Retrieval
 
-**Status:** PROPOSED_PRE_IMPLEMENTATION  
-**Document Version:** 1.0  
-**Schema Version:** 9  
-**Branch:** `v11-adaptive-evidence-retrieval`  
-**Repository Parent Commit:** `0761b81330540cdc67fe2d662aef049bc87d9d8f`  
-**Scientific Parent:** Frozen V10 (`v10-planner-executor`)  
-**Canonical Parent Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`  
-**Canonical Parent Benchmark Score:** 84 / 165 (50.91%)  
-**Evaluation Scope:** Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)  
-**Model:** `gemini-3.5-flash-lite` (inherited from Frozen V7/V9/V10)  
-**Date:** September 2026  
+**Status:** PROPOSED_PRE_IMPLEMENTATION
+**Document Version:** 1.1
+**Schema Version:** 9
+**Branch:** `v11-adaptive-evidence-retrieval`
+**Repository Parent Commit:** `0761b81330540cdc67fe2d662aef049bc87d9d8f`
+**Scientific Parent:** Frozen V10 (`v10-planner-executor`)
+**Canonical Parent Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`
+**Canonical Parent Benchmark Score:** 84 / 165 (50.91%)
+**Evaluation Scope:** Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)
+**Model:** `gemini-3.5-flash-lite` (inherited from Frozen V7/V9/V10)
+**Date:** September 2026
 
 ---
 
@@ -25,39 +25,57 @@ V11 isolates the effect of **adaptive evidence retrieval** at the upstream formu
 ## 2. Binding Hypotheses
 
 ### Primary Hypothesis
-- **$H_1$ — Follow-Up Retrieval Benefit (Paired Upstream Metric):**  
-  On the planner-triggered cohort ($N_{\text{triggered}}$ tasks where Planner v2 determines `EVIDENCE_STATUS: INSUFFICIENT`), the net candidate correctness delta under identical context and plan will be strictly positive:
+- **$H_1$ — Follow-Up Retrieval Benefit (Paired Upstream Metric):**
+  On the preregistered **Follow-Up-Eligible Cohort** ($N_{\text{followup\_eligible}}$ tasks), the net candidate correctness difference under identical context and plan will be strictly positive:
   $$\Delta_{\text{followup}} = N_{\text{RETRIEVAL\_IMPROVEMENT}} - N_{\text{RETRIEVAL\_REGRESSION}} > 0$$
-  *Non-Testability Clause:* If $N_{\text{triggered}} == 0$, $H_1$ is mathematically undefined (`NOT_TESTABLE`), and V11 cannot be promoted.
+  *Non-Testability Clause:* If $N_{\text{followup\_eligible}} == 0$, $H_1$ is mathematically undefined (`NOT_TESTABLE`), and V11 cannot be promoted.
+
+### Definition of the Primary Follow-Up-Eligible Cohort
+A task belongs to the primary paired evaluation cohort if and only if it satisfies **ALL five** criteria:
+1. Planner v2 generation was attempted.
+2. Planner v2 output parsed successfully.
+3. `EVIDENCE_STATUS == "INSUFFICIENT"`.
+4. `FOLLOWUP_QUERY` is syntactically non-empty and valid.
+5. Normalized `FOLLOWUP_QUERY` is **NOT** identical to the normalized Search 1 provider query.
+
+#### Non-Conditioning Invariant (Anti-Selection Bias)
+Cohort membership is determined strictly **BEFORE** the Search 2 provider outcome:
+- The cohort **MUST NOT** be conditioned on Search 2 success, non-empty snippets, new URLs retrieved, or candidate correctness.
+- If Search 2 suffers a provider failure (e.g., HTTP 429, timeout) or returns zero usable results, the task **REMAINS** in the primary follow-up-eligible cohort. Branch B receives the clean fallback (Search 1 evidence only), and the pair is evaluated (typically resulting in `RETRIEVAL_STABLE_CORRECT` or `RETRIEVAL_STABLE_FAILURE`).
+- Removing failed Search 2 attempts from the cohort is strictly prohibited.
+
+#### Excluded Cohorts
+- **Duplicate-Query Cases:** Tasks where the planner emits `INSUFFICIENT` but the query matches Search 1 are classified as *Planner-Requested but Not Follow-Up-Eligible*. Search 2 is skipped (`second_search_skipped_duplicate_query = True`). These tasks are excluded from the primary paired retrieval cohort because no distinct retrieval intervention can occur. They remain included in canonical end-to-end evaluation and duplicate diagnostics.
+- **Planner Fallback Cases:** Tasks where planner parsing fails fall back deterministically to `SUFFICIENT` and `NONE`. They do not trigger Search 2 and are excluded from the primary paired retrieval cohort.
 
 ### Canonical Performance Gate
-- **$H_2$ — Canonical End-to-End Benchmark Superiority:**  
+- **$H_2$ — Canonical End-to-End Benchmark Superiority:**
   On the complete 165-task GAIA validation suite, the canonical V11 agent will strictly exceed the Frozen V10 historical reference ($84 / 165 = 50.91\%$):
   $$\text{V11 Correct Tasks} > 84 \iff \text{V11 Official Accuracy} > 50.91\%$$
 
 ### Secondary Diagnostic Hypotheses
-- **$H_{3a}$ — Evidence-Risk Conditional Error Reduction:**  
+- **$H_{3a}$ — Evidence-Risk Conditional Error Reduction:**
   In post-hoc self-evaluation diagnostics, the conditional error rate for tasks assessed with `EVIDENCE` risk will strictly decrease compared to Frozen V10 ($32 / 36 = 88.89\%$):
   $$\text{V11 EVIDENCE Conditional Error Rate} < 88.89\%$$
-- **$H_{3b}$ — Candidate Recovery Trigger Reduction:**  
+- **$H_{3b}$ — Candidate Recovery Trigger Reduction:**
   Because stronger evidence facilitates upstream task execution, the candidate recovery trigger rate will decrease below Frozen V10 ($51 / 165 = 30.91\%$):
   $$\text{V11 Recovery Trigger Rate} < 30.91\%$$
-- **$H_{3c}$ — Reachability Preservation Floor:**  
+- **$H_{3c}$ — Reachability Preservation Floor:**
   V11 downstream non-empty candidate reachability will maintain a high preservation floor:
   $$\text{V11 Post-Recovery Reachability} \ge 95.0\%$$
-- **$H_{3d}$ — Planner v2 Contract Adherence:**  
+- **$H_{3d}$ — Planner v2 Contract Adherence:**
   The deterministic line-oriented parser will achieve high parse reliability on Planner v2:
   $$\text{Planner v2 Parse Success Rate} \ge 95.0\%$$
-- **$H_{3e}$ — Follow-Up Retrieval Operational Tracking:**  
+- **$H_{3e}$ — Follow-Up Retrieval Operational Tracking:**
   Document and report exact counts for follow-up search eligibility, attempts, successes, provider errors, and empty results. Provider errors do not constitute an automatic scientific failure unless widespread infrastructure collapse occurs.
-- **$H_{3f}$ — Search Novelty Diagnostic:**  
+- **$H_{3f}$ — Search Novelty Diagnostic:**
   For triggered tasks, report the proportion of follow-up searches returning $\ge 1$ new URL not present in Search 1, along with the mean and median new URLs retrieved. This metric is descriptive only and non-binding.
 
 ---
 
-## 3. Primary Evaluation Protocol: Triggered-Cohort Shared-Plan Paired Retrieval Ablation
+## 3. Primary Evaluation Protocol: Follow-Up-Eligible Shared-Plan Paired Retrieval Ablation
 
-The primary scientific evaluation is an isolated within-task paired ablation executed by `evaluation/run_v11_paired.py`:
+The primary scientific evaluation is a within-task paired retrieval ablation executed by `evaluation/run_v11_paired.py`:
 
 ```text
 GAIA Question + Optional Attachment
@@ -68,11 +86,13 @@ ONE File Context Preparation (if applicable)
      ↓
 ONE Planner v2 Generation (`planner-v2-adaptive-evidence`)
      │
-     ├── [EVIDENCE_STATUS: SUFFICIENT] → Record as Non-Triggered; bypass paired executor fork.
+     ├── [Non-Eligible: SUFFICIENT, Duplicate Query, or Parser Fallback]
+     │        ↓
+     │   Bypass paired executor fork (record classification in telemetry).
      │
-     └── [EVIDENCE_STATUS: INSUFFICIENT & Valid Non-Duplicate Query]
+     └── [Follow-Up-Eligible: Parsed, INSUFFICIENT, Valid & Non-Duplicate Query]
               ↓
-         Trigger Search 2 (Tavily, basic, max_results=5, N = 1)
+         Attempt Search 2 (Tavily, basic, max_results=5, N = 1)
               ↓
          Snapshot Frozen Shared State:
          - Same Question
@@ -84,15 +104,15 @@ ONE Planner v2 Generation (`planner-v2-adaptive-evidence`)
               ↓
          FORK TO TWO PARALLEL UPSTREAM EXECUTOR BRANCHES
               │
-              ├── Branch A (No Follow-Up Evidence):
+              ├── Branch A (Without Follow-Up Evidence):
               │   Question + Search 1 + File + Exact Plan
               │   ↓
               │   Frozen V10 Executor (N ≤ 1, Python ≤ 1)
               │   ↓
               │   Upstream Candidate A (`pre_recovery_candidate_A`)
               │
-              └── Branch B (With Follow-Up Evidence):
-                  Question + Search 1 + Search 2 + File + Exact Plan
+              └── Branch B (With Follow-Up Evidence / Clean Fallback):
+                  Question + Search 1 + [Search 2 Results or Clean Fallback] + File + Exact Plan
                   ↓
                   Frozen V10 Executor (N ≤ 1, Python ≤ 1)
                   ↓
@@ -100,7 +120,7 @@ ONE Planner v2 Generation (`planner-v2-adaptive-evidence`)
 ```
 
 ### Boundary Isolation Invariant
-Both branches terminate strictly at the **pre-recovery candidate formulation boundary**. Neither Branch A nor Branch B executes Candidate Recovery, Answer Verifier, Self-Evaluator, or Targeted Repair. This isolates the pure effect of Search 2 evidence before any downstream intervention.
+Both branches terminate strictly at the **pre-recovery candidate formulation boundary**. Neither Branch A nor Branch B executes Candidate Recovery, Answer Verifier, Self-Evaluator, or Targeted Repair. This isolates the evidence intervention before downstream safeguards engage.
 
 ### Primary Transition Taxonomy
 Evaluated post-hoc using the official GAIA leaderboard scorer:
@@ -112,8 +132,8 @@ Evaluated post-hoc using the official GAIA leaderboard scorer:
 | **`RETRIEVAL_STABLE_CORRECT`** | Correct | Correct | Task was already solvable without Search 2 evidence. |
 | **`RETRIEVAL_STABLE_FAILURE`** | Incorrect / Empty | Incorrect / Empty | Neither branch solved the task; reasoning or evidence gap persists. |
 
-### Methodological Status
-The paired protocol controls question, initial retrieved search evidence, file context, planner output, operational plan, model parameters, and tool configurations. Residual stochasticity in Executor generation remains. This is an **intervention-oriented paired retrieval ablation**, not an assertion of absolute causal perfection.
+### Methodological Interpretation
+The paired protocol controls question, initial retrieved search evidence, file context, planner output, operational plan, model parameters, and tool configurations. Residual stochasticity in Executor generation remains. This is an **intervention-oriented paired retrieval ablation**, **not a perfect causal estimate** and **not fully causal**. Preferred terminology is *shared-plan paired retrieval ablation*, *paired intervention-oriented estimate*, and *paired net difference*.
 
 ---
 
@@ -123,7 +143,7 @@ Following the paired ablation, the full deployed V11 agent will be evaluated end
 - **Structural Coverage:** Exactly 165 / 165 unique tasks recorded.
 - **Pipeline Completion:** All tasks must run through the end-to-end pipeline (Planner $\to$ [Search 2] $\to$ Executor $\to$ Recovery $\to$ Verifier $\to$ Self-Evaluator $\to$ Repair).
 - **Benchmark Gate ($H_2$):** Correct tasks must exceed Frozen V10 canonical baseline ($> 84 / 165$).
-- **Distinction from Primary:** The canonical run establishes overall project capability; the paired ablation establishes the isolated causal attribution of Search 2.
+- **Distinction from Primary:** The canonical run establishes overall project capability across all 165 tasks; the paired ablation provides intervention-oriented evidence about the marginal effect of Search 2 under shared context and plan on follow-up-eligible tasks, while residual Executor generation stochasticity remains.
 
 ---
 
@@ -141,7 +161,7 @@ A contemporaneous separate full-run control of Frozen V10 is **NOT required for 
 Promotion of V11 as the project's new scientific baseline requires satisfying **ALL 13 binding promotion gates**:
 
 ```text
-1. Primary Triggered-Cohort Delta_followup > 0
+1. Primary Follow-Up-Eligible Delta_followup > 0
 2. Canonical V11 Correct Tasks > 84 / 165 (> 50.91%)
 3. Total Web Searches <= 2 per deployed task
 4. Search 2 Calls <= 1 per deployed task
@@ -182,8 +202,38 @@ An individual Search 2 failure (e.g., HTTP 429 or timeout) must fall back cleanl
 
 ---
 
-## 8. Ground-Truth Scorer Firewall
+## 8. Telemetry Categorization & Ground-Truth Scorer Firewall
 
+### Canonical Telemetry Mutually Exclusive Categories (All 165 Tasks)
+To provide complete diagnostic visibility into planner retrieval decisions across all 165 validation tasks, telemetry must categorize every task into one of six mutually exclusive categories:
+- **Category A:** `SUFFICIENT_NON_TRIGGERED` — Planner determined evidence sufficient; Search 2 bypassed.
+- **Category B:** `INSUFFICIENT_DUPLICATE_QUERY` — Planner requested follow-up, but query matched Search 1; Search 2 skipped.
+- **Category C:** `FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS` — Follow-up-eligible; Search 2 executed and returned results.
+- **Category D:** `FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE` — Follow-up-eligible; Search 2 failed via API error/timeout; clean fallback applied.
+- **Category E:** `FOLLOWUP_ELIGIBLE_SEARCH2_EMPTY_RESULTS` — Follow-up-eligible; Search 2 succeeded but returned 0 snippets; clean fallback applied.
+- **Category F:** `PLANNER_FALLBACK` — Planner generation/parse failure; deterministic fallback applied; Search 2 bypassed.
+
+### Primary Paired Raw Record
+Runtime records for paired ablation apply exclusively to follow-up-eligible tasks (`followup_eligible == True`):
+- `task_id`
+- `shared_primary_search_hash`
+- `shared_file_hash`
+- `shared_plan_hash`
+- `planner_evidence_status`
+- `planner_followup_query`
+- `followup_eligible`: `True`
+- `second_search_attempted`
+- `second_search_success`
+- `second_search_empty_results`
+- `followup_search_hash`
+- `candidate_without_followup`
+- `candidate_with_followup`
+- `python_without_followup`
+- `python_with_followup`
+
+No runtime correctness or scorer indicators are permitted.
+
+### Ground-Truth Scorer Firewall
 At runtime, neither the agent, the planner, the executor, nor the paired ablation harness may access:
 - Ground-truth reference answers.
 - Evaluation split ground-truth datasets.
@@ -232,7 +282,7 @@ Before executing GAIA benchmarks, the V11 implementation must pass **28 determin
 
 ### Group 5: Primary Paired Ablation Harness (Scenarios 25–28)
 25. **Identical Context & Plan Invariant:** Branch A and Branch B receive identical context and plan hashes.
-26. **Single Search 2 Execution:** In the paired harness, Search 2 is executed exactly once and shared with Branch B.
+26. **Single Search 2 Execution:** For a FOLLOW-UP-ELIGIBLE paired task, Search 2 is executed exactly once total and its result is shared with Branch B.
 27. **Zero Runtime Ground Truth:** Paired harness contains no references to reference answers.
 28. **Post-Hoc Transition Computation:** Transition matrix cells are assigned strictly after runtime candidate generation.
 
@@ -244,4 +294,3 @@ Before executing GAIA benchmarks, the V11 implementation must pass **28 determin
 2. **Planner Overconfidence / Starvation:** If Planner v2 erroneously declares `SUFFICIENT`, the agent remains starved.
 3. **No Code Repair:** Python syntax and package issues ($H_{3e}$) remain unaddressed by V11.
 4. **Generalization Safeguard:** No specific query heuristics, entity regexes, or task-specific prompting may be derived from GAIA ground-truth answers.
-

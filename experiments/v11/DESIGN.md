@@ -1,14 +1,14 @@
 # V11 — Architectural Specification: Planner-Guided Adaptive Evidence Retrieval
 
-**Status:** PROPOSED_PRE_IMPLEMENTATION  
-**Document Version:** 1.0  
-**Schema Version:** 9  
-**Branch:** `v11-adaptive-evidence-retrieval`  
-**Repository Parent Commit:** `0761b81330540cdc67fe2d662aef049bc87d9d8f`  
-**Scientific Parent:** Frozen V10 (`v10-planner-executor`)  
-**Canonical Parent Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`  
-**Canonical Parent Benchmark Score:** 84 / 165 (50.91%)  
-**Date:** September 2026  
+**Status:** PROPOSED_PRE_IMPLEMENTATION
+**Document Version:** 1.0
+**Schema Version:** 9
+**Branch:** `v11-adaptive-evidence-retrieval`
+**Repository Parent Commit:** `0761b81330540cdc67fe2d662aef049bc87d9d8f`
+**Scientific Parent:** Frozen V10 (`v10-planner-executor`)
+**Canonical Parent Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`
+**Canonical Parent Benchmark Score:** 84 / 165 (50.91%)
+**Date:** September 2026
 
 ---
 
@@ -17,11 +17,11 @@
 Version 10 (V10) introduced **Structured Planning and Plan-Guided Execution**, replacing the coarse capability router with an equalized structured planner slot. On identical context snapshots, V10 achieved a strictly positive primary paired delta ($\Delta_{\text{upstream}} = +8$) and raised canonical benchmark accuracy to $84 / 165 = 50.91\%$ (+11 tasks over Frozen V9).
 
 However, deep diagnostic analysis of Frozen V10 telemetry revealed a stark, unaddressed empirical bottleneck:
-1. **Evidence-Insufficiency Resistance:**  
+1. **Evidence-Insufficiency Resistance:**
    In Frozen V10 self-evaluation risk diagnostics, tasks assessed with `EVIDENCE` risk exhibited an **$88.89\%$ (32 / 36)** error rate. This error rate was essentially identical to Frozen V9 ($88.9\%$).
-2. **Single-Search Rigidity:**  
+2. **Single-Search Rigidity:**
    Frozen V2 through V10 strictly enforced at most one initial web search formulated by using the raw user question verbatim. In complex information-seeking tasks requiring entity disambiguation, secondary attributes, or date-filtered verification, the initial query often returned general or irrelevant search snippets.
-3. **Downstream Repair Impotence on Starved Evidence:**  
+3. **Downstream Repair Impotence on Starved Evidence:**
    Post-hoc Targeted Repair produced only $+1$ net improvement across the entire 165-task benchmark ($16 \text{ KEEP} / 0 \text{ REPLACE}$ on Level 1; $32 \text{ KEEP} / 2 \text{ REPLACE}$ on Level 2; $14 \text{ KEEP} / 2 \text{ REPLACE}$ on Level 3). When the underlying execution trace lacks the critical factual predicate, text-only reflection cannot repair the answer.
 
 Version 11 (V11) targets **ONLY** this evidence-insufficiency bottleneck by equipping the structured planner with the capability to assess evidence sufficiency and optionally request **at most ONE targeted follow-up web search**.
@@ -304,13 +304,13 @@ File context remains completely untouched and is formatted identically to Frozen
 ## 10. Preserved Frozen Downstream Stages
 
 The downstream pipeline is inherited verbatim from Frozen V10 (and its predecessors):
-1. **Candidate Recovery (Frozen V9):**  
+1. **Candidate Recovery (Frozen V9):**
    If the upstream Executor fails to emit a candidate (`""`), deterministic failure classification evaluates eligibility. For eligible classes, one bounded text-only recovery generation is attempted. Non-triggered tasks maintain 100.0% boundary candidate preservation.
-2. **Answer Verifier (Frozen V5):**  
+2. **Answer Verifier (Frozen V5):**
    One-shot text-only verifier evaluating `KEEP` vs `REVISE` on non-empty candidates.
-3. **Self-Evaluator (Frozen V6):**  
+3. **Self-Evaluator (Frozen V6):**
    Read-only diagnostic classification (`PASS` vs `SUSPECT`, with risk type taxonomy).
-4. **Targeted Repair (Frozen V7):**  
+4. **Targeted Repair (Frozen V7):**
    Conditional one-shot repair triggered only on `SUSPECT` verdicts (`KEEP` vs `REPLACE`).
 
 Zero downstream prompt or code modifications are permitted in V11.
@@ -342,13 +342,17 @@ Across every deployed V11 task, the following strict invariants are mathematical
 
 V11 establishes `schema_version = 9`. All task summary and detailed prediction records must include the following deterministic fields:
 
-### New Retrieval Fields
+### New Retrieval & Cohort Fields
 - `planner_evidence_status`: `"SUFFICIENT"` | `"INSUFFICIENT"` | `null`
 - `planner_followup_query`: string | `null`
-- `second_search_eligible`: boolean
+- `planner_requested_followup`: boolean (`planner_parse_success AND evidence_status == "INSUFFICIENT"`)
+- `followup_query_valid`: boolean (syntax non-empty and valid)
+- `followup_query_duplicate`: boolean (normalized query matches Search 1)
+- `followup_eligible`: boolean (`planner_requested_followup AND followup_query_valid AND NOT followup_query_duplicate`)
 - `second_search_triggered`: boolean
 - `second_search_attempted`: boolean
 - `second_search_success`: boolean
+- `second_search_empty_results`: boolean
 - `second_search_skipped_duplicate_query`: boolean
 - `second_search_query`: string | `null`
 - `second_search_provider_query`: string | `null`
@@ -374,7 +378,18 @@ Telemetry records must never include:
 
 ---
 
-## 13. Class Hierarchy & Subclass Detection Architecture
+## 13. Primary Evaluation Architecture: Follow-Up-Eligible Paired Retrieval Ablation
+
+The primary evaluation protocol (`followup_eligible_shared_plan_paired_retrieval_ablation`) evaluates the isolated evidence intervention under strict context and plan control:
+- **Cohort Definition:** Restricted strictly to tasks where `followup_eligible == True`.
+- **Pre-Intervention Determination:** Cohort membership is locked before Search 2 execution. Tasks are never conditioned on Search 2 success, non-empty results, new URLs, or correctness.
+- **Provider Failure Handling:** If Search 2 suffers a provider failure or returns empty results, Branch B receives the clean fallback (Search 1 evidence only). The task **remains** in the paired cohort, typically resulting in `RETRIEVAL_STABLE_CORRECT` or `RETRIEVAL_STABLE_FAILURE`.
+- **Excluded Cases:** Tasks with `EVIDENCE_STATUS: SUFFICIENT`, duplicate queries, or planner fallbacks are excluded from the paired cohort.
+- **Methodological Characterization:** This protocol provides an intervention-oriented paired comparison under identical context and plan. It is **not a perfect causal estimate** and is **not fully causal**, as residual generation stochasticity in the Executor remains. Preferred terminology is *shared-plan paired retrieval ablation*, *paired intervention-oriented estimate*, and *paired net difference*.
+
+---
+
+## 14. Class Hierarchy & Subclass Detection Architecture
 
 ### Class Architecture
 The V11 runtime class will inherit directly from Frozen V10:
@@ -397,7 +412,7 @@ Reversing this order is an architectural defect that would cause V11 to execute 
 
 ---
 
-## 14. Course Alignment & Theoretical Motivation
+## 15. Course Alignment & Theoretical Motivation
 
 ### Background: Hugging Face Agents Course
 The *Hugging Face Agents Course* identifies single-step retrieval as a fundamental architectural bottleneck of traditional Retrieval-Augmented Generation (RAG). Specifically:
@@ -411,14 +426,14 @@ This guarantees predictable latency, compute equivalence, and rigorous experimen
 
 ---
 
-## 15. Known Scientific Limitations
+## 16. Known Scientific Limitations
 
-1. **Retrieval-Specific Intervention:**  
+1. **Retrieval-Specific Intervention:**
    V11 addresses only evidence availability. It does not repair flawed mathematical reasoning, incorrect Python syntax ($H_{3e}$ failure in V10), or downstream repair conservatism.
-2. **Planner Trigger Accuracy Risk:**  
+2. **Planner Trigger Accuracy Risk:**
    Because Planner v2 itself decides whether evidence is `SUFFICIENT` or `INSUFFICIENT`, the agent is vulnerable to:
    - *False Sufficiency:* Incorrectly declaring sufficient evidence and starving the Executor.
    - *False Insufficiency:* Unnecessarily triggering Search 2 on already-sufficient contexts, risking query distraction or noise.
-3. **Search Provider Coverage:**  
+3. **Search Provider Coverage:**
    If missing information is behind paywalls, in non-indexed databases, or requires complex multi-hop clicks, a single basic Tavily follow-up search will remain ineffective.
 
