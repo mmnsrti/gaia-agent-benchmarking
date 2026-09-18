@@ -98,7 +98,6 @@ def execute_task(
     if llm is None:
         llm = LLMClient()
     if agent is None:
-        if project_version == "v7":
         if project_version == "v9":
             agent = GAIAUpstreamCandidateRecoveryAgent(llm_client=llm)
         elif project_version == "v7":
@@ -118,7 +117,6 @@ def execute_task(
         else:
             agent = GAIAAgent(llm_client=llm)
 
-    if isinstance(agent, GAIATargetedRepairAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6"):
     if isinstance(agent, GAIAUpstreamCandidateRecoveryAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"):
         project_version = "v9"
     elif isinstance(agent, GAIATargetedRepairAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6"):
@@ -178,7 +176,6 @@ def execute_task(
 
     start_time = time.time()
     try:
-        if isinstance(agent, (GAIAFileAgent, GAIAPythonAgent, GAIARouterAgent, GAIAVerificationAgent, GAIASelfEvaluationAgent)):
         if isinstance(agent, (GAIAFileAgent, GAIAPythonAgent, GAIARouterAgent, GAIAVerificationAgent, GAIASelfEvaluationAgent, GAIATargetedRepairAgent, GAIAUpstreamCandidateRecoveryAgent)):
             target_path = resolved_file_path or clean_file_path or clean_file_name
             result = agent.run(question, file_path=target_path)
@@ -230,12 +227,6 @@ def execute_task(
     latency = round(time.time() - start_time, 2)
 
     # Prompt provenance extraction
-    is_v7 = (project_version == "v7") or isinstance(agent, GAIATargetedRepairAgent)
-    is_v6 = ((project_version == "v6") or isinstance(agent, GAIASelfEvaluationAgent)) and not is_v7
-    is_v5 = ((project_version == "v5") or isinstance(agent, GAIAVerificationAgent)) and not is_v6 and not is_v7
-    is_v4 = (((project_version == "v4") or isinstance(agent, GAIARouterAgent)) and not is_v5 and not is_v6 and not is_v7)
-    is_v3 = (((project_version == "v3") or isinstance(agent, GAIAPythonAgent)) and not is_v4 and not is_v5 and not is_v6 and not is_v7)
-    file_enabled = (((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3 and not is_v4 and not is_v5 and not is_v6 and not is_v7)
     is_v9 = (project_version == "v9") or isinstance(agent, GAIAUpstreamCandidateRecoveryAgent)
     is_v7 = ((project_version == "v7") or isinstance(agent, GAIATargetedRepairAgent)) and not is_v9
     is_v6 = ((project_version == "v6") or isinstance(agent, GAIASelfEvaluationAgent)) and not is_v7 and not is_v9
@@ -244,7 +235,6 @@ def execute_task(
     is_v3 = (((project_version == "v3") or isinstance(agent, GAIAPythonAgent)) and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v9)
     file_enabled = (((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3 and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v9)
     if result is None:
-        if is_v7:
         if is_v9:
             prompt_ver = "candidate-recovery-v1"
         elif is_v7:
@@ -268,7 +258,6 @@ def execute_task(
     fallback_prompt_ver = getattr(result, "fallback_prompt_version", None) if result else None
 
     if primary_prompt_ver is None:
-        if is_v7 or is_v6 or is_v5 or is_v4:
         if is_v9 or is_v7 or is_v6 or is_v5 or is_v4:
             primary_prompt_ver = "capability-router-v1"
         elif is_v3:
@@ -281,7 +270,6 @@ def execute_task(
             primary_prompt_ver = prompt_ver or "baseline-v1"
 
     if fallback_prompt_ver is None:
-        if is_v7 or is_v6 or is_v5 or is_v4:
         if is_v9 or is_v7 or is_v6 or is_v5 or is_v4:
             fallback_prompt_ver = "router-direct-worker-v1" if getattr(result, "router_fallback", False) else None
         elif is_v3:
@@ -392,7 +380,6 @@ def execute_task(
     python_fallback = getattr(result, "python_fallback", False) if result else False
     python_execution_count = 1 if python_executed else 0
     assert python_execution_count in (0, 1), f"Execution count {python_execution_count} not in {0, 1}"
-    if is_v7:
     if is_v9:
         llm_generation_attempts = getattr(result, "llm_generation_attempts", 6 if completion_success else 2) if result else (6 if completion_success else 2)
         assert 1 <= llm_generation_attempts <= 6, f"V9 LLM generation attempts {llm_generation_attempts} outside [1, 6]"
@@ -543,7 +530,6 @@ def execute_task(
     candidate_recovery_python_runs_added = getattr(result, "candidate_recovery_python_runs_added", 0) if result else 0
 
     default_gen_success = (
-        ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0))
         ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0) + (1 if candidate_recovery_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0))
         if is_v9
         else ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0))
@@ -577,7 +563,6 @@ def execute_task(
         python_stderr_length = 0
         python_output_truncated = False
 
-    if is_v7 and schema_version < 6:
     if is_v9 and schema_version < 7:
         resolved_schema_version = 7
     elif is_v7 and schema_version < 6:

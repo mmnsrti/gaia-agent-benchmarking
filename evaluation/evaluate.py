@@ -120,7 +120,6 @@ def calculate_metrics(
     if predictions and predictions[0].get("project_version"):
         resolved_pv = predictions[0].get("project_version")
 
-    has_python = (resolved_pv in ("v3", "v4", "v5", "v6", "v7")) or any(
     has_python = (resolved_pv in ("v3", "v4", "v5", "v6", "v7", "v9")) or any(
         pred.get("python_requested") or pred.get("python_executed") or pred.get("python_prompt_version")
         for pred in predictions
@@ -136,7 +135,6 @@ def calculate_metrics(
     python_not_executed_count = 0
     python_not_executed_correct = 0
 
-    has_router = (resolved_pv in ("v4", "v5", "v6", "v7")) or any(
     has_router = (resolved_pv in ("v4", "v5", "v6", "v7", "v9")) or any(
         pred.get("router_requested") or pred.get("router_decision")
         for pred in predictions
@@ -152,17 +150,14 @@ def calculate_metrics(
     worker_latencies: List[float] = []
     total_llm_generations_list: List[int] = []
 
-    has_verifier = (resolved_pv in ("v5", "v6", "v7")) or any(
     has_verifier = (resolved_pv in ("v5", "v6", "v7", "v9")) or any(
         pred.get("verifier_attempted") or pred.get("verifier_eligible") or pred.get("verifier_verdict")
         for pred in predictions
     )
-    has_self_evaluator = (resolved_pv in ("v6", "v7")) or any(
     has_self_evaluator = (resolved_pv in ("v6", "v7", "v9")) or any(
         pred.get("self_eval_attempted") or pred.get("self_eval_eligible") or pred.get("self_eval_prompt_version")
         for pred in predictions
     )
-    has_targeted_repair = (resolved_pv == "v7") or any(
     has_targeted_repair = (resolved_pv in ("v7", "v9")) or any(
         pred.get("repair_attempted") or pred.get("repair_eligible") or pred.get("repair_triggered") or pred.get("repair_prompt_version")
         for pred in predictions
@@ -758,7 +753,6 @@ def calculate_metrics(
 
     # Determine prompt version provenance
     # Avoid recording entire run as 'baseline-v1' if task 0 experienced search fallback
-    if resolved_pv == "v7" or (has_targeted_repair and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5", "v6")):
     if resolved_pv == "v9" or (has_candidate_recovery and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7")):
         primary_pv = "capability-router-v1"
         fallback_pv = "router-direct-worker-v1" if any(p.get("router_fallback") for p in predictions) else None
@@ -1228,7 +1222,6 @@ if __name__ == "__main__":
     parser.add_argument("--level", type=int, default=1, help="Benchmark level (1, 2, or 3)")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
-    parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: targeted repair; default: v1)")
     parser.add_argument("--version", type=str, default="v1", choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: targeted repair, v9: upstream candidate recovery; default: v1)")
     parser.add_argument("--predictions", type=str, default=None, help="Path to predictions JSONL file")
     parser.add_argument("--data", type=str, default=None, help="Path to local ground-truth dataset")
