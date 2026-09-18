@@ -1,11 +1,11 @@
 # V10 — Structured Planner → Plan-Guided Executor: Pre-Benchmark Preregistration Document
 
-**Status**: `PREREGISTERED_PRE_BENCHMARK`
-**Parent Baseline**: Frozen V9 (`v9-upstream-candidate-recovery`)
-**Target Version**: V10 (`v10-planner-executor`)
-**Schema Version**: 8
-**Baseline Main Commit**: `7e6f35bd27c83c23072e27a337d52e157d5904cd`
-**Date**: September 2026
+**Status**: `PREREGISTERED_PRE_BENCHMARK`  
+**Parent Baseline**: Frozen V9 (`v9-upstream-candidate-recovery`)  
+**Target Version**: V10 (`v10-planner-executor`)  
+**Schema Version**: 8  
+**Baseline Main Commit**: `7e6f35bd27c83c23072e27a337d52e157d5904cd`  
+**Date**: September 2026  
 
 ---
 
@@ -181,3 +181,4 @@ When validated and approved for benchmarking, the canonical run will adhere to:
 - **Rate-Limit Inter-Task Delay**: Exactly 5.0 seconds.
 - **Scorer**: Official GAIA leaderboard scorer (`evaluation/scorer.py`, commit `9f133d7136...`).
 - **Telemetry Schema**: Version 8 JSONL records.
+

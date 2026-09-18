@@ -1,12 +1,12 @@
 # V10 — Structured Planner → Plan-Guided Executor: Technical Design Document
 
-**Status**: `PROPOSED_PRE_IMPLEMENTATION`
-**Parent Version**: Frozen V9 (`v9-upstream-candidate-recovery`)
-**Target Experimental Version**: V10
-**Schema Version**: 8
-**Branch**: `v10-planner-executor`
-**Baseline Main Commit**: `7e6f35bd27c83c23072e27a337d52e157d5904cd`
-**Date**: September 2026
+**Status**: `PROPOSED_PRE_IMPLEMENTATION`  
+**Parent Version**: Frozen V9 (`v9-upstream-candidate-recovery`)  
+**Target Experimental Version**: V10  
+**Schema Version**: 8  
+**Branch**: `v10-planner-executor`  
+**Baseline Main Commit**: `7e6f35bd27c83c23072e27a337d52e157d5904cd`  
+**Date**: September 2026  
 
 ---
 
@@ -346,3 +346,4 @@ To support forensic post-benchmark analysis and regression auditing, V10 introdu
 - No hidden chain-of-thought or raw reasoning tokens are logged or serialized.
 - Raw system prompts are excluded from output JSONL lines.
 - Only structured, parsed planning keys and telemetry token counts are stored.
+

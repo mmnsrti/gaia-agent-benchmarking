@@ -1,15 +1,15 @@
 # V10 — Structured Planner → Plan-Guided Executor
 
-**Status**: `PREREGISTERED_PRE_IMPLEMENTATION`
-**Branch**: `v10-planner-executor`
-**Baseline Main Commit**: `7e6f35bd27c83c23072e27a337d52e157d5904cd`
-**Scientific Parent**: Frozen V9 (`v9-upstream-candidate-recovery`)
-**Frozen V9 Inference Commit**: `6369f427c4479073a6ca06531bdfd43e47cd613f`
-**Frozen V9 Final Benchmark Result**: `73 / 165 = 44.24%`
-**Architecture**: Structured Planner → Plan-Guided Executor (+ Frozen V9 Downstream Pipeline)
-**Model**: `gemini-3.5-flash-lite` (inherited from Frozen V7/V9)
-**Evaluation Scope**: Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)
-**Date**: September 2026
+**Status**: `PREREGISTERED_PRE_IMPLEMENTATION`  
+**Branch**: `v10-planner-executor`  
+**Baseline Main Commit**: `7e6f35bd27c83c23072e27a337d52e157d5904cd`  
+**Scientific Parent**: Frozen V9 (`v9-upstream-candidate-recovery`)  
+**Frozen V9 Inference Commit**: `6369f427c4479073a6ca06531bdfd43e47cd613f`  
+**Frozen V9 Final Benchmark Result**: `73 / 165 = 44.24%`  
+**Architecture**: Structured Planner → Plan-Guided Executor (+ Frozen V9 Downstream Pipeline)  
+**Model**: `gemini-3.5-flash-lite` (inherited from Frozen V7/V9)  
+**Evaluation Scope**: Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)  
+**Date**: September 2026  
 
 See [`DESIGN.md`](./DESIGN.md) for the complete architectural specification, contracts, and invariants; [`PRE_BENCHMARK.md`](./PRE_BENCHMARK.md) for binding hypotheses, evaluation protocol, and deterministic smoke scenarios; and [`../../docs/V10_PRE_IMPLEMENTATION_AUDIT.md`](../../docs/V10_PRE_IMPLEMENTATION_AUDIT.md) for the pre-implementation governance audit.
 
@@ -140,3 +140,4 @@ Because planning operates before any candidate answer exists, V10 affects all ta
 | [`DESIGN.md`](./DESIGN.md) | In-depth technical architecture, planner/executor contracts, deterministic parsing grammar, fallback policy, generation budgets, and safety invariants. |
 | [`PRE_BENCHMARK.md`](./PRE_BENCHMARK.md) | Formal binding preregistration: hypotheses $H_1, H_{2a\dots 2e}$, evaluation protocol, transition taxonomy, decision rule, and 20 deterministic smoke scenarios. |
 | [`../../docs/V10_PRE_IMPLEMENTATION_AUDIT.md`](../../docs/V10_PRE_IMPLEMENTATION_AUDIT.md) | Pre-implementation governance audit answering all mandatory pre-flight checks. |
+
