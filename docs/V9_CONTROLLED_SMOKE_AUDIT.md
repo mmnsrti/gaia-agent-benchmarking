@@ -156,3 +156,4 @@ All scenarios passed with 100% adherence to:
 ## 4. Audit Conclusion
 
 All 18 scenarios have been verified deterministically in `tests/test_v9_candidate_recovery.py`. V9 exhibits zero regressions, full adherence to the pre-registered failure classification taxonomy, strictly non-destructive behavior, and exact budget caps.
+

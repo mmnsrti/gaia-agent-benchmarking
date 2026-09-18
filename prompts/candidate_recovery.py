@@ -116,16 +116,19 @@ def parse_candidate_recovery_result(raw_text: Optional[str]) -> CandidateRecover
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(lines) != 1:
+        if not any(line.upper().startswith("FINAL:") for line in lines):
         if not any(re.match(r"^\s*FINAL\s*:", l, re.IGNORECASE) for l in lines):
             return _invalid("missing_final_marker")
         return _invalid("multiline_candidate")
 
     line = lines[0]
+    if not line.upper().startswith("FINAL:"):
     field_pattern = re.compile(r"^\s*([A-Za-z_]+)\s*:\s*(.*?)\s*$")
     match = field_pattern.fullmatch(line)
     if not match or match.group(1).upper() != "FINAL":
         return _invalid("missing_final_marker")
 
+    val = line[6:].strip()
     val = match.group(2).strip()
     if not val:
         return _invalid("empty_final_value")

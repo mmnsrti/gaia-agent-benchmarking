@@ -1603,6 +1603,7 @@ ELIGIBLE_RECOVERY_FAILURE_CLASSES = {
 }
 
 
+def classify_candidate_recovery_failure(result: AgentResult) -> Optional[str]:
 def classify_candidate_recovery_failure(result: AgentResult, worker_mode: Optional[str] = None) -> Optional[str]:
     """Deterministically classifies upstream candidate failure in strict precedence order.
 
@@ -1625,6 +1626,7 @@ def classify_candidate_recovery_failure(result: AgentResult, worker_mode: Option
 
     # 2. PYTHON_OUTPUT_MISSING_MARKER
     if (
+        result.worker_mode == "PYTHON"
         effective_worker_mode == "PYTHON"
         and result.python_executed is True
         and result.python_result is not None
@@ -1634,6 +1636,7 @@ def classify_candidate_recovery_failure(result: AgentResult, worker_mode: Option
 
     # 3. PYTHON_EXECUTION_FAILURE
     if (
+        result.worker_mode == "PYTHON"
         effective_worker_mode == "PYTHON"
         and result.python_executed is True
         and result.python_result is not None
@@ -1644,6 +1647,8 @@ def classify_candidate_recovery_failure(result: AgentResult, worker_mode: Option
 
     # 4. PYTHON_CODE_EXTRACTION_FAILURE
     if (
+        result.worker_mode == "PYTHON"
+        and result.python_requested is False
         effective_worker_mode == "PYTHON"
         and (result.python_requested is False or getattr(result, "error_type", None) == "python_code_extraction_failure")
     ):
@@ -1673,6 +1678,7 @@ def classify_candidate_recovery_failure(result: AgentResult, worker_mode: Option
     thinking_tok = getattr(worker_resp, "thinking_tokens", 0) or 0
     output_tok = getattr(worker_resp, "output_tokens", 0) or 0
     if (
+        "thought" in part_types
         ("thought" in part_types or (thinking_tok > 0 and output_tok == 0))
         and has_text is False
         and has_func is False
@@ -1681,6 +1687,7 @@ def classify_candidate_recovery_failure(result: AgentResult, worker_mode: Option
 
     # 8. DIRECT_EXTRACTION_FAILURE
     if (
+        result.worker_mode == "DIRECT"
         effective_worker_mode == "DIRECT"
         and result.worker_raw_response is not None
         and str(result.worker_raw_response).strip() != ""
@@ -1700,9 +1707,13 @@ def classify_candidate_recovery_failure(result: AgentResult, worker_mode: Option
 
 
 def is_candidate_recovery_eligible(
+    pre_recovery_candidate: str,
+    failure_class: Optional[str],
     failure_class_or_candidate: Optional[str],
     failure_class: Optional[str] = None,
 ) -> bool:
+    """Determines whether an upstream failure is eligible for V9 candidate recovery."""
+    if pre_recovery_candidate and pre_recovery_candidate.strip():
     """Determines whether an upstream failure is eligible for V9 candidate recovery.
 
     Supports both signatures:
@@ -1961,4 +1972,5 @@ class GAIAUpstreamCandidateRecoveryAgent(GAIATargetedRepairAgent):
         else:
             assert result.llm_generation_attempts <= 6, "Triggered V9 exceeds six-generation cap"
         return result
+
 
