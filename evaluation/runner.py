@@ -408,13 +408,11 @@ def execute_task(
         llm_generation_attempts = llm_generation_count
     python_prompt_version = getattr(result, "python_prompt_version", None) if result else None
 
-    # Router metadata (V4, V5, V6 & V7)
     # Router metadata (V4, V5, V6, V7 & V9)
     router_decision = getattr(result, "router_decision", None) if result else None
     router_success = getattr(result, "router_success", False) if result else False
     router_fallback = getattr(result, "router_fallback", False) if result else False
     router_error_type = getattr(result, "router_error_type", None) if result else None
-    router_prompt_version = getattr(result, "router_prompt_version", "capability-router-v1" if (is_v4 or is_v5 or is_v6 or is_v7) else None) if result else ("capability-router-v1" if (is_v4 or is_v5 or is_v6 or is_v7) else None)
     router_prompt_version = getattr(result, "router_prompt_version", "capability-router-v1" if (is_v4 or is_v5 or is_v6 or is_v7 or is_v9) else None) if result else ("capability-router-v1" if (is_v4 or is_v5 or is_v6 or is_v7 or is_v9) else None)
     router_prompt = getattr(result, "router_prompt", None) if result else None
     router_raw_response = getattr(result, "router_raw_response", None) if result else None
@@ -422,11 +420,9 @@ def execute_task(
     router_input_tokens = getattr(result, "router_input_tokens", None) if result else None
     router_output_tokens = getattr(result, "router_output_tokens", None) if result else None
     router_thinking_tokens = getattr(result, "router_thinking_tokens", None) if result else None
-    router_generation_attempts = getattr(result, "router_generation_attempts", 1 if (is_v4 or is_v5 or is_v6 or is_v7) else 0) if result else (1 if (is_v4 or is_v5 or is_v6 or is_v7) else 0)
     router_generation_attempts = getattr(result, "router_generation_attempts", 1 if (is_v4 or is_v5 or is_v6 or is_v7 or is_v9) else 0) if result else (1 if (is_v4 or is_v5 or is_v6 or is_v7 or is_v9) else 0)
     router_generation_success = getattr(result, "router_generation_success", False) if result else False
 
-    # Worker metadata (V4, V5, V6 & V7)
     # Worker metadata (V4, V5, V6, V7 & V9)
     worker_mode = getattr(result, "worker_mode", None) if result else None
     worker_success = getattr(result, "worker_success", False) if result else False
@@ -438,7 +434,6 @@ def execute_task(
     worker_input_tokens = getattr(result, "worker_input_tokens", None) if result else None
     worker_output_tokens = getattr(result, "worker_output_tokens", None) if result else None
     worker_thinking_tokens = getattr(result, "worker_thinking_tokens", None) if result else None
-    worker_generation_attempts = getattr(result, "worker_generation_attempts", 1 if (is_v4 or is_v5 or is_v6 or is_v7) else 0) if result else (1 if (is_v4 or is_v5 or is_v6 or is_v7) else 0)
     worker_generation_attempts = getattr(result, "worker_generation_attempts", 1 if (is_v4 or is_v5 or is_v6 or is_v7 or is_v9) else 0) if result else (1 if (is_v4 or is_v5 or is_v6 or is_v7 or is_v9) else 0)
     worker_generation_success = getattr(result, "worker_generation_success", False) if result else False
 
