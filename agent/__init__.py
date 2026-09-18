@@ -8,9 +8,13 @@ from .agent import (
     GAIAVerificationAgent,
     GAIASelfEvaluationAgent,
     GAIATargetedRepairAgent,
+    GAIAUpstreamCandidateRecoveryAgent,
     AgentResult,
     parse_router_decision,
     parse_verifier_result,
+    classify_candidate_recovery_failure,
+    is_candidate_recovery_eligible,
+    ELIGIBLE_RECOVERY_FAILURE_CLASSES,
 )
 from .llm import LLMClient, LLMResponse
 
@@ -23,9 +27,13 @@ __all__ = [
     "GAIAVerificationAgent",
     "GAIASelfEvaluationAgent",
     "GAIATargetedRepairAgent",
+    "GAIAUpstreamCandidateRecoveryAgent",
     "AgentResult",
     "parse_router_decision",
     "parse_verifier_result",
+    "classify_candidate_recovery_failure",
+    "is_candidate_recovery_eligible",
+    "ELIGIBLE_RECOVERY_FAILURE_CLASSES",
     "LLMClient",
     "LLMResponse",
 ]

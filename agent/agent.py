@@ -32,6 +32,12 @@ from prompts.targeted_repair import (
     build_targeted_repair_prompt,
     parse_targeted_repair_result,
 )
+from prompts.candidate_recovery import (
+    CANDIDATE_RECOVERY_PROMPT_VERSION,
+    build_candidate_recovery_prompt,
+    parse_candidate_recovery_result,
+    CandidateRecoveryParseResult,
+)
 from tools.web_search import TavilySearchTool, WebSearchResult
 from tools.file_tool import FileTool, FileResult
 from tools.python_tool import PythonTool, PythonResult
@@ -156,6 +162,39 @@ class AgentResult:
     repair_prompt_version: Optional[str] = None
     repair_prompt: Optional[str] = None
     repair_raw_response: Optional[str] = None
+    # Candidate recovery metadata (V9). Raw prompt/response are internal only and
+    # are intentionally excluded from public evaluation serializers.
+    pre_recovery_candidate: Optional[str] = None
+    post_recovery_candidate: Optional[str] = None
+    candidate_recovery_eligible: bool = False
+    candidate_recovery_triggered: bool = False
+    candidate_recovery_failure_class: Optional[str] = None
+    candidate_recovery_attempted: bool = False
+    candidate_recovery_success: bool = False
+    candidate_recovery_action: Optional[str] = None
+    candidate_recovery_recovered: bool = False
+    candidate_recovery_parse_success: bool = False
+    candidate_recovery_candidate_changed: bool = False
+    candidate_recovery_finish_reason: Optional[str] = None
+    candidate_recovery_response_part_types: Optional[list[str]] = None
+    candidate_recovery_has_text_part: bool = False
+    candidate_recovery_has_function_call_part: bool = False
+    candidate_recovery_error_type: Optional[str] = None
+    candidate_recovery_error_message: Optional[str] = None
+    candidate_recovery_generation_attempts: int = 0
+    candidate_recovery_generation_success: bool = False
+    candidate_recovery_logical_generation_count: int = 0
+    candidate_recovery_latency_seconds: Optional[float] = None
+    candidate_recovery_input_tokens: Optional[int] = None
+    candidate_recovery_output_tokens: Optional[int] = None
+    candidate_recovery_thinking_tokens: Optional[int] = None
+    candidate_recovery_total_tokens: Optional[int] = None
+    candidate_recovery_prompt_version: Optional[str] = None
+    candidate_recovery_prompt: Optional[str] = None
+    candidate_recovery_raw_response: Optional[str] = None
+    candidate_recovery_non_triggered_preserved: bool = True
+    candidate_recovery_searches_added: int = 0
+    candidate_recovery_python_runs_added: int = 0
 
 
     @property
@@ -896,7 +935,7 @@ class GAIARouterAgent(GAIAFileAgent):
 
         fallback_pv = ROUTER_DIRECT_WORKER_PROMPT_VERSION if router_fallback else None
 
-        return AgentResult(
+        agent_result = AgentResult(
             raw_response=raw_resp,
             normalized_response=norm_resp,
             final_answer=final_answer,
@@ -945,6 +984,24 @@ class GAIARouterAgent(GAIAFileAgent):
             llm_generation_attempts=llm_generation_attempts,
             llm_generation_success_count=llm_generation_success_count,
         )
+        return self._post_worker_candidate_hook(
+            question=question,
+            file_path=file_path,
+            result=agent_result,
+        )
+
+    def _post_worker_candidate_hook(
+        self,
+        question: str,
+        file_path: Optional[str],
+        result: AgentResult,
+    ) -> AgentResult:
+        """Extension hook executed immediately after worker candidate answer generation.
+
+        Default implementation is an identity no-op to preserve Frozen V4–V7 behavior.
+        Overridden by V9 to perform candidate recovery on eligible starved tasks.
+        """
+        return result
 
     def __call__(self, question: str, file_path: Optional[str] = None) -> str:
         return self.run(question, file_path=file_path).final_answer
@@ -1349,7 +1406,8 @@ class GAIASelfEvaluationAgent(GAIAVerificationAgent):
         v5_result.llm_generation_attempts += self_eval_generation_attempts
         v5_result.llm_generation_count = v5_result.llm_generation_attempts
         v5_result.llm_generation_success_count += 1 if self_eval_generation_success else 0
-        assert v5_result.llm_generation_attempts <= 4, "V6 exceeds the four-generation cap"
+        max_v6_gens = 5 if getattr(self, "_is_v9", False) else 4
+        assert v5_result.llm_generation_attempts <= max_v6_gens, f"Exceeds generation cap ({max_v6_gens})"
         assert v5_result.self_eval_answer_unchanged, "V6 self-evaluation mutated the final answer"
         return v5_result
 
@@ -1399,7 +1457,8 @@ class GAIATargetedRepairAgent(GAIASelfEvaluationAgent):
             v6_result.repair_total_tokens = None
             v6_result.repair_prompt = None
             v6_result.repair_raw_response = None
-            assert v6_result.llm_generation_attempts <= 5, "V7 exceeds the five-generation cap"
+            max_v7_gens = 6 if getattr(self, "_is_v9", False) else 5
+            assert v6_result.llm_generation_attempts <= max_v7_gens, f"Exceeds generation cap ({max_v7_gens})"
             return v6_result
 
         web_evidence = self._existing_web_evidence(v6_result)
@@ -1520,9 +1579,386 @@ class GAIATargetedRepairAgent(GAIASelfEvaluationAgent):
         v6_result.llm_generation_count = v6_result.llm_generation_attempts
         v6_result.llm_generation_success_count += 1 if repair_generation_success else 0
 
-        assert v6_result.llm_generation_attempts <= 5, "V7 exceeds the five-generation cap"
+        max_v7_gens = 6 if getattr(self, "_is_v9", False) else 5
+        assert v6_result.llm_generation_attempts <= max_v7_gens, f"Exceeds generation cap ({max_v7_gens})"
         return v6_result
 
     def __call__(self, question: str, file_path: Optional[str] = None) -> str:
         return self.run(question, file_path=file_path).final_answer
+
+
+# ==============================================================================
+# V9 — Upstream Candidate Recovery Architecture & Taxonomy Helpers
+# ==============================================================================
+
+ELIGIBLE_RECOVERY_FAILURE_CLASSES = {
+    "PYTHON_OUTPUT_MISSING_MARKER",
+    "PYTHON_EXECUTION_FAILURE",
+    "PYTHON_CODE_EXTRACTION_FAILURE",
+    "MALFORMED_FUNCTION_CALL",
+    "FUNCTION_CALL_ONLY",
+    "THOUGHT_ONLY",
+    "DIRECT_EXTRACTION_FAILURE",
+    "EMPTY_RESPONSE",
+}
+
+
+def classify_candidate_recovery_failure(result: AgentResult, worker_mode: Optional[str] = None) -> Optional[str]:
+    """Deterministically classifies upstream candidate failure in strict precedence order.
+
+    Returns:
+        One of the mutually exclusive failure classes, or None if candidate already exists.
+    """
+    # If a candidate answer exists, there is no candidate starvation
+    if result.final_answer and str(result.final_answer).strip():
+        return None
+
+    effective_worker_mode = worker_mode or result.worker_mode
+
+    # 1. PROVIDER_ERROR (Highest priority; strictly ineligible)
+    if (
+        result.worker_error_type in {"provider_timeout", "provider_api_error"}
+        or result.router_error_type in {"provider_timeout", "provider_api_error"}
+        or getattr(result, "error_type", None) in {"provider_timeout", "provider_api_error"}
+    ):
+        return "PROVIDER_ERROR"
+
+    # 2. PYTHON_OUTPUT_MISSING_MARKER
+    if (
+        effective_worker_mode == "PYTHON"
+        and result.python_executed is True
+        and result.python_result is not None
+        and getattr(result.python_result, "error_type", None) == "MissingFinalAnswerMarker"
+    ):
+        return "PYTHON_OUTPUT_MISSING_MARKER"
+
+    # 3. PYTHON_EXECUTION_FAILURE
+    if (
+        effective_worker_mode == "PYTHON"
+        and result.python_executed is True
+        and result.python_result is not None
+        and getattr(result.python_result, "success", False) is False
+        and getattr(result.python_result, "error_type", None) != "MissingFinalAnswerMarker"
+    ):
+        return "PYTHON_EXECUTION_FAILURE"
+
+    # 4. PYTHON_CODE_EXTRACTION_FAILURE
+    if (
+        effective_worker_mode == "PYTHON"
+        and (result.python_requested is False or getattr(result, "error_type", None) == "python_code_extraction_failure")
+    ):
+        return "PYTHON_CODE_EXTRACTION_FAILURE"
+
+    # 5. MALFORMED_FUNCTION_CALL
+    worker_resp = result.llm_response
+    worker_finish = getattr(worker_resp, "finish_reason", None) if worker_resp else None
+    if (
+        result.worker_error_type == "malformed_function_call_finish_reason"
+        or worker_finish == "MALFORMED_FUNCTION_CALL"
+    ):
+        return "MALFORMED_FUNCTION_CALL"
+
+    # 6. FUNCTION_CALL_ONLY
+    has_func = getattr(worker_resp, "has_function_call_part", False) if worker_resp else False
+    has_text = getattr(worker_resp, "has_text_part", False) if worker_resp else False
+    if (
+        has_func is True
+        and has_text is False
+        and result.worker_error_type != "malformed_function_call_finish_reason"
+    ):
+        return "FUNCTION_CALL_ONLY"
+
+    # 7. THOUGHT_ONLY
+    part_types = getattr(worker_resp, "response_part_types", []) if worker_resp else []
+    thinking_tok = getattr(worker_resp, "thinking_tokens", 0) or 0
+    output_tok = getattr(worker_resp, "output_tokens", 0) or 0
+    if (
+        ("thought" in part_types or (thinking_tok > 0 and output_tok == 0))
+        and has_text is False
+        and has_func is False
+    ):
+        return "THOUGHT_ONLY"
+
+    # 8. DIRECT_EXTRACTION_FAILURE
+    if (
+        effective_worker_mode == "DIRECT"
+        and result.worker_raw_response is not None
+        and str(result.worker_raw_response).strip() != ""
+    ):
+        return "DIRECT_EXTRACTION_FAILURE"
+
+    # 9. EMPTY_RESPONSE (Last-resort semantic empty class)
+    raw_empty = (not result.worker_raw_response or not str(result.worker_raw_response).strip())
+    if (
+        result.worker_error_type in (None, "empty_worker_response")
+        and raw_empty
+    ):
+        return "EMPTY_RESPONSE"
+
+    # 10. UNKNOWN_NO_CANDIDATE
+    return "UNKNOWN_NO_CANDIDATE"
+
+
+def is_candidate_recovery_eligible(
+    failure_class_or_candidate: Optional[str],
+    failure_class: Optional[str] = None,
+) -> bool:
+    """Determines whether an upstream failure is eligible for V9 candidate recovery.
+
+    Supports both signatures:
+    - is_candidate_recovery_eligible(pre_recovery_candidate, failure_class)
+    - is_candidate_recovery_eligible(failure_class)
+    """
+    if failure_class is None:
+        return failure_class_or_candidate in ELIGIBLE_RECOVERY_FAILURE_CLASSES
+    if failure_class_or_candidate and str(failure_class_or_candidate).strip():
+        return False
+    return failure_class in ELIGIBLE_RECOVERY_FAILURE_CLASSES
+
+
+class GAIAUpstreamCandidateRecoveryAgent(GAIATargetedRepairAgent):
+    """V9 Upstream Candidate Recovery Agent.
+
+    Inherits the exact Frozen V7 pipeline:
+    Tavily search -> FileTool -> Router LLM -> Worker LLM -> post-worker recovery hook
+    -> V5 Verifier -> V6 Self-Evaluator -> V7 Targeted Repair -> Final Answer.
+
+    Only intervenes if the upstream worker failed to produce a candidate answer
+    due to an eligible semantic/execution failure.
+    If the worker already produced a candidate answer, recovery is strictly bypassed
+    and the candidate is preserved 100% verbatim at the recovery boundary.
+    """
+
+    _is_v9: bool = True
+
+    def _build_sanitized_execution_snippet(self, result: AgentResult) -> Optional[str]:
+        py_res = result.python_result
+        if not py_res:
+            return None
+        parts = []
+        if py_res.error_message:
+            parts.append(f"Error: {str(py_res.error_message).strip()}")
+        if py_res.stderr:
+            parts.append(f"Stderr: {str(py_res.stderr).strip()[:200]}")
+        if py_res.stdout:
+            tail_stdout = str(py_res.stdout).strip()[-200:]
+            parts.append(f"Stdout: {tail_stdout}")
+        if not parts:
+            return None
+        combined = " | ".join(parts)
+        # Redact long tokens or credentials
+        combined = re.sub(r"[A-Za-z0-9_-]{25,}", "[REDACTED]", combined)
+        return combined[:500]
+
+    @staticmethod
+    def _existing_file_context_text_only(result: AgentResult) -> tuple[str, str]:
+        """Returns already-extracted text context only; V9 never rereads a file and is text-only."""
+        file_res = result.file_result
+        if not file_res or result.file_fallback:
+            return "", ""
+        filename = str(getattr(file_res, "file_name", "") or "")
+        text_content = str(getattr(file_res, "text_content", "") or "")
+        if text_content.strip():
+            return text_content, filename
+        if filename:
+            mime = getattr(file_res, "mime_type", "unknown")
+            return f"[Attachment '{filename}' ({mime}) was processed upstream but has no extracted text context.]", filename
+        return "", ""
+
+    def _post_worker_candidate_hook(
+        self,
+        question: str,
+        file_path: Optional[str],
+        result: AgentResult,
+    ) -> AgentResult:
+        pre_recovery_candidate = result.final_answer or ""
+
+        # Case 1: Worker already produced a non-empty candidate answer -> strictly bypass
+        if pre_recovery_candidate and pre_recovery_candidate.strip():
+            result.pre_recovery_candidate = pre_recovery_candidate
+            result.post_recovery_candidate = pre_recovery_candidate
+            result.candidate_recovery_eligible = False
+            result.candidate_recovery_triggered = False
+            result.candidate_recovery_attempted = False
+            result.candidate_recovery_success = False
+            result.candidate_recovery_action = "SKIP"
+            result.candidate_recovery_recovered = False
+            result.candidate_recovery_parse_success = False
+            result.candidate_recovery_candidate_changed = False
+            result.candidate_recovery_logical_generation_count = 0
+            result.candidate_recovery_generation_attempts = 0
+            result.candidate_recovery_generation_success = False
+            result.candidate_recovery_non_triggered_preserved = True
+            result.candidate_recovery_searches_added = 0
+            result.candidate_recovery_python_runs_added = 0
+            assert result.post_recovery_candidate == result.pre_recovery_candidate, "Non-triggered preservation violation"
+            return result
+
+        # Case 2: Candidate is empty -> classify failure
+        result.pre_recovery_candidate = ""
+        result.post_recovery_candidate = ""
+
+        failure_class = classify_candidate_recovery_failure(result)
+        result.candidate_recovery_failure_class = failure_class
+        eligible = is_candidate_recovery_eligible(pre_recovery_candidate, failure_class)
+        result.candidate_recovery_eligible = eligible
+        result.candidate_recovery_triggered = eligible
+
+        if not eligible:
+            result.candidate_recovery_attempted = False
+            result.candidate_recovery_success = False
+            result.candidate_recovery_action = "SKIP"
+            result.candidate_recovery_recovered = False
+            result.candidate_recovery_parse_success = False
+            result.candidate_recovery_candidate_changed = False
+            result.candidate_recovery_logical_generation_count = 0
+            result.candidate_recovery_generation_attempts = 0
+            result.candidate_recovery_generation_success = False
+            result.candidate_recovery_non_triggered_preserved = True
+            result.candidate_recovery_searches_added = 0
+            result.candidate_recovery_python_runs_added = 0
+            assert result.post_recovery_candidate == result.pre_recovery_candidate, "Non-triggered preservation violation"
+            return result
+
+        # Case 3: Eligible candidate recovery opportunity
+        result.candidate_recovery_attempted = True
+        result.candidate_recovery_logical_generation_count = 1
+        result.candidate_recovery_generation_attempts = 1
+        result.candidate_recovery_prompt_version = CANDIDATE_RECOVERY_PROMPT_VERSION
+        result.candidate_recovery_non_triggered_preserved = True
+        result.candidate_recovery_searches_added = 0
+        result.candidate_recovery_python_runs_added = 0
+
+        web_evidence = self._existing_web_evidence(result)
+        file_evidence, attachment_filename = self._existing_file_context_text_only(result)
+        execution_snippet = self._build_sanitized_execution_snippet(result)
+
+        recovery_prompt = build_candidate_recovery_prompt(
+            question=question,
+            web_evidence=web_evidence,
+            file_evidence=file_evidence,
+            attachment_filename=attachment_filename,
+            router_decision=result.router_decision or result.worker_mode,
+            failure_class=failure_class,
+            execution_snippet=execution_snippet,
+        )
+        result.candidate_recovery_prompt = recovery_prompt
+
+        recovery_start = time.time()
+        recovery_llm_resp = None
+        recovery_raw_response = None
+        recovery_error_type = None
+        recovery_generation_success = False
+
+        try:
+            # max_retries=0: V9 permits exactly one logical provider attempt
+            recovery_llm_resp = self.llm.generate(
+                recovery_prompt,
+                attachment_parts=None,
+                max_retries=0,
+            )
+            recovery_generation_success = True
+            if isinstance(recovery_llm_resp, LLMResponse):
+                recovery_raw_response = (
+                    recovery_llm_resp.raw_text
+                    if recovery_llm_resp.raw_text
+                    else recovery_llm_resp.text
+                )
+                if recovery_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
+                    recovery_error_type = "malformed_function_call"
+                elif recovery_llm_resp.finish_reason != "STOP":
+                    recovery_error_type = "unexpected_finish_reason"
+            else:
+                recovery_raw_response = str(recovery_llm_resp)
+                recovery_error_type = "unexpected_provider_response_type"
+        except Exception as exc:
+            err_text = str(exc).lower()
+            if "timeout" in err_text or "timed out" in err_text or "deadline" in err_text:
+                recovery_error_type = "provider_timeout"
+            elif "malformed_function_call" in err_text:
+                recovery_error_type = "malformed_function_call"
+            else:
+                recovery_error_type = "provider_api_error"
+            result.candidate_recovery_error_message = str(exc)
+
+        recovery_latency = round(time.time() - recovery_start, 2)
+        result.candidate_recovery_latency_seconds = recovery_latency
+        result.candidate_recovery_raw_response = recovery_raw_response
+
+        finish_reason = getattr(recovery_llm_resp, "finish_reason", None) if recovery_llm_resp else None
+        part_types = getattr(recovery_llm_resp, "response_part_types", []) if recovery_llm_resp else []
+        has_text = getattr(recovery_llm_resp, "has_text_part", False) if recovery_llm_resp else False
+        has_func = getattr(recovery_llm_resp, "has_function_call_part", False) if recovery_llm_resp else False
+
+        result.candidate_recovery_finish_reason = finish_reason
+        result.candidate_recovery_response_part_types = part_types
+        result.candidate_recovery_has_text_part = has_text
+        result.candidate_recovery_has_function_call_part = has_func
+
+        in_tok = getattr(recovery_llm_resp, "input_tokens", None) if recovery_llm_resp else None
+        out_tok = getattr(recovery_llm_resp, "output_tokens", None) if recovery_llm_resp else None
+        th_tok = getattr(recovery_llm_resp, "thinking_tokens", None) if recovery_llm_resp else None
+        tot_tok = getattr(recovery_llm_resp, "total_tokens", None) if recovery_llm_resp else None
+        if tot_tok is None and in_tok is not None and out_tok is not None:
+            tot_tok = in_tok + out_tok
+
+        result.candidate_recovery_input_tokens = in_tok
+        result.candidate_recovery_output_tokens = out_tok
+        result.candidate_recovery_thinking_tokens = th_tok
+        result.candidate_recovery_total_tokens = tot_tok
+
+        # Parse recovery result
+        parsed: Optional[CandidateRecoveryParseResult] = None
+        if recovery_error_type is None:
+            parsed = parse_candidate_recovery_result(recovery_raw_response)
+            if not parsed.is_valid:
+                recovery_error_type = parsed.error_type
+
+        result.candidate_recovery_generation_success = recovery_generation_success
+        result.candidate_recovery_error_type = recovery_error_type
+
+        if parsed and parsed.is_valid and recovery_error_type is None:
+            cleaned_candidate = self.clean_answer(parsed.candidate_answer or "")
+            if cleaned_candidate:
+                result.post_recovery_candidate = cleaned_candidate
+                result.final_answer = cleaned_candidate
+                result.candidate_recovery_success = True
+                result.candidate_recovery_action = "RECOVER"
+                result.candidate_recovery_recovered = True
+                result.candidate_recovery_parse_success = True
+                result.candidate_recovery_candidate_changed = True
+            else:
+                result.post_recovery_candidate = ""
+                result.final_answer = ""
+                result.candidate_recovery_success = False
+                result.candidate_recovery_action = "SKIP"
+                result.candidate_recovery_recovered = False
+                result.candidate_recovery_parse_success = False
+                result.candidate_recovery_candidate_changed = False
+                result.candidate_recovery_error_type = "empty_final_value"
+        else:
+            result.post_recovery_candidate = ""
+            result.final_answer = ""
+            result.candidate_recovery_success = False
+            result.candidate_recovery_action = "SKIP"
+            result.candidate_recovery_recovered = False
+            result.candidate_recovery_parse_success = False
+            result.candidate_recovery_candidate_changed = False
+
+        # Accounting: logical LLM generation attempts
+        result.llm_generation_attempts += 1
+        result.llm_generation_count = result.llm_generation_attempts
+        if recovery_generation_success:
+            result.llm_generation_success_count += 1
+
+        return result
+
+    def run(self, question: str, file_path: Optional[str] = None) -> AgentResult:
+        result = super().run(question, file_path=file_path)
+        if result.candidate_recovery_triggered is False:
+            assert result.llm_generation_attempts <= 5, "Non-triggered V9 exceeds five-generation cap"
+            assert result.post_recovery_candidate == result.pre_recovery_candidate, "Non-triggered recovery boundary preservation violation"
+        else:
+            assert result.llm_generation_attempts <= 6, "Triggered V9 exceeds six-generation cap"
+        return result
 
