@@ -1,15 +1,15 @@
 # V9 Post-Benchmark Audit: Upstream Candidate Recovery
 
-**Status:** POST-BENCHMARK AUDITED
-**Canonical Inference Commit:** `6369f427c4479073a6ca06531bdfd43e47cd613f`
-**Preregistration Commit:** `d3b0aaab6fa2bb348d82996ec03c0abc8e310ca8` (amended `b4891cd29d30a877e06a08dfbf2a551902de7523`)
-**Parent Baseline:** Frozen V7 (`v7-targeted-repair`)
-**Branch:** `v9-upstream-candidate-recovery`
-**Evaluation Scope:** Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)
-**Model:** `gemini-3.5-flash-lite` (temperature=None, thinking_level="medium", max_output_tokens=2048)
-**Benchmark Execution Date:** September 18, 2026
-**Research Verdict:** `SUPPORTED_AS_AN_IMPROVEMENT`
-**Promotion Recommendation:** `PROMOTE_V9_AS_V10_BASELINE`
+**Status:** POST-BENCHMARK AUDITED  
+**Canonical Inference Commit:** `6369f427c4479073a6ca06531bdfd43e47cd613f`  
+**Preregistration Commit:** `d3b0aaab6fa2bb348d82996ec03c0abc8e310ca8` (amended `b4891cd29d30a877e06a08dfbf2a551902de7523`)  
+**Parent Baseline:** Frozen V7 (`v7-targeted-repair`)  
+**Branch:** `v9-upstream-candidate-recovery`  
+**Evaluation Scope:** Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)  
+**Model:** `gemini-3.5-flash-lite` (temperature=None, thinking_level="medium", max_output_tokens=2048)  
+**Benchmark Execution Date:** September 18, 2026  
+**Research Verdict:** `SUPPORTED_AS_AN_IMPROVEMENT`  
+**Promotion Recommendation:** `PROMOTE_V9_AS_V10_BASELINE`  
 
 ---
 
@@ -23,13 +23,13 @@ V9 introduces bounded, text-only candidate recovery at the upstream worker bound
 $$\text{V9} = \text{Frozen V7} + \text{one bounded text-only candidate-recovery generation for eligible starved tasks}$$
 
 ### Formal Preregistered Hypotheses Outcomes
-- **$H_1$ (Primary Hypothesis — Within-Run Correctness Gain):** **CONFIRMED.**
+- **$H_1$ (Primary Hypothesis — Within-Run Correctness Gain):** **CONFIRMED.**  
   Within the exact same task executions, introducing bounded candidate recovery produced **+28 improvements ($0 \to 1$)** against **0 regressions ($1 \to 0$)**, yielding a net within-run gain of **+28 tasks (+16.97 percentage points)**.
-- **$H_{2a}$ (Zero Non-Triggered Degradation):** **CONFIRMED.**
+- **$H_{2a}$ (Zero Non-Triggered Degradation):** **CONFIRMED.**  
   The Non-Triggered Recovery-Boundary Preservation Rate was exactly **100.00% (75 / 75 tasks)**.
-- **$H_{2b}$ (Reachability Expansion):** **CONFIRMED.**
+- **$H_{2b}$ (Reachability Expansion):** **CONFIRMED.**  
   Candidate reachability expanded from **45.45% (75 / 165)** pre-recovery to **96.36% (159 / 165)** post-recovery, a net reachability gain of **+84 tasks (+50.91 pp)**, exceeding the descriptive target of $\ge 65.0\%$.
-- **$H_{2c}$ (Downstream Safeguard Efficacy):** **CONFIRMED.**
+- **$H_{2c}$ (Downstream Safeguard Efficacy):** **CONFIRMED.**  
   Recovered candidates flowed cleanly through existing V5 verifier and V7 repair stages without runtime exceptions or schema faults; downstream safeguards preserved 25 correct recovered candidates and rescued 3 initially-wrong recovered candidates into correct final answers.
 
 ---
@@ -151,9 +151,9 @@ Across the 10 preregistered failure classes, candidate recovery exhibited distin
 | **Total Benchmark** | **165** | **90** | **90** | **84** | **26** | **73** | **30.95% (26/84)** |
 
 ### Failure Class Observations
-1. **Dominance of Python Code Extraction Failure (80 / 90 = 88.89%)**:
+1. **Dominance of Python Code Extraction Failure (80 / 90 = 88.89%)**:  
    The primary failure mode of Gemini Flash-Lite in the python worker was emitting explanatory text and code without compliant markdown fences. Recovery successfully extracted valid candidates on 75 of these 80 tasks, yielding 21 directly correct candidates and 22 final correct answers.
-2. **High Conversion on Execution Failures (4 / 6 = 66.67%)**:
+2. **High Conversion on Execution Failures (4 / 6 = 66.67%)**:  
    When python execution failed due to environment issues (e.g. missing optional library), existing stdout or prior search evidence allowed the recovery prompt to synthesize the answer directly with 66.7% accuracy.
 
 ---
@@ -271,7 +271,7 @@ A matched control run of Frozen V7 was executed contemporaneously from the exact
 | **Total** | **165** | **100.00%** | Full contingency closure |
 
 > [!NOTE]
-> **Methodological Attribution**:
+> **Methodological Attribution**:  
 > In accordance with Section 3 of `experiments/v9/PRE_BENCHMARK.md`, this cross-run comparison is strictly **secondary, observational, and non-causal**. Run-to-run variation in LLM sampling and search query formulation produces upstream divergences across separate runs. The primary causal evidence for V9 is the within-run paired intervention measurement (+28 tasks, +16.97 pp), which completely controls for runtime stochasticity.
 
 ---
@@ -314,3 +314,4 @@ PROMOTION RECOMMENDATION: PROMOTE_V9_AS_V10_BASELINE
 1. Record and commit canonical benchmark artifacts on `v9-upstream-candidate-recovery`.
 2. Push branch to remote.
 3. Await independent governance review before branch merge or baseline freezing.
+

@@ -1,11 +1,16 @@
 # V9 — Upstream Candidate Recovery
 
+**Status**: `PREREGISTERED_PRE_IMPLEMENTATION`  
+**Branch**: `v9-upstream-candidate-recovery`  
+**Scientific Parent**: Frozen V7 (`v7-targeted-repair`)  
+**Architecture**: Design A — Upstream Worker Candidate Recovery  
 **Status**: `CANONICAL_BENCHMARK_COMPLETE`
 **Branch**: `v9-upstream-candidate-recovery`
 **Canonical Inference Commit**: `6369f427c4479073a6ca06531bdfd43e47cd613f`
 **Scientific Parent**: Frozen V7 (`v7-targeted-repair`)
 **Architecture**: Design A — Upstream Worker Candidate Recovery
 **Model**: `gemini-3.5-flash-lite` (inherited from Frozen V7)
+**Date**: September 2026  
 **Evaluation Scope**: Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)
 **Date**: September 2026
 
