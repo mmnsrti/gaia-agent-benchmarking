@@ -1,21 +1,21 @@
 # V10 — Structured Planner → Plan-Guided Executor
 
-**Status:** FROZEN
-**Branch:** `v10-planner-executor`
-**Scientific Parent:** Frozen V9 (`v9-upstream-candidate-recovery`)
-**Freeze Verdict:** `FROZEN_AND_PROMOTED_AS_V11_BASELINE`
-**Canonical Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`
-**Canonical Results Commit:** `c8f76b3fa8a1775da710665c0f683d4843a817dd`
-**Artifact Completion Commit:** `390ac110bfce264b802b5db42f81884d41e64b49`
-**Post-Benchmark Audit Commit:** `5bb65499eb237e70eb10fa96150341ed0b044886`
-**Final Corrected Audit Source Head:** `dd8e6fb4562d8d492a33409fba34aacf6b27496e`
-**Freeze Source Head:** `dd8e6fb4562d8d492a33409fba34aacf6b27496e`
-**Evaluation Schema:** 8
-**Model:** `gemini-3.5-flash-lite`
-**Thinking Level:** `medium`
-**Max Output Tokens:** 2048
-**Temperature:** null/provider default
-**Date:** September 2026
+**Status:** FROZEN  
+**Branch:** `v10-planner-executor`  
+**Scientific Parent:** Frozen V9 (`v9-upstream-candidate-recovery`)  
+**Freeze Verdict:** `FROZEN_AND_PROMOTED_AS_V11_BASELINE`  
+**Canonical Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`  
+**Canonical Results Commit:** `c8f76b3fa8a1775da710665c0f683d4843a817dd`  
+**Artifact Completion Commit:** `390ac110bfce264b802b5db42f81884d41e64b49`  
+**Post-Benchmark Audit Commit:** `5bb65499eb237e70eb10fa96150341ed0b044886`  
+**Final Corrected Audit Source Head:** `dd8e6fb4562d8d492a33409fba34aacf6b27496e`  
+**Freeze Source Head:** `dd8e6fb4562d8d492a33409fba34aacf6b27496e`  
+**Evaluation Schema:** 8  
+**Model:** `gemini-3.5-flash-lite`  
+**Thinking Level:** `medium`  
+**Max Output Tokens:** 2048  
+**Temperature:** null/provider default  
+**Date:** September 2026  
 
 ---
 
@@ -317,9 +317,10 @@ Canonical V10 Baseline Score: 84 / 165 = 50.91%
 
 Empirical findings from the canonical V10 benchmark highlight three specific bottlenecks for future investigation:
 
-1. **Python Script Execution Reliability ($H_{3e}$ Failure):**
+1. **Python Script Execution Reliability ($H_{3e}$ Failure):**  
    Only **17 / 44 (38.64%)** of Python executions succeeded without error. Python worker models frequently suffered from syntax errors, unhandled edge cases, and missing package dependencies, triggering candidate recovery on 51 tasks.
-2. **Evidence Insufficiency ($H_{3a}$ Resistance):**
+2. **Evidence Insufficiency ($H_{3a}$ Resistance):**  
    Tasks assessed with `EVIDENCE` risk exhibited an **88.89% (32 / 36)** failure rate, essentially identical to Frozen V9 (88.9%). Structured planning cannot compensate when required external evidence was missed during the initial single web search.
-3. **Downstream Targeted Repair Stagnation:**
+3. **Downstream Targeted Repair Stagnation:**  
    Targeted Repair produced only **+1 net improvement** across the entire 165-task benchmark ($16 \text{ KEEP} / 0 \text{ REPLACE}$ on Level 1; $32 \text{ KEEP} / 2 \text{ REPLACE}$ on Level 2; $14 \text{ KEEP} / 2 \text{ REPLACE}$ on Level 3). Text-only post-hoc repair remains largely ineffective when the underlying execution lacks evidence.
+
