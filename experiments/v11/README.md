@@ -1,17 +1,17 @@
 # V11 — Planner-Guided Adaptive Evidence Retrieval
 
-**Status**: `PROPOSED / PREREGISTERED — NOT IMPLEMENTED`
-**Branch**: `v11-adaptive-evidence-retrieval`
-**Repository Parent Commit**: `0761b81330540cdc67fe2d662aef049bc87d9d8f`
-**Scientific Parent**: Frozen V10 (`v10-planner-executor`)
-**Canonical Frozen V10 Inference Commit**: `314d0aecd01a1679a96d85256044c01c8b6c30ce`
-**Canonical Frozen V10 Score**: `84 / 165 = 50.91%`
-**Architecture**: Search 1 → File Context → Planner v2 → [Optional Targeted Search 2] → Executor → Frozen V10 Downstream Pipeline
-**Model**: `gemini-3.5-flash-lite` (inherited from Frozen V7/V9/V10)
-**Evaluation Scope**: Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)
-**Runtime Implemented**: `NO`
-**Benchmark Executed**: `NO`
-**Date**: September 2026
+**Status**: `PROPOSED / PREREGISTERED — NOT IMPLEMENTED`  
+**Branch**: `v11-adaptive-evidence-retrieval`  
+**Repository Parent Commit**: `0761b81330540cdc67fe2d662aef049bc87d9d8f`  
+**Scientific Parent**: Frozen V10 (`v10-planner-executor`)  
+**Canonical Frozen V10 Inference Commit**: `314d0aecd01a1679a96d85256044c01c8b6c30ce`  
+**Canonical Frozen V10 Score**: `84 / 165 = 50.91%`  
+**Architecture**: Search 1 → File Context → Planner v2 → [Optional Targeted Search 2] → Executor → Frozen V10 Downstream Pipeline  
+**Model**: `gemini-3.5-flash-lite` (inherited from Frozen V7/V9/V10)  
+**Evaluation Scope**: Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)  
+**Runtime Implemented**: `NO`  
+**Benchmark Executed**: `NO`  
+**Date**: September 2026  
 
 See [`DESIGN.md`](./DESIGN.md) for the complete architectural specification, contracts, and invariants; [`PRE_BENCHMARK.md`](./PRE_BENCHMARK.md) for binding hypotheses, evaluation protocol, and 28 deterministic smoke scenarios; and [`../../docs/V11_PRE_IMPLEMENTATION_AUDIT.md`](../../docs/V11_PRE_IMPLEMENTATION_AUDIT.md) for the pre-implementation governance audit.
 
@@ -43,10 +43,10 @@ To ensure causal attribution and avoid runaway search behavior, V11 enforces str
 
 ## 3. Two-Tier Evaluation Framework
 
-1. **Primary Evaluation (Intervention Ablation):**
-   **Triggered-Cohort Shared-Plan Paired Retrieval Ablation** (`run_v11_paired.py`): For tasks where the planner requests follow-up evidence, both branches evaluate the exact same plan with and without Search 2 evidence at the upstream boundary.
+1. **Primary Evaluation (Intervention Ablation):**  
+   **Triggered-Cohort Shared-Plan Paired Retrieval Ablation** (`run_v11_paired.py`): For tasks where the planner requests follow-up evidence, both branches evaluate the exact same plan with and without Search 2 evidence at the upstream boundary.  
    - Metric: $\Delta_{\text{followup}} = N_{\text{RETRIEVAL\_IMPROVEMENT}} - N_{\text{RETRIEVAL\_REGRESSION}} > 0$.
-2. **Canonical Evaluation (Governance & Performance Gate):**
+2. **Canonical Evaluation (Governance & Performance Gate):**  
    Full 165-task GAIA validation run requiring official accuracy $> 50.91\%$ ($> 84 / 165$ correct).
 
 ---
@@ -59,3 +59,4 @@ To ensure causal attribution and avoid runaway search behavior, V11 enforces str
 | [`DESIGN.md`](./DESIGN.md) | Technical architecture, planner-v2 grammar, fallback policy, query normalization, Search 2 failure policy, and evidence integration format. |
 | [`PRE_BENCHMARK.md`](./PRE_BENCHMARK.md) | Formal binding preregistration: hypotheses $H_1, H_2, H_{3a\dots 3f}$, paired protocol, transition taxonomy, promotion gates, and 28 deterministic smoke scenarios. |
 | [`../../docs/V11_PRE_IMPLEMENTATION_AUDIT.md`](../../docs/V11_PRE_IMPLEMENTATION_AUDIT.md) | Pre-implementation governance audit verifying all pre-execution checks and architectural boundaries. |
+

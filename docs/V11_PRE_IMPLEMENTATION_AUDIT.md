@@ -1,16 +1,16 @@
 # V11 Pre-Implementation Audit Report
 
-**Date:** September 19, 2026
-**Auditor:** Automated Benchmark Integrity Suite / Antigravity Agent
-**Target Version:** `V11 — Planner-Guided Adaptive Evidence Retrieval`
-**Scientific Parent Baseline:** `V10 — Structured Planner → Plan-Guided Executor` (Frozen `v10-planner-executor`)
-**Parent Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`
-**Parent Canonical Result:** `84 / 165 = 50.91%`
-**Merged Main Baseline Commit:** `0761b81330540cdc67fe2d662aef049bc87d9d8f`
-**Branch:** `v11-adaptive-evidence-retrieval`
-**Evaluation Schema Version:** 9
-**Audit Status:** `PRE_IMPLEMENTATION`
-**Verdict:** `READY_FOR_IMPLEMENTATION`
+**Date:** September 19, 2026  
+**Auditor:** Automated Benchmark Integrity Suite / Antigravity Agent  
+**Target Version:** `V11 — Planner-Guided Adaptive Evidence Retrieval`  
+**Scientific Parent Baseline:** `V10 — Structured Planner → Plan-Guided Executor` (Frozen `v10-planner-executor`)  
+**Parent Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`  
+**Parent Canonical Result:** `84 / 165 = 50.91%`  
+**Merged Main Baseline Commit:** `0761b81330540cdc67fe2d662aef049bc87d9d8f`  
+**Branch:** `v11-adaptive-evidence-retrieval`  
+**Evaluation Schema Version:** 9  
+**Audit Status:** `PRE_IMPLEMENTATION`  
+**Verdict:** `READY_FOR_IMPLEMENTATION`  
 
 ---
 
@@ -108,12 +108,12 @@ If Planner v2 generation produces malformed text, times out, or fails parsing:
 - Executor prompts (`executor-direct-v1`, `executor-python-v1`) remain conceptually preserved from Frozen V10.
 
 ### 3.7 Evaluation Methodology & Attribution
-1. **Primary Protocol (Within-Task Paired Ablation):**
+1. **Primary Protocol (Within-Task Paired Ablation):**  
    Evaluates triggered tasks where both branches receive the exact same question, Search 1 evidence, file context, planner output, and plan. Branch A runs without Search 2; Branch B runs with Search 2. Both stop at the pre-recovery candidate boundary.
    - Primary metric: $\Delta_{\text{followup}} = N_{\text{RETRIEVAL\_IMPROVEMENT}} - N_{\text{RETRIEVAL\_REGRESSION}} > 0$.
-2. **Canonical Protocol (Full Benchmark):**
+2. **Canonical Protocol (Full Benchmark):**  
    Evaluates the full end-to-end V11 agent across all 165 GAIA validation tasks, requiring official accuracy $> 50.91\%$ ($> 84 / 165$).
-3. **Contemporaneous Matched Control Excluded:**
+3. **Contemporaneous Matched Control Excluded:**  
    A contemporaneous full-run matched V10 control is explicitly not required for promotion, eliminating separate-run sampling noise.
 
 ---
@@ -128,3 +128,4 @@ V11 PRE-IMPLEMENTATION AUDIT VERDICT: READY_FOR_IMPLEMENTATION
 
 ### Rationale
 All mandatory pre-flight criteria, architectural constraints, budget invariants, information firewalls, deterministic fallback policies, evaluation protocols, and 28 deterministic smoke scenarios have been comprehensively verified and preregistered. No runtime code, prompts, or benchmarks have been modified. Version 11 is approved for bounded runtime implementation.
+

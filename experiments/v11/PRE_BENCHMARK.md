@@ -1,16 +1,16 @@
 # V11 — Formal Preregistration & Pre-Benchmark Protocol: Planner-Guided Adaptive Evidence Retrieval
 
-**Status:** PROPOSED_PRE_IMPLEMENTATION
-**Document Version:** 1.0
-**Schema Version:** 9
-**Branch:** `v11-adaptive-evidence-retrieval`
-**Repository Parent Commit:** `0761b81330540cdc67fe2d662aef049bc87d9d8f`
-**Scientific Parent:** Frozen V10 (`v10-planner-executor`)
-**Canonical Parent Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`
-**Canonical Parent Benchmark Score:** 84 / 165 (50.91%)
-**Evaluation Scope:** Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)
-**Model:** `gemini-3.5-flash-lite` (inherited from Frozen V7/V9/V10)
-**Date:** September 2026
+**Status:** PROPOSED_PRE_IMPLEMENTATION  
+**Document Version:** 1.0  
+**Schema Version:** 9  
+**Branch:** `v11-adaptive-evidence-retrieval`  
+**Repository Parent Commit:** `0761b81330540cdc67fe2d662aef049bc87d9d8f`  
+**Scientific Parent:** Frozen V10 (`v10-planner-executor`)  
+**Canonical Parent Inference Commit:** `314d0aecd01a1679a96d85256044c01c8b6c30ce`  
+**Canonical Parent Benchmark Score:** 84 / 165 (50.91%)  
+**Evaluation Scope:** Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)  
+**Model:** `gemini-3.5-flash-lite` (inherited from Frozen V7/V9/V10)  
+**Date:** September 2026  
 
 ---
 
@@ -25,32 +25,32 @@ V11 isolates the effect of **adaptive evidence retrieval** at the upstream formu
 ## 2. Binding Hypotheses
 
 ### Primary Hypothesis
-- **$H_1$ — Follow-Up Retrieval Benefit (Paired Upstream Metric):**
+- **$H_1$ — Follow-Up Retrieval Benefit (Paired Upstream Metric):**  
   On the planner-triggered cohort ($N_{\text{triggered}}$ tasks where Planner v2 determines `EVIDENCE_STATUS: INSUFFICIENT`), the net candidate correctness delta under identical context and plan will be strictly positive:
   $$\Delta_{\text{followup}} = N_{\text{RETRIEVAL\_IMPROVEMENT}} - N_{\text{RETRIEVAL\_REGRESSION}} > 0$$
   *Non-Testability Clause:* If $N_{\text{triggered}} == 0$, $H_1$ is mathematically undefined (`NOT_TESTABLE`), and V11 cannot be promoted.
 
 ### Canonical Performance Gate
-- **$H_2$ — Canonical End-to-End Benchmark Superiority:**
+- **$H_2$ — Canonical End-to-End Benchmark Superiority:**  
   On the complete 165-task GAIA validation suite, the canonical V11 agent will strictly exceed the Frozen V10 historical reference ($84 / 165 = 50.91\%$):
   $$\text{V11 Correct Tasks} > 84 \iff \text{V11 Official Accuracy} > 50.91\%$$
 
 ### Secondary Diagnostic Hypotheses
-- **$H_{3a}$ — Evidence-Risk Conditional Error Reduction:**
+- **$H_{3a}$ — Evidence-Risk Conditional Error Reduction:**  
   In post-hoc self-evaluation diagnostics, the conditional error rate for tasks assessed with `EVIDENCE` risk will strictly decrease compared to Frozen V10 ($32 / 36 = 88.89\%$):
   $$\text{V11 EVIDENCE Conditional Error Rate} < 88.89\%$$
-- **$H_{3b}$ — Candidate Recovery Trigger Reduction:**
+- **$H_{3b}$ — Candidate Recovery Trigger Reduction:**  
   Because stronger evidence facilitates upstream task execution, the candidate recovery trigger rate will decrease below Frozen V10 ($51 / 165 = 30.91\%$):
   $$\text{V11 Recovery Trigger Rate} < 30.91\%$$
-- **$H_{3c}$ — Reachability Preservation Floor:**
+- **$H_{3c}$ — Reachability Preservation Floor:**  
   V11 downstream non-empty candidate reachability will maintain a high preservation floor:
   $$\text{V11 Post-Recovery Reachability} \ge 95.0\%$$
-- **$H_{3d}$ — Planner v2 Contract Adherence:**
+- **$H_{3d}$ — Planner v2 Contract Adherence:**  
   The deterministic line-oriented parser will achieve high parse reliability on Planner v2:
   $$\text{Planner v2 Parse Success Rate} \ge 95.0\%$$
-- **$H_{3e}$ — Follow-Up Retrieval Operational Tracking:**
+- **$H_{3e}$ — Follow-Up Retrieval Operational Tracking:**  
   Document and report exact counts for follow-up search eligibility, attempts, successes, provider errors, and empty results. Provider errors do not constitute an automatic scientific failure unless widespread infrastructure collapse occurs.
-- **$H_{3f}$ — Search Novelty Diagnostic:**
+- **$H_{3f}$ — Search Novelty Diagnostic:**  
   For triggered tasks, report the proportion of follow-up searches returning $\ge 1$ new URL not present in Search 1, along with the mean and median new URLs retrieved. This metric is descriptive only and non-binding.
 
 ---
@@ -244,3 +244,4 @@ Before executing GAIA benchmarks, the V11 implementation must pass **28 determin
 2. **Planner Overconfidence / Starvation:** If Planner v2 erroneously declares `SUFFICIENT`, the agent remains starved.
 3. **No Code Repair:** Python syntax and package issues ($H_{3e}$) remain unaddressed by V11.
 4. **Generalization Safeguard:** No specific query heuristics, entity regexes, or task-specific prompting may be derived from GAIA ground-truth answers.
+
