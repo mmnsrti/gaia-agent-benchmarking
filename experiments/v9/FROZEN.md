@@ -1,15 +1,15 @@
 # V9 — Upstream Candidate Recovery
 
-**Status:** FROZEN
-**Branch:** `v9-upstream-candidate-recovery`
-**Scientific Parent:** Frozen V7 (`v7-targeted-repair`)
-**Freeze Verdict:** `FROZEN_AND_PROMOTED_AS_V10_BASELINE`
-**Canonical Inference Commit:** `6369f427c4479073a6ca06531bdfd43e47cd613f`
-**Canonical Results Commit:** `0a411ec313e151fdfc67c546f5f1eda9a02dc9d7`
-**Freeze Source Head:** `e007939651129a734c6a2c5d2b5dad5796a1156a`
-**Model:** `gemini-3.5-flash-lite` (temperature=None, thinking_level="medium", max_output_tokens=2048)
-**Evaluation Scope:** Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)
-**Date:** September 2026
+**Status:** FROZEN  
+**Branch:** `v9-upstream-candidate-recovery`  
+**Scientific Parent:** Frozen V7 (`v7-targeted-repair`)  
+**Freeze Verdict:** `FROZEN_AND_PROMOTED_AS_V10_BASELINE`  
+**Canonical Inference Commit:** `6369f427c4479073a6ca06531bdfd43e47cd613f`  
+**Canonical Results Commit:** `0a411ec313e151fdfc67c546f5f1eda9a02dc9d7`  
+**Freeze Source Head:** `e007939651129a734c6a2c5d2b5dad5796a1156a`  
+**Model:** `gemini-3.5-flash-lite` (temperature=None, thinking_level="medium", max_output_tokens=2048)  
+**Evaluation Scope:** Full GAIA 2023 Validation Set (165 Tasks: 53 Level 1, 86 Level 2, 26 Level 3)  
+**Date:** September 2026  
 
 ---
 
@@ -213,7 +213,7 @@ $$\Delta_{\text{pp}} = \frac{+28}{165} \times 100 = \mathbf{+16.97 \text{ percen
 - **Level 3 Net Gain**: $+3$ tasks ($11.54\% \to 23.08\%$, $+11.54$ pp)
 
 > [!NOTE]
-> **Methodological Note on Within-Run Measurement**:
+> **Methodological Note on Within-Run Measurement**:  
 > The within-run paired intervention measurement avoids the separate-run sampling divergence that affects the matched V7 comparison and is the preregistered primary decision metric. It should not be described as a perfect causal estimate or as eliminating all sources of uncertainty.
 
 ---
@@ -269,22 +269,22 @@ A matched control run of Frozen V7 was executed contemporaneously from the exact
 | **Total** | **165** | **100.00%** | Full contingency closure |
 
 > [!IMPORTANT]
-> **Methodological Status**:
+> **Methodological Status**:  
 > The matched Frozen V7 comparison is based on a separate stochastic execution and therefore remains strictly **secondary, observational, and non-causal**. Run-to-run sampling variance in routing and search formulation causes separate executions to diverge. The primary basis for promotion is the within-run paired intervention measurement (+28 tasks, +16.97 pp).
 
 ---
 
 ## 11. Scientific Limitations
 
-1. **Recovery Precision (30.95%)**:
+1. **Recovery Precision (30.95%)**:  
    While recovery successfully emitted candidates for 84 tasks, only 26 were directly correct. Most recovered candidates (58 / 84) were incorrect, indicating that candidate recovery primarily creates an answer candidate rather than resolving underlying reasoning or evidence deficiencies.
-2. **Dominance of Python Extraction Brittleness**:
+2. **Dominance of Python Extraction Brittleness**:  
    80 of the 90 triggered recoveries (88.89%) stemmed from `PYTHON_CODE_EXTRACTION_FAILURE`, where Gemini Flash-Lite emitted non-fenced python code. Part of V9's measured gain represents compensation for upstream worker formatting brittleness.
-3. **Downstream Safeguard Harm Risk**:
+3. **Downstream Safeguard Harm Risk**:  
    In 1 case (L2 `4d51c4bf...`), an accurate recovered candidate was degraded to an incorrect answer by the downstream V5 verifier. Downstream safeguards are not perfectly conservative on recovered candidates.
-4. **Residual Starvation (6 Tasks)**:
+4. **Residual Starvation (6 Tasks)**:  
    Candidate recovery failed on 6 tasks (4 unexpected finish reasons, 1 missing marker, 1 malformed call), leaving them starved.
-5. **Matched-Control Stochasticity**:
+5. **Matched-Control Stochasticity**:  
    Separate-run cross comparisons diverge upstream due to LLM sampling stochasticity, reinforcing the necessity of within-run paired intervention designs.
 
 ---
@@ -321,3 +321,4 @@ Inference Baseline Commit: 6369f427c4479073a6ca06531bdfd43e47cd613f
 - Any future V10 experiment must begin from **Frozen V9** behavior and introduce a separately preregistered, bounded intervention.
 - The V10 research question, capability intervention, and preregistration are **NOT** defined in this document and must be established in a dedicated preregistration phase.
 - Baseline regression against Frozen V9 requires preserving the candidate recovery stage and its 100.0% non-triggered preservation invariant.
+
