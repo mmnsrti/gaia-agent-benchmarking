@@ -38,10 +38,38 @@ from prompts.candidate_recovery import (
     parse_candidate_recovery_result,
     CandidateRecoveryParseResult,
 )
+from prompts.planner import (
+    PLANNER_PROMPT_VERSION,
+    PlanSpec,
+    PlannerParseResult,
+    build_planner_prompt,
+    parse_planner_result,
+    build_fallback_plan,
+)
+from prompts.executor import (
+    EXECUTOR_DIRECT_PROMPT_VERSION,
+    EXECUTOR_PYTHON_PROMPT_VERSION,
+    build_direct_executor_prompt,
+    build_python_executor_prompt,
+)
 from tools.web_search import TavilySearchTool, WebSearchResult
 from tools.file_tool import FileTool, FileResult
 from tools.python_tool import PythonTool, PythonResult
 from .llm import LLMResponse
+
+
+@dataclass
+class UpstreamContext:
+    question: str
+    file_path: Optional[str] = None
+    web_evidence: str = ""
+    file_evidence: str = ""
+    attachment_filename: str = ""
+    search_res: Optional[WebSearchResult] = None
+    search_fallback: bool = False
+    file_res: Optional[FileResult] = None
+    file_fallback: bool = False
+    attachment_parts: Optional[Any] = None
 
 
 
@@ -97,6 +125,7 @@ class AgentResult:
     worker_generation_success: bool = False
     llm_generation_attempts: int = 1
     llm_generation_success_count: int = 1
+    candidate_answer: Optional[str] = None
     # Verifier metadata (V5)
     pre_verification_answer: Optional[str] = None
     post_verification_answer: Optional[str] = None
@@ -195,6 +224,45 @@ class AgentResult:
     candidate_recovery_non_triggered_preserved: bool = True
     candidate_recovery_searches_added: int = 0
     candidate_recovery_python_runs_added: int = 0
+
+    # V10 Structured Planner telemetry fields
+    planner_prompt_version: Optional[str] = None
+    planner_attempted: bool = False
+    planner_success: bool = False
+    planner_parse_success: bool = False
+    planner_fallback_used: bool = False
+    planner_mode: Optional[str] = None
+    planner_objective: Optional[str] = None
+    planner_evidence_needed: Optional[str] = None
+    plan_step_count: Optional[int] = None
+    plan_steps: Optional[list[str]] = None
+    plan_answer_type: Optional[str] = None
+    planner_error_type: Optional[str] = None
+    planner_prompt: Optional[str] = None
+    planner_raw_response: Optional[str] = None
+    planner_latency_seconds: Optional[float] = None
+    planner_input_tokens: Optional[int] = None
+    planner_output_tokens: Optional[int] = None
+    planner_thinking_tokens: Optional[int] = None
+    planner_total_tokens: Optional[int] = None
+    planner_generation_attempts: int = 0
+    planner_generation_success: bool = False
+
+    # V10 Plan-Guided Executor telemetry fields
+    executor_mode: Optional[str] = None
+    executor_plan_used: bool = False
+    executor_success: bool = False
+    executor_error_type: Optional[str] = None
+    executor_prompt_version: Optional[str] = None
+    executor_prompt: Optional[str] = None
+    executor_raw_response: Optional[str] = None
+    executor_latency_seconds: Optional[float] = None
+    executor_input_tokens: Optional[int] = None
+    executor_output_tokens: Optional[int] = None
+    executor_thinking_tokens: Optional[int] = None
+    executor_total_tokens: Optional[int] = None
+    executor_generation_attempts: int = 0
+    executor_generation_success: bool = False
 
 
     @property
@@ -701,10 +769,8 @@ class GAIARouterAgent(GAIAFileAgent):
         self.primary_prompt_version = ROUTER_PROMPT_VERSION
         self.fallback_prompt_version = None
 
-    def run(self, question: str, file_path: Optional[str] = None) -> AgentResult:
-        """Runs the V4 two-stage capability-routing pipeline."""
-        import time
-
+    def _prepare_upstream_context(self, question: str, file_path: Optional[str] = None) -> UpstreamContext:
+        """Retrieves web evidence and processes file attachments into a shared UpstreamContext."""
         # 1. Execute exactly one search with original GAIA question
         search_res = self.search_tool.search(question)
         web_evidence = search_res.format_evidence_block() if search_res.success else ""
@@ -740,10 +806,38 @@ class GAIARouterAgent(GAIAFileAgent):
         else:
             file_fallback = False
 
+        return UpstreamContext(
+            question=question,
+            file_path=file_path,
+            web_evidence=web_evidence,
+            file_evidence=file_evidence,
+            attachment_filename=attachment_filename,
+            search_res=search_res,
+            search_fallback=search_fallback,
+            file_res=file_res,
+            file_fallback=file_fallback,
+            attachment_parts=attachment_parts,
+        )
+
+    def _execute_upstream_pair_from_context(self, context: UpstreamContext) -> AgentResult:
+        """Executes the Capability Router (Slot 1) -> Worker (Slot 2) pair from UpstreamContext."""
+        import time
+
+        question = context.question
+        file_path = context.file_path
+        web_evidence = context.web_evidence
+        file_evidence = context.file_evidence
+        attachment_filename = context.attachment_filename
+        search_res = context.search_res
+        search_fallback = context.search_fallback
+        file_res = context.file_res
+        file_fallback = context.file_fallback
+        attachment_parts = context.attachment_parts
+
         # 3. Stage 1: Router Generation (Generation #1)
         router_prompt = build_router_prompt(
             question=question,
-            web_evidence=web_evidence if search_res.success else "[Web search unavailable]",
+            web_evidence=web_evidence if (search_res and search_res.success) else "[Web search unavailable]",
             file_evidence=file_evidence,
             attachment_filename=attachment_filename,
         )
@@ -818,7 +912,7 @@ class GAIARouterAgent(GAIAFileAgent):
             worker_prompt_ver = ROUTER_DIRECT_WORKER_PROMPT_VERSION
             worker_prompt = build_direct_worker_prompt(
                 question=question,
-                web_evidence=web_evidence if search_res.success else "[Web search unavailable]",
+                web_evidence=web_evidence if (search_res and search_res.success) else "[Web search unavailable]",
                 file_evidence=file_evidence,
                 attachment_filename=attachment_filename,
             )
@@ -826,7 +920,7 @@ class GAIARouterAgent(GAIAFileAgent):
             worker_prompt_ver = ROUTER_PYTHON_WORKER_PROMPT_VERSION
             worker_prompt = build_python_worker_prompt(
                 question=question,
-                web_evidence=web_evidence if search_res.success else "[Web search unavailable]",
+                web_evidence=web_evidence if (search_res and search_res.success) else "[Web search unavailable]",
                 file_evidence=file_evidence,
                 attachment_filename=attachment_filename,
             )
@@ -939,6 +1033,7 @@ class GAIARouterAgent(GAIAFileAgent):
             raw_response=raw_resp,
             normalized_response=norm_resp,
             final_answer=final_answer,
+            candidate_answer=final_answer,
             llm_response=worker_llm_resp if isinstance(worker_llm_resp, LLMResponse) else None,
             prompt=worker_prompt,
             prompt_version=ROUTER_PROMPT_VERSION,
@@ -984,6 +1079,12 @@ class GAIARouterAgent(GAIAFileAgent):
             llm_generation_attempts=llm_generation_attempts,
             llm_generation_success_count=llm_generation_success_count,
         )
+        return agent_result
+
+    def run(self, question: str, file_path: Optional[str] = None) -> AgentResult:
+        """Runs the V4 two-stage capability-routing pipeline."""
+        context = self._prepare_upstream_context(question=question, file_path=file_path)
+        agent_result = self._execute_upstream_pair_from_context(context)
         return self._post_worker_candidate_hook(
             question=question,
             file_path=file_path,
@@ -1407,6 +1508,7 @@ class GAIASelfEvaluationAgent(GAIAVerificationAgent):
         v5_result.llm_generation_count = v5_result.llm_generation_attempts
         v5_result.llm_generation_success_count += 1 if self_eval_generation_success else 0
         max_v6_gens = 5 if getattr(self, "_is_v9", False) else 4
+        max_v6_gens = 5 if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False)) else 4
         assert v5_result.llm_generation_attempts <= max_v6_gens, f"Exceeds generation cap ({max_v6_gens})"
         assert v5_result.self_eval_answer_unchanged, "V6 self-evaluation mutated the final answer"
         return v5_result
@@ -1579,7 +1681,11 @@ class GAIATargetedRepairAgent(GAIASelfEvaluationAgent):
         v6_result.llm_generation_count = v6_result.llm_generation_attempts
         v6_result.llm_generation_success_count += 1 if repair_generation_success else 0
 
-        max_v7_gens = 6 if getattr(self, "_is_v9", False) else 5
+        max_v7_gens = (
+            6
+            if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False))
+            else 5
+        )
         assert v6_result.llm_generation_attempts <= max_v7_gens, f"Exceeds generation cap ({max_v7_gens})"
         return v6_result
 
@@ -1962,3 +2068,348 @@ class GAIAUpstreamCandidateRecoveryAgent(GAIATargetedRepairAgent):
             assert result.llm_generation_attempts <= 6, "Triggered V9 exceeds six-generation cap"
         return result
 
+
+class GAIAPlannerExecutorAgent(GAIAUpstreamCandidateRecoveryAgent):
+    """V10 Structured Planner -> Plan-Guided Executor Agent.
+
+    Replaces the coarse capability router (Router -> Worker) upstream pair
+    with a Structured Planner (Slot 1) and Plan-Guided Executor (Slot 2).
+    Preserves all downstream stages (V9 candidate recovery, V5 verifier,
+    V6 self-evaluator, V7 targeted repair).
+    """
+
+    _is_v10: bool = True
+    _is_v9: bool = False
+
+    def __init__(
+        self,
+        llm_client: Any,
+        search_tool: Optional[Any] = None,
+        file_tool: Optional[Any] = None,
+        python_tool: Optional[Any] = None,
+        tavily_tool: Optional[Any] = None,
+    ):
+        super().__init__(
+            llm_client=llm_client,
+            search_tool=search_tool,
+            file_tool=file_tool,
+            python_tool=python_tool,
+            tavily_tool=tavily_tool,
+        )
+        self.prompt_version = PLANNER_PROMPT_VERSION
+        self.primary_prompt_version = PLANNER_PROMPT_VERSION
+        self.fallback_prompt_version = None
+
+    def _execute_upstream_pair_from_context(self, context: UpstreamContext) -> AgentResult:
+        """Executes the V10 Structured Planner (Slot 1) -> Plan-Guided Executor (Slot 2) pair."""
+        import time
+
+        question = context.question
+        file_path = context.file_path
+        web_evidence = context.web_evidence
+        file_evidence = context.file_evidence
+        attachment_filename = context.attachment_filename
+        search_res = context.search_res
+        search_fallback = context.search_fallback
+        file_res = context.file_res
+        file_fallback = context.file_fallback
+        attachment_parts = context.attachment_parts
+
+        # 1. Slot 1: Structured Planner Generation (Generation #1)
+        planner_prompt = build_planner_prompt(
+            question=question,
+            web_evidence=web_evidence if (search_res and search_res.success) else "[Web search unavailable]",
+            file_evidence=file_evidence,
+            attachment_filename=attachment_filename,
+        )
+
+        planner_generation_attempts = 1
+        planner_generation_success = False
+        planner_llm_resp = None
+        planner_raw_response = None
+        planner_error_type = None
+        planner_start = time.time()
+
+        try:
+            planner_llm_resp = self.llm.generate(planner_prompt, attachment_parts=attachment_parts)
+            planner_generation_success = True
+            if isinstance(planner_llm_resp, LLMResponse):
+                planner_raw_response = planner_llm_resp.raw_text if planner_llm_resp.raw_text else planner_llm_resp.text
+                if planner_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
+                    planner_error_type = "malformed_function_call_finish_reason"
+                elif planner_llm_resp.finish_reason not in (None, "", "STOP"):
+                    planner_error_type = "unexpected_finish_reason"
+            else:
+                planner_raw_response = str(planner_llm_resp)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "timeout" in err_str or "deadline" in err_str:
+                planner_error_type = "provider_timeout"
+            elif "malformed_function_call" in err_str:
+                planner_error_type = "malformed_function_call_finish_reason"
+            else:
+                planner_error_type = "provider_api_error"
+            planner_raw_response = None
+
+        planner_latency = round(time.time() - planner_start, 2)
+        planner_input_tokens = getattr(planner_llm_resp, "input_tokens", None) if planner_llm_resp else None
+        planner_output_tokens = getattr(planner_llm_resp, "output_tokens", None) if planner_llm_resp else None
+        planner_thinking_tokens = getattr(planner_llm_resp, "thinking_tokens", None) if planner_llm_resp else None
+        planner_total_tokens = getattr(planner_llm_resp, "total_tokens", None) if planner_llm_resp else None
+        if planner_total_tokens is None and (planner_input_tokens is not None or planner_output_tokens is not None):
+            planner_total_tokens = (planner_input_tokens or 0) + (planner_output_tokens or 0) + (planner_thinking_tokens or 0)
+
+        # Parse planner output
+        if planner_error_type is not None:
+            parse_res = PlannerParseResult(
+                success=False,
+                plan_spec=build_fallback_plan(question=question, raw_text="", error_message=planner_error_type),
+                error_message=planner_error_type,
+            )
+        elif planner_raw_response is None or not planner_raw_response.strip():
+            planner_error_type = "empty_provider_response"
+            parse_res = PlannerParseResult(
+                success=False,
+                plan_spec=build_fallback_plan(question=question, raw_text="", error_message=planner_error_type),
+                error_message=planner_error_type,
+            )
+        else:
+            parse_res = parse_planner_result(planner_raw_response)
+            if not parse_res.success:
+                planner_error_type = parse_res.error_message
+
+        plan_spec = parse_res.plan_spec
+        planner_success = parse_res.success and (planner_error_type is None)
+        planner_parse_success = parse_res.success
+        planner_fallback_used = plan_spec.is_fallback
+
+        # 2. Slot 2: Plan-Guided Executor Generation (Generation #2)
+        executor_mode = plan_spec.mode
+        if executor_mode == "DIRECT":
+            executor_prompt_ver = EXECUTOR_DIRECT_PROMPT_VERSION
+            executor_prompt = build_direct_executor_prompt(
+                question=question,
+                plan_spec=plan_spec,
+                web_evidence=web_evidence if (search_res and search_res.success) else "[Web search unavailable]",
+                file_evidence=file_evidence,
+                attachment_filename=attachment_filename,
+            )
+        else:
+            executor_prompt_ver = EXECUTOR_PYTHON_PROMPT_VERSION
+            executor_prompt = build_python_executor_prompt(
+                question=question,
+                plan_spec=plan_spec,
+                web_evidence=web_evidence if (search_res and search_res.success) else "[Web search unavailable]",
+                file_evidence=file_evidence,
+                attachment_filename=attachment_filename,
+            )
+
+        executor_generation_attempts = 1
+        executor_generation_success = False
+        executor_llm_resp = None
+        executor_raw_response = None
+        executor_error_type = None
+        executor_start = time.time()
+
+        try:
+            executor_llm_resp = self.llm.generate(executor_prompt, attachment_parts=attachment_parts)
+            executor_generation_success = True
+            if isinstance(executor_llm_resp, LLMResponse):
+                executor_raw_response = executor_llm_resp.raw_text if executor_llm_resp.raw_text else executor_llm_resp.text
+                if executor_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
+                    executor_error_type = "malformed_function_call_finish_reason"
+            else:
+                executor_raw_response = str(executor_llm_resp)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "timeout" in err_str or "deadline" in err_str:
+                executor_error_type = "provider_timeout"
+            elif "malformed_function_call" in err_str:
+                executor_error_type = "malformed_function_call_finish_reason"
+            else:
+                executor_error_type = "provider_api_error"
+            executor_raw_response = None
+
+        executor_latency = round(time.time() - executor_start, 2)
+
+        if executor_error_type is None and (executor_raw_response is None or not executor_raw_response.strip()):
+            executor_error_type = "empty_worker_response"
+
+        executor_input_tokens = getattr(executor_llm_resp, "input_tokens", None) if executor_llm_resp else None
+        executor_output_tokens = getattr(executor_llm_resp, "output_tokens", None) if executor_llm_resp else None
+        executor_thinking_tokens = getattr(executor_llm_resp, "thinking_tokens", None) if executor_llm_resp else None
+        executor_total_tokens = getattr(executor_llm_resp, "total_tokens", None) if executor_llm_resp else None
+        if executor_total_tokens is None and (executor_input_tokens is not None or executor_output_tokens is not None):
+            executor_total_tokens = (executor_input_tokens or 0) + (executor_output_tokens or 0) + (executor_thinking_tokens or 0)
+
+        # 3. Extract Answer / Execute Python
+        py_result: Optional[PythonResult] = None
+        python_requested = False
+        python_executed = False
+        python_fallback = False
+        final_answer = ""
+        executor_success = False
+
+        if executor_mode == "DIRECT":
+            python_requested = False
+            python_executed = False
+            python_fallback = False
+            final_answer = self.clean_answer(extract_direct_answer(executor_raw_response or ""))
+            executor_success = bool(final_answer and not executor_error_type)
+        else:
+            code = extract_python_code(executor_raw_response or "")
+            python_requested = bool(code)
+            if code:
+                python_executed = True
+                py_result = self.python_tool.execute(code, attachment_path=file_path)
+                if py_result.success:
+                    extracted_ans = extract_python_final_answer(py_result.stdout)
+                    if extracted_ans is not None:
+                        final_answer = self.clean_answer(extracted_ans)
+                        python_fallback = False
+                        executor_success = True
+                    else:
+                        python_fallback = True
+                        py_result.success = False
+                        py_result.error_type = py_result.error_type or "MissingFinalAnswerMarker"
+                        py_result.error_message = (
+                            py_result.error_message
+                            or "Python execution succeeded but stdout did not contain 'FINAL_ANSWER:' marker"
+                        )
+                        final_answer = (
+                            self.clean_answer(extract_direct_answer(executor_raw_response))
+                            if executor_raw_response and "FINAL:" in executor_raw_response
+                            else ""
+                        )
+                        executor_success = False
+                else:
+                    python_fallback = True
+                    final_answer = (
+                        self.clean_answer(extract_direct_answer(executor_raw_response))
+                        if executor_raw_response and "FINAL:" in executor_raw_response
+                        else ""
+                    )
+                    executor_success = False
+            else:
+                python_requested = False
+                python_executed = False
+                python_fallback = True
+                final_answer = (
+                    self.clean_answer(extract_direct_answer(executor_raw_response or ""))
+                    if executor_raw_response and "FINAL:" in executor_raw_response
+                    else ""
+                )
+                executor_success = False
+
+        llm_generation_attempts = planner_generation_attempts + executor_generation_attempts
+        llm_generation_success_count = (1 if planner_generation_success else 0) + (1 if executor_generation_success else 0)
+
+        raw_resp = executor_raw_response or ""
+        norm_resp = raw_resp.strip()
+
+        fallback_pv = EXECUTOR_DIRECT_PROMPT_VERSION if planner_fallback_used else None
+
+        agent_result = AgentResult(
+            raw_response=raw_resp,
+            normalized_response=norm_resp,
+            final_answer=final_answer,
+            candidate_answer=final_answer,
+            llm_response=executor_llm_resp if isinstance(executor_llm_resp, LLMResponse) else None,
+            prompt=executor_prompt,
+            prompt_version=PLANNER_PROMPT_VERSION,
+            primary_prompt_version=PLANNER_PROMPT_VERSION,
+            fallback_prompt_version=fallback_pv,
+            search_result=search_res,
+            search_fallback=search_fallback,
+            file_result=file_res,
+            file_fallback=file_fallback,
+            python_result=py_result,
+            python_requested=python_requested,
+            python_executed=python_executed,
+            python_fallback=python_fallback,
+            python_prompt_version=EXECUTOR_PYTHON_PROMPT_VERSION if executor_mode == "PYTHON" else None,
+            python_prompt=executor_prompt if executor_mode == "PYTHON" else None,
+            llm_generation_count=llm_generation_attempts,
+
+            # Planner telemetry
+            planner_prompt_version=PLANNER_PROMPT_VERSION,
+            planner_attempted=True,
+            planner_success=planner_success,
+            planner_parse_success=planner_parse_success,
+            planner_fallback_used=planner_fallback_used,
+            planner_mode=plan_spec.mode,
+            planner_objective=plan_spec.objective,
+            planner_evidence_needed=plan_spec.evidence_needed,
+            plan_step_count=len(plan_spec.plan_steps),
+            plan_steps=plan_spec.plan_steps,
+            plan_answer_type=plan_spec.answer_type,
+            planner_error_type=planner_error_type,
+            planner_prompt=planner_prompt,
+            planner_raw_response=planner_raw_response,
+            planner_latency_seconds=planner_latency,
+            planner_input_tokens=planner_input_tokens,
+            planner_output_tokens=planner_output_tokens,
+            planner_thinking_tokens=planner_thinking_tokens,
+            planner_total_tokens=planner_total_tokens,
+            planner_generation_attempts=planner_generation_attempts,
+            planner_generation_success=planner_generation_success,
+
+            # Executor telemetry
+            executor_mode=executor_mode,
+            executor_plan_used=True,
+            executor_success=executor_success,
+            executor_error_type=executor_error_type,
+            executor_prompt_version=executor_prompt_ver,
+            executor_prompt=executor_prompt,
+            executor_raw_response=executor_raw_response,
+            executor_latency_seconds=executor_latency,
+            executor_input_tokens=executor_input_tokens,
+            executor_output_tokens=executor_output_tokens,
+            executor_thinking_tokens=executor_thinking_tokens,
+            executor_total_tokens=executor_total_tokens,
+            executor_generation_attempts=executor_generation_attempts,
+            executor_generation_success=executor_generation_success,
+
+            # Worker compatibility aliases (for Frozen V9 candidate recovery classifier)
+            worker_mode=executor_mode,
+            worker_success=executor_success,
+            worker_error_type=executor_error_type,
+            worker_prompt_version=executor_prompt_ver,
+            worker_prompt=executor_prompt,
+            worker_raw_response=executor_raw_response,
+            worker_latency_seconds=executor_latency,
+            worker_input_tokens=executor_input_tokens,
+            worker_output_tokens=executor_output_tokens,
+            worker_thinking_tokens=executor_thinking_tokens,
+            worker_generation_attempts=executor_generation_attempts,
+            worker_generation_success=executor_generation_success,
+
+            # Router compatibility aliases
+            router_requested=False,
+            router_decision=plan_spec.mode,
+            router_success=planner_success,
+            router_fallback=planner_fallback_used,
+            router_error_type=planner_error_type,
+            router_prompt_version=PLANNER_PROMPT_VERSION,
+            router_prompt=planner_prompt,
+            router_raw_response=planner_raw_response,
+            router_latency_seconds=planner_latency,
+            router_input_tokens=planner_input_tokens,
+            router_output_tokens=planner_output_tokens,
+            router_thinking_tokens=planner_thinking_tokens,
+            router_generation_attempts=planner_generation_attempts,
+            router_generation_success=planner_generation_success,
+
+            llm_generation_attempts=llm_generation_attempts,
+            llm_generation_success_count=llm_generation_success_count,
+        )
+        return agent_result
+
+    def run(self, question: str, file_path: Optional[str] = None) -> AgentResult:
+        result = super().run(question, file_path=file_path)
+        if result.candidate_recovery_triggered is False:
+            assert result.llm_generation_attempts <= 5, "Non-triggered V10 exceeds five-generation cap"
+            assert result.post_recovery_candidate == result.pre_recovery_candidate, "Non-triggered recovery boundary preservation violation"
+        else:
+            assert result.llm_generation_attempts <= 6, "Triggered V10 exceeds six-generation cap"
+        return result

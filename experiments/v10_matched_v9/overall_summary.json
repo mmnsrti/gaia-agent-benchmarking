@@ -1,0 +1,56 @@
+{
+  "schema_version": 7,
+  "project_version": "v9",
+  "evaluation_type": "contemporaneous_matched_frozen_v9_control",
+  "interpretation": "observational_non_causal",
+  "inference_commit": "314d0aecd01a1679a96d85256044c01c8b6c30ce",
+  "total_tasks": 165,
+  "level_counts": {
+    "1": 53,
+    "2": 86,
+    "3": 26
+  },
+  "level_correct": {
+    "1": 24,
+    "2": 1,
+    "3": 0
+  },
+  "level_accuracies": {
+    "1": 0.4528,
+    "2": 0.0116,
+    "3": 0.0
+  },
+  "overall_correct": 25,
+  "overall_accuracy": 0.15151515151515152,
+  "structural_coverage": 165,
+  "completion_success_count": 37,
+  "request_failure_count": 0,
+  "candidate_reachability": {
+    "pre_recovery_non_empty_count": 21,
+    "pre_recovery_reachability_rate": 0.12727272727272726,
+    "post_recovery_non_empty_count": 37,
+    "post_recovery_reachability_rate": 0.22424242424242424
+  },
+  "recovery_metrics": {
+    "candidate_recovery_eligible_count": 17,
+    "candidate_recovery_triggered_count": 17,
+    "candidate_recovery_successful_count": 16
+  },
+  "router_metrics": {
+    "router_direct_count": 145,
+    "router_python_count": 20,
+    "router_fallback_count": 127
+  },
+  "python_metrics": {
+    "python_requested_count": 2,
+    "python_executed_count": 2,
+    "python_success_count": 2
+  },
+  "generation_cap_violations": 0,
+  "tool_budget_violations": {
+    "search_violations": 0,
+    "python_violations": 0,
+    "recovery_added_searches": 0,
+    "recovery_added_python_runs": 0
+  }
+}

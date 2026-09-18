@@ -1,0 +1,43 @@
+{
+  "schema_version": 8,
+  "evaluation_type": "shared_context_paired_upstream_ablation",
+  "total_paired_tasks": 165,
+  "primary_metric": "delta_upstream",
+  "delta_upstream": 8,
+  "upstream_improvements": 13,
+  "upstream_regressions": 5,
+  "upstream_stable_correct": 41,
+  "upstream_stable_failure": 106,
+  "transition_matrix": {
+    "UPSTREAM_IMPROVEMENT": 13,
+    "UPSTREAM_REGRESSION": 5,
+    "UPSTREAM_STABLE_CORRECT": 41,
+    "UPSTREAM_STABLE_FAILURE": 106
+  },
+  "v9_upstream_candidates_correct": 46,
+  "v9_upstream_accuracy": 0.2788,
+  "v10_upstream_candidates_correct": 54,
+  "v10_upstream_accuracy": 0.3273,
+  "net_accuracy_delta": 0.0485,
+  "v9_empty_candidate_count": 85,
+  "v10_empty_candidate_count": 54,
+  "shared_search_hash_mismatch_count": 0,
+  "shared_file_hash_mismatch_count": 0,
+  "v9_python_execution_count": 18,
+  "v10_python_execution_count": 41,
+  "v9_routing": {
+    "direct_count": 72,
+    "python_count": 93,
+    "python_executed_count": 18
+  },
+  "v10_planning": {
+    "direct_count": 103,
+    "python_count": 62,
+    "python_executed_count": 41,
+    "planner_attempted_count": 165,
+    "planner_parse_success_count": 164,
+    "planner_parse_success_rate": 0.9939,
+    "planner_fallback_count": 1,
+    "planner_fallback_rate": 0.0061
+  }
+}

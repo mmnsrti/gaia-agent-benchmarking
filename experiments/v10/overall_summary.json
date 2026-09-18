@@ -1,0 +1,64 @@
+{
+  "schema_version": 8,
+  "project_version": "v10",
+  "inference_commit": "314d0aecd01a1679a96d85256044c01c8b6c30ce",
+  "total_tasks": 165,
+  "level_counts": {
+    "1": 53,
+    "2": 86,
+    "3": 26
+  },
+  "level_correct": {
+    "1": 33,
+    "2": 43,
+    "3": 8
+  },
+  "level_accuracies": {
+    "1": 0.6226,
+    "2": 0.5,
+    "3": 0.3077
+  },
+  "overall_correct": 84,
+  "overall_accuracy": 0.509090909090909,
+  "structural_coverage": 165,
+  "completion_success_count": 161,
+  "request_failure_count": 0,
+  "candidate_reachability": {
+    "pre_recovery_non_empty_count": 114,
+    "pre_recovery_reachability_rate": 0.6909090909090909,
+    "post_recovery_non_empty_count": 161,
+    "post_recovery_reachability_rate": 0.9757575757575757
+  },
+  "recovery_metrics": {
+    "candidate_recovery_eligible_count": 51,
+    "candidate_recovery_triggered_count": 51,
+    "candidate_recovery_successful_count": 47,
+    "candidate_recovery_success_rate": 0.9215686274509803
+  },
+  "planner_metrics": {
+    "planner_attempted_count": 165,
+    "planner_parse_success_count": 164,
+    "planner_parse_success_rate": 0.9939393939393939,
+    "planner_fallback_count": 1,
+    "planner_fallback_rate": 0.006060606060606061,
+    "planner_direct_count": 99,
+    "planner_python_count": 66
+  },
+  "executor_metrics": {
+    "executor_success_count": 114,
+    "executor_failure_count": 51
+  },
+  "python_metrics": {
+    "python_requested_count": 44,
+    "python_executed_count": 44,
+    "python_success_count": 17,
+    "python_success_rate": 0.38636363636363635
+  },
+  "generation_cap_violations": 0,
+  "tool_budget_violations": {
+    "search_violations": 0,
+    "python_violations": 0,
+    "recovery_added_searches": 0,
+    "recovery_added_python_runs": 0
+  }
+}

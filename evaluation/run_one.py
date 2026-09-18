@@ -68,6 +68,8 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
             print("Note: v7 evaluates question using SUSPECT-triggered targeted repair and Frozen V6 pipeline.")
         elif version == "v9":
             print("Note: v9 evaluates question using upstream candidate recovery and Frozen V7 pipeline.")
+        elif version == "v10":
+            print("Note: v10 evaluates question using structured planner -> plan-guided executor and Frozen V9 pipeline.")
     print("-" * 80)
 
     record = execute_task(
@@ -89,7 +91,22 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
         print(f"Primary Prompt Version: {record['primary_prompt_version']}")
     if record.get("fallback_prompt_version"):
         print(f"Fallback Prompt Version: {record['fallback_prompt_version']}")
-    if record.get("router_requested"):
+    if record.get("planner_attempted"):
+        print(f"Planner Mode: {record.get('planner_mode')}")
+        print(f"Planner Success: {record.get('planner_success')}")
+        print(f"Planner Fallback: {record.get('planner_fallback_used')}")
+        print(f"Planner Objective: {record.get('planner_objective')}")
+        print(f"Plan Step Count: {record.get('plan_step_count')}")
+        if record.get("planner_error_type"):
+            print(f"Planner Error: {record.get('planner_error_type')}")
+        print(f"Planner Latency: {record.get('planner_latency_seconds')}s")
+        print(f"Executor Mode: {record.get('executor_mode')}")
+        print(f"Executor Success: {record.get('executor_success')}")
+        if record.get("executor_error_type"):
+            print(f"Executor Error: {record.get('executor_error_type')}")
+        print(f"Executor Latency: {record.get('executor_latency_seconds')}s")
+        print(f"LLM Generation Attempts: {record.get('llm_generation_attempts')}")
+    elif record.get("router_requested"):
         print(f"Router Decision: {record.get('router_decision')}")
         print(f"Router Success: {record.get('router_success')}")
         print(f"Router Fallback: {record.get('router_fallback')}")
@@ -205,7 +222,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--task-id", type=str, default=None, help="Specific task ID to run")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
-    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: SUSPECT-triggered targeted repair, v9: upstream candidate recovery; required)")
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9", "v10"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: SUSPECT-triggered targeted repair, v9: upstream candidate recovery, v10: structured planner-executor; required)")
     parser.add_argument("--no-log", action="store_true", help="Do not write record to experiments/runs.jsonl")
     args = parser.parse_args()
 

@@ -14,6 +14,7 @@ from agent import (
     GAIASelfEvaluationAgent,
     GAIATargetedRepairAgent,
     GAIAUpstreamCandidateRecoveryAgent,
+    GAIAPlannerExecutorAgent,
     LLMClient,
 )
 from prompts.baseline import PROMPT_VERSION
@@ -98,7 +99,9 @@ def execute_task(
     if llm is None:
         llm = LLMClient()
     if agent is None:
-        if project_version == "v9":
+        if project_version == "v10":
+            agent = GAIAPlannerExecutorAgent(llm_client=llm)
+        elif project_version == "v9":
             agent = GAIAUpstreamCandidateRecoveryAgent(llm_client=llm)
         elif project_version == "v7":
             agent = GAIATargetedRepairAgent(llm_client=llm)
@@ -117,7 +120,9 @@ def execute_task(
         else:
             agent = GAIAAgent(llm_client=llm)
 
-    if isinstance(agent, GAIAUpstreamCandidateRecoveryAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"):
+    if isinstance(agent, GAIAPlannerExecutorAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9"):
+        project_version = "v10"
+    elif isinstance(agent, GAIAUpstreamCandidateRecoveryAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"):
         project_version = "v9"
     elif isinstance(agent, GAIATargetedRepairAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6"):
         project_version = "v7"
@@ -209,8 +214,9 @@ def execute_task(
         else:
             completion_success = False
 
-        is_v9 = (project_version == "v9") or isinstance(agent, GAIAUpstreamCandidateRecoveryAgent)
-        if is_v9 and request_success:
+        is_v10 = (project_version == "v10") or isinstance(agent, GAIAPlannerExecutorAgent)
+        is_v9 = ((project_version == "v9") or isinstance(agent, GAIAUpstreamCandidateRecoveryAgent)) and not is_v10
+        if (is_v10 or is_v9) and request_success:
             completion_success = bool(final_answer and str(final_answer).strip())
 
     except Exception as e:
@@ -227,15 +233,18 @@ def execute_task(
     latency = round(time.time() - start_time, 2)
 
     # Prompt provenance extraction
-    is_v9 = (project_version == "v9") or isinstance(agent, GAIAUpstreamCandidateRecoveryAgent)
-    is_v7 = ((project_version == "v7") or isinstance(agent, GAIATargetedRepairAgent)) and not is_v9
-    is_v6 = ((project_version == "v6") or isinstance(agent, GAIASelfEvaluationAgent)) and not is_v7 and not is_v9
-    is_v5 = ((project_version == "v5") or isinstance(agent, GAIAVerificationAgent)) and not is_v6 and not is_v7 and not is_v9
-    is_v4 = (((project_version == "v4") or isinstance(agent, GAIARouterAgent)) and not is_v5 and not is_v6 and not is_v7 and not is_v9)
-    is_v3 = (((project_version == "v3") or isinstance(agent, GAIAPythonAgent)) and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v9)
-    file_enabled = (((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3 and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v9)
+    is_v10 = (project_version == "v10") or isinstance(agent, GAIAPlannerExecutorAgent)
+    is_v9 = ((project_version == "v9") or isinstance(agent, GAIAUpstreamCandidateRecoveryAgent)) and not is_v10
+    is_v7 = ((project_version == "v7") or isinstance(agent, GAIATargetedRepairAgent)) and not is_v9 and not is_v10
+    is_v6 = ((project_version == "v6") or isinstance(agent, GAIASelfEvaluationAgent)) and not is_v7 and not is_v9 and not is_v10
+    is_v5 = ((project_version == "v5") or isinstance(agent, GAIAVerificationAgent)) and not is_v6 and not is_v7 and not is_v9 and not is_v10
+    is_v4 = (((project_version == "v4") or isinstance(agent, GAIARouterAgent)) and not is_v5 and not is_v6 and not is_v7 and not is_v9 and not is_v10)
+    is_v3 = (((project_version == "v3") or isinstance(agent, GAIAPythonAgent)) and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v9 and not is_v10)
+    file_enabled = (((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3 and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v9 and not is_v10)
     if result is None:
-        if is_v9:
+        if is_v10:
+            prompt_ver = "planner-v1"
+        elif is_v9:
             prompt_ver = "candidate-recovery-v1"
         elif is_v7:
             prompt_ver = "targeted-repair-v1"
@@ -258,7 +267,9 @@ def execute_task(
     fallback_prompt_ver = getattr(result, "fallback_prompt_version", None) if result else None
 
     if primary_prompt_ver is None:
-        if is_v9 or is_v7 or is_v6 or is_v5 or is_v4:
+        if is_v10:
+            primary_prompt_ver = "planner-v1"
+        elif is_v9 or is_v7 or is_v6 or is_v5 or is_v4:
             primary_prompt_ver = "capability-router-v1"
         elif is_v3:
             primary_prompt_ver = "python-execution-v1"
@@ -270,7 +281,9 @@ def execute_task(
             primary_prompt_ver = prompt_ver or "baseline-v1"
 
     if fallback_prompt_ver is None:
-        if is_v9 or is_v7 or is_v6 or is_v5 or is_v4:
+        if is_v10:
+            fallback_prompt_ver = "executor-direct-v1" if getattr(result, "planner_fallback_used", False) else None
+        elif is_v9 or is_v7 or is_v6 or is_v5 or is_v4:
             fallback_prompt_ver = "router-direct-worker-v1" if getattr(result, "router_fallback", False) else None
         elif is_v3:
             fallback_prompt_ver = None
@@ -379,12 +392,11 @@ def execute_task(
     python_executed = getattr(result, "python_executed", False) if result else False
     python_fallback = getattr(result, "python_fallback", False) if result else False
     python_execution_count = 1 if python_executed else 0
-    assert python_execution_count in (0, 1), f"Execution count {python_execution_count} not in {0, 1}"
-    if is_v9:
+    if is_v10 or is_v9:
         llm_generation_attempts = getattr(result, "llm_generation_attempts", 6 if completion_success else 2) if result else (6 if completion_success else 2)
-        assert 1 <= llm_generation_attempts <= 6, f"V9 LLM generation attempts {llm_generation_attempts} outside [1, 6]"
+        assert 1 <= llm_generation_attempts <= 6, f"V10/V9 LLM generation attempts {llm_generation_attempts} outside [1, 6]"
         if getattr(result, "candidate_recovery_triggered", False) is False:
-            assert llm_generation_attempts <= 5, f"V9 non-triggered LLM generation attempts {llm_generation_attempts} > 5"
+            assert llm_generation_attempts <= 5, f"V10/V9 non-triggered LLM generation attempts {llm_generation_attempts} > 5"
         llm_generation_count = llm_generation_attempts
     elif is_v7:
         llm_generation_attempts = getattr(result, "llm_generation_attempts", 5 if completion_success else 2) if result else (5 if completion_success else 2)
@@ -524,8 +536,45 @@ def execute_task(
     candidate_recovery_searches_added = getattr(result, "candidate_recovery_searches_added", 0) if result else 0
     candidate_recovery_python_runs_added = getattr(result, "candidate_recovery_python_runs_added", 0) if result else 0
 
+    # Structured Planner telemetry (V10)
+    planner_prompt_version = getattr(result, "planner_prompt_version", None) if result else None
+    planner_attempted = getattr(result, "planner_attempted", False) if result else False
+    planner_success = getattr(result, "planner_success", False) if result else False
+    planner_parse_success = getattr(result, "planner_parse_success", False) if result else False
+    planner_fallback_used = getattr(result, "planner_fallback_used", False) if result else False
+    planner_mode = getattr(result, "planner_mode", None) if result else None
+    planner_objective = getattr(result, "planner_objective", None) if result else None
+    planner_evidence_needed = getattr(result, "planner_evidence_needed", None) if result else None
+    plan_step_count = getattr(result, "plan_step_count", None) if result else None
+    plan_steps = getattr(result, "plan_steps", None) if result else None
+    plan_answer_type = getattr(result, "plan_answer_type", None) if result else None
+    planner_error_type = getattr(result, "planner_error_type", None) if result else None
+    planner_generation_attempts = getattr(result, "planner_generation_attempts", 0) if result else 0
+    planner_generation_success = getattr(result, "planner_generation_success", False) if result else False
+    planner_latency_seconds = getattr(result, "planner_latency_seconds", None) if result else None
+    planner_input_tokens = getattr(result, "planner_input_tokens", None) if result else None
+    planner_output_tokens = getattr(result, "planner_output_tokens", None) if result else None
+    planner_thinking_tokens = getattr(result, "planner_thinking_tokens", None) if result else None
+    planner_total_tokens = getattr(result, "planner_total_tokens", None) if result else None
+
+    # Plan-Guided Executor telemetry (V10)
+    executor_mode = getattr(result, "executor_mode", None) if result else None
+    executor_plan_used = getattr(result, "executor_plan_used", False) if result else False
+    executor_success = getattr(result, "executor_success", False) if result else False
+    executor_error_type = getattr(result, "executor_error_type", None) if result else None
+    executor_prompt_version = getattr(result, "executor_prompt_version", None) if result else None
+    executor_generation_attempts = getattr(result, "executor_generation_attempts", 0) if result else 0
+    executor_generation_success = getattr(result, "executor_generation_success", False) if result else False
+    executor_latency_seconds = getattr(result, "executor_latency_seconds", None) if result else None
+    executor_input_tokens = getattr(result, "executor_input_tokens", None) if result else None
+    executor_output_tokens = getattr(result, "executor_output_tokens", None) if result else None
+    executor_thinking_tokens = getattr(result, "executor_thinking_tokens", None) if result else None
+    executor_total_tokens = getattr(result, "executor_total_tokens", None) if result else None
+
     default_gen_success = (
-        ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0) + (1 if candidate_recovery_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0))
+        ((1 if planner_generation_success else 0) + (1 if executor_generation_success else 0) + (1 if candidate_recovery_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0))
+        if is_v10
+        else ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0) + (1 if candidate_recovery_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0))
         if is_v9
         else ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0))
         if is_v7
@@ -558,7 +607,9 @@ def execute_task(
         python_stderr_length = 0
         python_output_truncated = False
 
-    if is_v9 and schema_version < 7:
+    if is_v10 and schema_version < 8:
+        resolved_schema_version = 8
+    elif is_v9 and schema_version < 7:
         resolved_schema_version = 7
     elif is_v7 and schema_version < 6:
         resolved_schema_version = 6
@@ -785,6 +836,41 @@ def execute_task(
         "candidate_recovery_non_triggered_preserved": candidate_recovery_non_triggered_preserved,
         "candidate_recovery_searches_added": candidate_recovery_searches_added,
         "candidate_recovery_python_runs_added": candidate_recovery_python_runs_added,
+
+        # Structured Planner metadata (V10)
+        "planner_prompt_version": planner_prompt_version,
+        "planner_attempted": planner_attempted,
+        "planner_success": planner_success,
+        "planner_parse_success": planner_parse_success,
+        "planner_fallback_used": planner_fallback_used,
+        "planner_mode": planner_mode,
+        "planner_objective": planner_objective,
+        "planner_evidence_needed": planner_evidence_needed,
+        "plan_step_count": plan_step_count,
+        "plan_steps": plan_steps,
+        "plan_answer_type": plan_answer_type,
+        "planner_error_type": planner_error_type,
+        "planner_generation_attempts": planner_generation_attempts,
+        "planner_generation_success": planner_generation_success,
+        "planner_latency_seconds": planner_latency_seconds,
+        "planner_input_tokens": planner_input_tokens,
+        "planner_output_tokens": planner_output_tokens,
+        "planner_thinking_tokens": planner_thinking_tokens,
+        "planner_total_tokens": planner_total_tokens,
+
+        # Plan-Guided Executor metadata (V10)
+        "executor_mode": executor_mode,
+        "executor_plan_used": executor_plan_used,
+        "executor_success": executor_success,
+        "executor_error_type": executor_error_type,
+        "executor_prompt_version": executor_prompt_version,
+        "executor_generation_attempts": executor_generation_attempts,
+        "executor_generation_success": executor_generation_success,
+        "executor_latency_seconds": executor_latency_seconds,
+        "executor_input_tokens": executor_input_tokens,
+        "executor_output_tokens": executor_output_tokens,
+        "executor_thinking_tokens": executor_thinking_tokens,
+        "executor_total_tokens": executor_total_tokens,
 
         # Generation counts
         "llm_generation_attempts": llm_generation_attempts,

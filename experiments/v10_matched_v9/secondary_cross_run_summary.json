@@ -1,0 +1,17 @@
+{
+  "evaluation_type": "secondary_cross_run_transition_matrix",
+  "interpretation": "observational_non_causal",
+  "note": "This secondary cross-run comparison between canonical V10 and contemporaneous matched V9 is observational and non-causal due to run-to-run sampling variance. The primary causal intervention metric is Delta_upstream from the shared-context paired ablation.",
+  "total_tasks": 165,
+  "canonical_v10_correct": 84,
+  "canonical_v10_accuracy": 0.509090909090909,
+  "contemporaneous_matched_v9_correct": 25,
+  "contemporaneous_matched_v9_accuracy": 0.15151515151515152,
+  "e2e_transitions": {
+    "E2E_IMPROVEMENT": 64,
+    "E2E_REGRESSION": 5,
+    "E2E_STABLE_CORRECT": 20,
+    "E2E_STABLE_FAILURE": 76
+  },
+  "delta_e2e_observational": 59
+}
