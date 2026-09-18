@@ -46,6 +46,7 @@ from agent import (
     GAIASelfEvaluationAgent,
     GAIATargetedRepairAgent,
     GAIAUpstreamCandidateRecoveryAgent,
+    GAIAPlannerExecutorAgent,
     LLMClient,
 )
 from evaluation.dataset import load_gaia_tasks, EXPECTED_VALIDATION_COUNTS
@@ -86,7 +87,9 @@ def run_level(
     expected_tasks = EXPECTED_VALIDATION_COUNTS.get(level)
     is_partial = bool(limit or (expected_tasks and total_tasks < expected_tasks))
     run_tag = f"PARTIAL RUN (--limit {limit})" if limit else ("PARTIAL RUN" if is_partial else "COMPLETE BENCHMARK RUN")
-    if version == "v9":
+    if version == "v10":
+        version_desc = "v10 (Structured Planner -> Plan-Guided Executor + Frozen V9 pipeline)"
+    elif version == "v9":
         version_desc = "v9 (Upstream candidate recovery + Frozen V7 pipeline)"
     elif version == "v7":
         version_desc = "v7 (Frozen V6 + SUSPECT-triggered one-shot targeted repair)"
@@ -156,7 +159,9 @@ def run_level(
     # Initialize client & agent once
     llm = LLMClient()
     if agent is None:
-        if version == "v9":
+        if version == "v10":
+            agent = GAIAPlannerExecutorAgent(llm_client=llm)
+        elif version == "v9":
             agent = GAIAUpstreamCandidateRecoveryAgent(llm_client=llm)
         elif version == "v7":
             agent = GAIATargetedRepairAgent(llm_client=llm)
@@ -251,7 +256,7 @@ if __name__ == "__main__":
     parser.add_argument("--level", type=int, required=True, choices=[1, 2, 3], help="GAIA level to run (1, 2, or 3)")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
-    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9"], help="Agent version to evaluate (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: SUSPECT-triggered targeted repair, v9: upstream candidate recovery; required)")
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9", "v10"], help="Agent version to evaluate (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: SUSPECT-triggered targeted repair, v9: upstream candidate recovery, v10: structured planner-executor; required)")
     parser.add_argument("--data", type=str, default=None, help="Path to local GAIA dataset file")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of tasks to execute")
     parser.add_argument("--task-id", type=str, default=None, help="Run single specific task ID")

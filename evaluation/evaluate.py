@@ -150,19 +150,34 @@ def calculate_metrics(
     worker_latencies: List[float] = []
     total_llm_generations_list: List[int] = []
 
-    has_verifier = (resolved_pv in ("v5", "v6", "v7", "v9")) or any(
+    has_planner = (resolved_pv == "v10") or any(
+        pred.get("planner_attempted") or pred.get("planner_mode")
+        for pred in predictions
+    )
+    planner_attempted_count = 0
+    planner_success_count = 0
+    planner_parse_success_count = 0
+    planner_fallback_count = 0
+    planner_direct_count = 0
+    planner_python_count = 0
+    planner_direct_correct = 0
+    planner_python_correct = 0
+    planner_latencies: List[float] = []
+    executor_latencies: List[float] = []
+
+    has_verifier = (resolved_pv in ("v5", "v6", "v7", "v9", "v10")) or any(
         pred.get("verifier_attempted") or pred.get("verifier_eligible") or pred.get("verifier_verdict")
         for pred in predictions
     )
-    has_self_evaluator = (resolved_pv in ("v6", "v7", "v9")) or any(
+    has_self_evaluator = (resolved_pv in ("v6", "v7", "v9", "v10")) or any(
         pred.get("self_eval_attempted") or pred.get("self_eval_eligible") or pred.get("self_eval_prompt_version")
         for pred in predictions
     )
-    has_targeted_repair = (resolved_pv in ("v7", "v9")) or any(
+    has_targeted_repair = (resolved_pv in ("v7", "v9", "v10")) or any(
         pred.get("repair_attempted") or pred.get("repair_eligible") or pred.get("repair_triggered") or pred.get("repair_prompt_version")
         for pred in predictions
     )
-    has_candidate_recovery = (resolved_pv == "v9") or any(
+    has_candidate_recovery = (resolved_pv in ("v9", "v10")) or any(
         pred.get("candidate_recovery_attempted") or pred.get("candidate_recovery_eligible") or pred.get("candidate_recovery_triggered") or pred.get("candidate_recovery_prompt_version")
         for pred in predictions
     )
@@ -460,6 +475,44 @@ def calculate_metrics(
                 except (ValueError, TypeError):
                     pass
 
+        # Track Planner & Executor metrics for V10
+        if has_planner or pred.get("planner_attempted") or pred.get("planner_mode"):
+            if pred.get("planner_attempted"):
+                planner_attempted_count += 1
+            if pred.get("planner_success"):
+                planner_success_count += 1
+            if pred.get("planner_parse_success"):
+                planner_parse_success_count += 1
+            if pred.get("planner_fallback_used") or pred.get("planner_fallback"):
+                planner_fallback_count += 1
+            p_mode = pred.get("planner_mode")
+            if p_mode == "DIRECT":
+                planner_direct_count += 1
+                if is_correct:
+                    planner_direct_correct += 1
+            elif p_mode == "PYTHON":
+                planner_python_count += 1
+                if is_correct:
+                    planner_python_correct += 1
+            p_lat = pred.get("planner_latency_seconds")
+            if p_lat is not None:
+                try:
+                    planner_latencies.append(float(p_lat))
+                except (ValueError, TypeError):
+                    pass
+            e_lat = pred.get("executor_latency_seconds")
+            if e_lat is not None:
+                try:
+                    executor_latencies.append(float(e_lat))
+                except (ValueError, TypeError):
+                    pass
+            tot_gens = pred.get("llm_generation_attempts")
+            if tot_gens is not None and not has_router:
+                try:
+                    total_llm_generations_list.append(int(tot_gens))
+                except (ValueError, TypeError):
+                    pass
+
         # Track Verifier metrics for V5
         pre_ans = pred.get("pre_verification_answer")
         post_ans = pred.get("post_verification_answer") or final_ans
@@ -713,6 +766,40 @@ def calculate_metrics(
                 "candidate_recovery_searches_added": pred.get("candidate_recovery_searches_added", 0),
                 "candidate_recovery_python_runs_added": pred.get("candidate_recovery_python_runs_added", 0),
             })
+        if has_planner or pred.get("planner_attempted") or pred.get("planner_mode"):
+            detailed_entry.update({
+                "planner_prompt_version": pred.get("planner_prompt_version"),
+                "planner_attempted": pred.get("planner_attempted", False),
+                "planner_success": pred.get("planner_success", False),
+                "planner_parse_success": pred.get("planner_parse_success", False),
+                "planner_fallback_used": pred.get("planner_fallback_used", False),
+                "planner_mode": pred.get("planner_mode"),
+                "planner_objective": pred.get("planner_objective"),
+                "planner_evidence_needed": pred.get("planner_evidence_needed"),
+                "plan_step_count": pred.get("plan_step_count"),
+                "plan_steps": pred.get("plan_steps"),
+                "plan_answer_type": pred.get("plan_answer_type"),
+                "planner_error_type": pred.get("planner_error_type"),
+                "planner_latency_seconds": pred.get("planner_latency_seconds"),
+                "planner_input_tokens": pred.get("planner_input_tokens"),
+                "planner_output_tokens": pred.get("planner_output_tokens"),
+                "planner_thinking_tokens": pred.get("planner_thinking_tokens"),
+                "planner_generation_attempts": pred.get("planner_generation_attempts", 1),
+                "planner_generation_success": pred.get("planner_generation_success", False),
+                "executor_mode": pred.get("executor_mode"),
+                "executor_plan_used": pred.get("executor_plan_used", False),
+                "executor_success": pred.get("executor_success", False),
+                "executor_error_type": pred.get("executor_error_type"),
+                "executor_prompt_version": pred.get("executor_prompt_version"),
+                "executor_generation_attempts": pred.get("executor_generation_attempts", 1),
+                "executor_generation_success": pred.get("executor_generation_success", False),
+                "executor_latency_seconds": pred.get("executor_latency_seconds"),
+                "executor_input_tokens": pred.get("executor_input_tokens"),
+                "executor_output_tokens": pred.get("executor_output_tokens"),
+                "executor_thinking_tokens": pred.get("executor_thinking_tokens"),
+                "llm_generation_attempts": pred.get("llm_generation_attempts", 2),
+                "llm_generation_success_count": pred.get("llm_generation_success_count", 0),
+            })
         detailed_eval.append(detailed_entry)
 
     accuracy = round(correct_tasks / total_tasks, 4) if total_tasks > 0 else 0.0
@@ -753,7 +840,15 @@ def calculate_metrics(
 
     # Determine prompt version provenance
     # Avoid recording entire run as 'baseline-v1' if task 0 experienced search fallback
-    if resolved_pv == "v9" or (has_candidate_recovery and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7")):
+    if resolved_pv == "v10" or (has_planner and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9")):
+        primary_pv = "planner-v1"
+        fallback_pv = "executor-direct-v1" if any(p.get("planner_fallback_used") or p.get("planner_fallback") for p in predictions) else None
+        prompt_pv = "planner-v1"
+        if distinct_primary and len(distinct_primary) == 1:
+            primary_pv = distinct_primary[0]
+            fallback_pv = distinct_fallback[0] if distinct_fallback else fallback_pv
+            prompt_pv = primary_pv
+    elif resolved_pv == "v9" or (has_candidate_recovery and resolved_pv not in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7")):
         primary_pv = "capability-router-v1"
         fallback_pv = "router-direct-worker-v1" if any(p.get("router_fallback") for p in predictions) else None
         prompt_pv = "candidate-recovery-v1"
@@ -1031,6 +1126,29 @@ def calculate_metrics(
         )
         for metric_name, metric_value in recovery_metrics.items():
             summary[metric_name] = metric_value
+
+    if has_planner:
+        summary["planner_enabled"] = True
+        summary["planner_prompt_version"] = next(
+            (p.get("planner_prompt_version") for p in predictions if p.get("planner_prompt_version")),
+            "planner-v1",
+        )
+        summary["planner_attempted_count"] = planner_attempted_count
+        summary["planner_success_count"] = planner_success_count
+        summary["planner_success_rate"] = round(planner_success_count / planner_attempted_count, 4) if planner_attempted_count > 0 else 0.0
+        summary["planner_parse_success_count"] = planner_parse_success_count
+        summary["planner_parse_success_rate"] = round(planner_parse_success_count / planner_attempted_count, 4) if planner_attempted_count > 0 else 0.0
+        summary["planner_fallback_count"] = planner_fallback_count
+        summary["planner_fallback_rate"] = round(planner_fallback_count / total_tasks, 4) if total_tasks > 0 else 0.0
+        summary["planner_direct_count"] = planner_direct_count
+        summary["planner_python_count"] = planner_python_count
+        summary["planner_python_routing_rate"] = round(planner_python_count / total_tasks, 4) if total_tasks > 0 else 0.0
+        summary["planner_direct_accuracy"] = round(planner_direct_correct / planner_direct_count, 4) if planner_direct_count > 0 else None
+        summary["planner_python_accuracy"] = round(planner_python_correct / planner_python_count, 4) if planner_python_count > 0 else None
+        summary["average_planner_latency_seconds"] = round(statistics.mean(planner_latencies), 2) if planner_latencies else None
+        summary["average_executor_latency_seconds"] = round(statistics.mean(executor_latencies), 2) if executor_latencies else None
+        if total_llm_generations_list and "average_total_llm_generations" not in summary:
+            summary["average_total_llm_generations"] = round(statistics.mean(total_llm_generations_list), 2)
 
     return {
         "summary": summary,
