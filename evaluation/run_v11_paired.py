@@ -107,29 +107,6 @@ def execute_plan_branch(
     Delegates directly to the shared _execute_v11_executor_from_plan helper.
     Returns (candidate_answer, python_executed, raw_response).
     """
-    executor_mode = plan_spec.mode
-    if executor_mode == "DIRECT":
-        prompt = build_direct_executor_prompt(
-            question=question,
-            plan_spec=plan_spec,
-            web_evidence=web_evidence,
-            file_evidence=file_evidence,
-            attachment_filename=attachment_filename,
-        )
-    else:
-        prompt = build_python_executor_prompt(
-            question=question,
-            plan_spec=plan_spec,
-            web_evidence=web_evidence,
-            file_evidence=file_evidence,
-            attachment_filename=attachment_filename,
-        )
-
-    llm_resp = agent.llm.generate(prompt, attachment_parts=attachment_parts)
-    raw_response = (
-        llm_resp.raw_text
-        if isinstance(llm_resp, LLMResponse) and llm_resp.raw_text
-        else getattr(llm_resp, "text", str(llm_resp))
     res = _execute_v11_executor_from_plan(
         agent=agent,
         question=question,
@@ -141,40 +118,6 @@ def execute_plan_branch(
         file_path=file_path,
     )
     return res.candidate_answer, res.python_executed, res.raw_response
-
-    candidate = ""
-    python_executed = False
-    if executor_mode == "DIRECT":
-        candidate = agent.clean_answer(extract_direct_answer(raw_response or ""))
-    else:
-        code = extract_python_code(raw_response or "")
-        if code:
-            python_executed = True
-            py_res = agent.python_tool.execute(code, attachment_path=file_path)
-            if py_res.success:
-                extracted = extract_python_final_answer(py_res.stdout)
-                if extracted is not None:
-                    candidate = agent.clean_answer(extracted)
-                else:
-                    candidate = (
-                        agent.clean_answer(extract_direct_answer(raw_response or ""))
-                        if "FINAL:" in (raw_response or "")
-                        else ""
-                    )
-            else:
-                candidate = (
-                    agent.clean_answer(extract_direct_answer(raw_response or ""))
-                    if "FINAL:" in (raw_response or "")
-                    else ""
-                )
-        else:
-            candidate = (
-                agent.clean_answer(extract_direct_answer(raw_response or ""))
-                if "FINAL:" in (raw_response or "")
-                else ""
-            )
-
-    return candidate, python_executed, raw_response
 
 
 def run_paired_ablation(
@@ -273,7 +216,6 @@ def run_paired_ablation(
     processed_count = 0
     eligible_count = 0
 
-    with open(output_file, "a", encoding="utf-8") as f:
     with open(output_file, "a", encoding="utf-8") as f_out, open(enrollment_file, "a", encoding="utf-8") as f_ledger:
         for idx, task in enumerate(tasks, start=1):
             if task.task_id in completed_ids:
@@ -311,38 +253,16 @@ def run_paired_ablation(
                         primary_urls.append(url)
 
             # 2. SHARED PLANNER v2 GENERATION
-            planner_prompt = build_adaptive_planner_prompt(
             parse_res, p_telem = _plan_v11_from_context(
                 agent=agent,
                 question=task.question,
-                web_evidence=web_evidence_primary,
                 web_evidence_primary=web_evidence_primary,
                 file_evidence=shared_context.file_evidence,
                 attachment_filename=shared_context.attachment_filename,
                 attachment_parts=shared_context.attachment_parts,
             )
 
-            planner_raw_response = None
-            planner_error_type = None
-            try:
-                p_resp = agent.llm.generate(planner_prompt, attachment_parts=shared_context.attachment_parts)
-                if isinstance(p_resp, LLMResponse):
-                    planner_raw_response = p_resp.raw_text if p_resp.raw_text else p_resp.text
-                    if p_resp.finish_reason not in (None, "", "STOP"):
-                        planner_error_type = "unexpected_finish_reason"
-                else:
-                    planner_raw_response = str(p_resp)
-            except Exception as e:
-                planner_error_type = type(e).__name__
-                planner_raw_response = None
-
-            if planner_error_type is not None or not planner_raw_response or not planner_raw_response.strip():
-                parse_res = parse_adaptive_planner_result("")
-            else:
-                parse_res = parse_adaptive_planner_result(planner_raw_response)
-
             plan_spec = parse_res.plan_spec
-            plan_hash = hash_shared_plan(plan_spec.raw_plan)
             plan_hash = hash_canonical_execution_plan(plan_spec)
 
             planner_parse_success = parse_res.success
@@ -351,31 +271,17 @@ def run_paired_ablation(
             raw_followup_query = plan_spec.followup_query
 
             # Evaluate Cohort Eligibility (Pre-Search 2)
-            planner_requested_followup = bool(planner_parse_success and planner_evidence_status == "INSUFFICIENT")
-            norm_followup_query, followup_truncated = normalize_followup_query(raw_followup_query)
-            followup_query_valid = bool(
-                planner_requested_followup and norm_followup_query and norm_followup_query.upper() != "NONE"
-            )
-
             search1_q = (
                 shared_context.search_res.query
                 if (shared_context.search_res and shared_context.search_res.query)
                 else task.question
             )
-            norm_search1_q, _ = normalize_followup_query(search1_q)
-            followup_query_duplicate = bool(
-                planner_requested_followup
-                and followup_query_valid
-                and (norm_followup_query.lower() == norm_search1_q.lower())
             ctrl = _evaluate_v11_followup_control(
                 plan_spec=plan_spec,
                 parse_success=planner_parse_success,
                 search1_query_candidate=search1_q,
             )
 
-            followup_eligible = bool(
-                planner_requested_followup and followup_query_valid and not followup_query_duplicate
-            )
             planner_requested_followup = ctrl["planner_requested_followup"]
             norm_followup_query = ctrl["norm_followup_query"]
             followup_truncated = ctrl["followup_truncated"]
@@ -424,19 +330,6 @@ def run_paired_ablation(
                 second_search_query_truncated = followup_truncated
 
                 print(f"--> Task {task.task_id}: Follow-up eligible. Executing Search 2 once.")
-                s2_start = time.time()
-                try:
-                    second_search_res = agent.search_tool.search(norm_followup_query)
-                    second_search_latency_seconds = round(
-                        getattr(second_search_res, "latency_seconds", None) or (time.time() - s2_start), 2
-                    )
-                    second_search_success = bool(second_search_res and second_search_res.success)
-                    second_search_result_count = (
-                        len(second_search_res.results) if (second_search_res and second_search_res.results) else 0
-                    )
-                    second_search_empty_results = bool(second_search_success and second_search_result_count == 0)
-                    second_search_error_type = second_search_res.error_type if second_search_res else None
-                    second_search_error_message = second_search_res.error_message if second_search_res else None
                 s2_info = _execute_v11_followup_search(
                     search_tool=agent.search_tool,
                     norm_followup_query=norm_followup_query,
@@ -455,46 +348,9 @@ def run_paired_ablation(
                 followup_search_hash = s2_info["followup_search_hash"]
                 v11_retrieval_category = s2_info["v11_retrieval_category"]
 
-                    if second_search_res and second_search_res.results:
-                        second_urls = []
-                        for item in second_search_res.results:
-                            u = getattr(item, "url", None) or (item.get("url") if isinstance(item, dict) else None)
-                            if u:
-                                second_urls.append(u)
-                        second_search_urls = second_urls
-                        primary_url_set = set(primary_urls)
-                        new_urls = [u for u in second_urls if u not in primary_url_set]
-                        second_search_new_urls_count = len(new_urls)
-                        second_search_has_new_urls = len(new_urls) > 0
-                    else:
-                        second_search_urls = []
-                        second_search_new_urls_count = 0
-                        second_search_has_new_urls = False
-
-                    if second_search_success and second_search_result_count > 0:
-                        followup_evidence_text = second_search_res.format_evidence_block()
-                        followup_search_hash = hashlib.sha256(followup_evidence_text.encode("utf-8")).hexdigest()
-                        v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS"
-                    elif second_search_success and second_search_result_count == 0:
-                        v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_EMPTY_RESULTS"
-                    else:
-                        v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE"
-                except Exception as e:
-                    second_search_latency_seconds = round(time.time() - s2_start, 2)
-                    second_search_success = False
-                    second_search_error_type = type(e).__name__
-                    second_search_error_message = str(e)
-                    second_search_result_count = 0
-                    second_search_empty_results = False
-                    second_search_urls = []
-                    second_search_new_urls_count = 0
-                    second_search_has_new_urls = False
-                    v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE"
-
                 # 3. FORK TO PARALLEL UPSTREAM EXECUTOR BRANCHES
                 # Branch A: Without Follow-Up Search Evidence
                 print(f"--> Task {task.task_id}: Running Branch A (without Search 2 evidence)...")
-                web_evidence_A = f"=== PRIMARY WEB SEARCH EVIDENCE ===\n{web_evidence_primary}"
                 web_evidence_A, _ = _build_v11_executor_evidence(
                     web_evidence_primary=web_evidence_primary,
                     second_search_success=False,
@@ -513,14 +369,6 @@ def run_paired_ablation(
 
                 # Branch B: With Follow-Up Search Evidence (or clean fallback)
                 print(f"--> Task {task.task_id}: Running Branch B (with Search 2 evidence)...")
-                if second_search_success and followup_evidence_text and followup_evidence_text.strip():
-                    web_evidence_B = (
-                        f"=== PRIMARY WEB SEARCH EVIDENCE ===\n{web_evidence_primary}\n\n"
-                        f"=== FOLLOW-UP WEB SEARCH EVIDENCE ===\n{followup_evidence_text.strip()}"
-                    )
-                else:
-                    web_evidence_B = f"=== PRIMARY WEB SEARCH EVIDENCE ===\n{web_evidence_primary}"
-
                 web_evidence_B, _ = _build_v11_executor_evidence(
                     web_evidence_primary=web_evidence_primary,
                     second_search_success=second_search_success,
@@ -543,8 +391,6 @@ def run_paired_ablation(
                     v11_retrieval_category = "SUFFICIENT_NON_TRIGGERED"
                 print(f"--> Task {task.task_id}: Not follow-up eligible ({v11_retrieval_category}). Bypassing paired fork.")
 
-            # Paired Telemetry Record (Strictly Public-Safe, Zero Ground Truth)
-            paired_record: Dict[str, Any] = {
             # Record in sidecar enrollment ledger for ALL scanned tasks
             ledger_entry: Dict[str, Any] = {
                 "schema_version": 9,
@@ -592,8 +438,6 @@ def run_paired_ablation(
             f_ledger.write(json.dumps(ledger_entry, ensure_ascii=False) + "\n")
             f_ledger.flush()
 
-            f.write(json.dumps(paired_record, ensure_ascii=False) + "\n")
-            f.flush()
             # Write to raw paired file ONLY if followup_eligible == True
             if followup_eligible:
                 paired_record: Dict[str, Any] = {
