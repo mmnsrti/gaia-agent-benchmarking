@@ -1,0 +1,58 @@
+{
+  "schema_version": 9,
+  "evaluation_type": "followup_eligible_shared_plan_paired_retrieval_ablation",
+  "total_tasks_recorded": 79,
+  "followup_eligible_cohort_size": 79,
+  "primary_metric": "Delta_followup",
+  "delta_followup": 15,
+  "scientific_verdict": "POSITIVE (Supports H1)",
+  "decision_criterion": "Delta_followup > 0",
+  "transition_matrix": {
+    "RETRIEVAL_IMPROVEMENT": 21,
+    "RETRIEVAL_REGRESSION": 6,
+    "RETRIEVAL_STABLE_CORRECT": 9,
+    "RETRIEVAL_STABLE_FAILURE": 43
+  },
+  "retrieval_improvements": 21,
+  "retrieval_regressions": 6,
+  "retrieval_stable_correct": 9,
+  "retrieval_stable_failure": 43,
+  "branch_A_without_followup": {
+    "correct_candidates": 15,
+    "cohort_accuracy": 0.1899,
+    "empty_candidates": 24,
+    "python_executed_count": 6
+  },
+  "branch_B_with_followup": {
+    "correct_candidates": 30,
+    "cohort_accuracy": 0.3797,
+    "empty_candidates": 15,
+    "python_executed_count": 13
+  },
+  "net_accuracy_delta": 0.1898,
+  "retrieval_categories": {
+    "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS": 79
+  },
+  "search_operational_telemetry": {
+    "second_search_triggered_count": 79,
+    "second_search_attempted_count": 79,
+    "second_search_success_count": 79,
+    "second_search_empty_results_count": 0,
+    "second_search_skipped_duplicate_query_count": 0,
+    "second_search_provider_failure_count": 0
+  },
+  "search_novelty_diagnostics": {
+    "attempted_searches_count": 79,
+    "successful_searches_count": 79,
+    "has_new_urls_count": 79,
+    "has_new_urls_proportion": 1.0,
+    "mean_new_urls": 4.34,
+    "median_new_urls": 5.0
+  },
+  "planner_v2_operational": {
+    "planner_parse_success_count": 79,
+    "planner_parse_success_rate": 1.0,
+    "planner_fallback_count": 0,
+    "planner_fallback_rate": 0.0
+  }
+}

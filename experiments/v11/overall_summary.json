@@ -1,0 +1,155 @@
+{
+  "schema_version": 9,
+  "project_version": "v11",
+  "canonical_inference_commit": "02b368b030e2c86c2e534d6012149f819e8d136a",
+  "pre_benchmark_audit_head": "733ef84127b2951bb5345ff01f1f42435575895a",
+  "preregistration_commit": "59f6944ff92f94e6ef2122bb98a0079d021d411b",
+  "scientific_parent": "Frozen V10",
+  "parent_benchmark_correct": 84,
+  "parent_benchmark_total": 165,
+  "parent_benchmark_accuracy": 0.5091,
+  "total_tasks": 165,
+  "structural_coverage": "165/165",
+  "is_complete_benchmark": true,
+  "level_counts": {
+    "1": 53,
+    "2": 86,
+    "3": 26
+  },
+  "level_correct": {
+    "1": 28,
+    "2": 26,
+    "3": 1
+  },
+  "level_accuracies": {
+    "1": 0.5283,
+    "2": 0.3023,
+    "3": 0.0385
+  },
+  "overall_correct": 55,
+  "overall_accuracy": 0.3333,
+  "accuracy_delta_tasks": -29,
+  "accuracy_delta_pp": -17.58,
+  "completion_success_count": 138,
+  "completion_failure_count": 27,
+  "request_failure_count": 0,
+  "candidate_reachability": {
+    "pre_recovery_count": 94,
+    "post_recovery_count": 138,
+    "pre_recovery_rate": 0.5697,
+    "post_recovery_rate": 0.8364
+  },
+  "recovery_metrics": {
+    "triggered_count": 47,
+    "trigger_rate": 0.2848,
+    "recovered_count": 44,
+    "success_rate": 0.9362
+  },
+  "planner_metrics": {
+    "prompt_version": "planner-v2-adaptive-evidence",
+    "attempted_count": 165,
+    "parse_success_count": 141,
+    "parse_success_rate": 0.8545,
+    "fallback_count": 24,
+    "fallback_rate": 0.1455
+  },
+  "adaptive_evidence_metrics": {
+    "followup_requested_count": 91,
+    "followup_eligible_count": 91,
+    "duplicate_query_skipped_count": 0,
+    "second_search_attempted_count": 91,
+    "second_search_success_count": 11,
+    "second_search_provider_failure_count": 80,
+    "second_search_empty_results_count": 0
+  },
+  "retrieval_category_counts": {
+    "SUFFICIENT_NON_TRIGGERED": 50,
+    "INSUFFICIENT_DUPLICATE_QUERY": 0,
+    "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS": 11,
+    "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE": 80,
+    "FOLLOWUP_ELIGIBLE_SEARCH2_EMPTY_RESULTS": 0,
+    "PLANNER_FALLBACK": 24
+  },
+  "python_metrics": {
+    "requested_count": 58,
+    "executed_count": 39,
+    "success_count": 9,
+    "success_rate": 0.2308
+  },
+  "generation_cap_violations": 0,
+  "tool_budget_violations": 0,
+  "primary_paired_result": {
+    "followup_eligible_cohort_size": 79,
+    "branch_A_correct": 15,
+    "branch_A_accuracy": 0.1899,
+    "branch_B_correct": 30,
+    "branch_B_accuracy": 0.3797,
+    "retrieval_improvement": 21,
+    "retrieval_regression": 6,
+    "retrieval_stable_correct": 9,
+    "retrieval_stable_failure": 43,
+    "delta_followup": 15,
+    "h1_supported": true
+  },
+  "secondary_diagnostics": {
+    "h3a_evidence_conditional_error": {
+      "assessed_count": 47,
+      "incorrect_count": 41,
+      "correct_count": 6,
+      "error_rate": 0.8723,
+      "direction_pass": true,
+      "is_binding_gate": false
+    },
+    "h3b_recovery_trigger_rate": {
+      "triggered_count": 47,
+      "total_tasks": 165,
+      "trigger_rate": 0.2848,
+      "direction_pass": true,
+      "is_binding_gate": false
+    },
+    "h3c_reachability_floor": {
+      "post_reachability_count": 138,
+      "total_tasks": 165,
+      "reachability_rate": 0.8364,
+      "direction_pass": false,
+      "is_binding_gate": false
+    },
+    "h3d_planner_parse_success": {
+      "parse_success_count": 141,
+      "attempted_count": 165,
+      "parse_rate": 0.8545,
+      "direction_pass": false,
+      "is_binding_gate": false
+    },
+    "h3e_retrieval_category_distribution": {
+      "categories": {
+        "SUFFICIENT_NON_TRIGGERED": 50,
+        "INSUFFICIENT_DUPLICATE_QUERY": 0,
+        "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS": 11,
+        "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE": 80,
+        "FOLLOWUP_ELIGIBLE_SEARCH2_EMPTY_RESULTS": 0,
+        "PLANNER_FALLBACK": 24
+      },
+      "sum_tasks": 165,
+      "is_binding_gate": false
+    },
+    "h3f_search_novelty": {
+      "attempted_count": 91,
+      "count_with_gte_1_new_url": 11,
+      "proportion_with_gte_1_new_url": 0.1209,
+      "mean_new_urls": 0.53,
+      "median_new_urls": 0,
+      "is_binding_gate": false
+    }
+  },
+  "binding_gates": {
+    "gate_1_h1_feasibility_cohort_gt_0": true,
+    "gate_2_h1_delta_followup_gt_0": true,
+    "gate_3_h2_canonical_accuracy_gt_parent": false,
+    "gate_4_tool_and_generation_budgets": true,
+    "gate_5_downstream_safeguards_preserved": true,
+    "gate_6_operational_validity": false
+  },
+  "scientific_verdict": "NEUTRAL / NOT_SUPPORTED_AS_AN_IMPROVEMENT",
+  "promotion_decision": "DO_NOT_PROMOTE_V11"
+}

@@ -1,0 +1,92 @@
+{
+  "schema_version": 9,
+  "project_version": "v11",
+  "scientific_parent": "Frozen V10",
+  "canonical_inference_commit": "02b368b030e2c86c2e534d6012149f819e8d136a",
+  "pre_benchmark_audit_head": "733ef84127b2951bb5345ff01f1f42435575895a",
+  "preregistration_commit": "59f6944ff92f94e6ef2122bb98a0079d021d411b",
+  "model": "gemini-3.5-flash-lite",
+  "thinking_level": "medium",
+  "max_output_tokens": 2048,
+  "temperature": null,
+  "dataset": "GAIA 2023 validation",
+  "task_counts": {
+    "L1": 53,
+    "L2": 86,
+    "L3": 26,
+    "total": 165
+  },
+  "non_manifest_artifact_count": 14,
+  "artifacts": {
+    "paired_retrieval_raw.jsonl": {
+      "path": "experiments/v11/paired_retrieval_raw.jsonl",
+      "sha256": "0af0ca9ea2ca70a1ed48de865cdb42ad86aee4371e6e094d8c15b91e2cec8c9a",
+      "size_bytes": 224915
+    },
+    "paired_retrieval_raw.enrollment.jsonl": {
+      "path": "experiments/v11/paired_retrieval_raw.enrollment.jsonl",
+      "sha256": "43282d95910820961c4efab8e595ef7c59e8693e769d0949154cf8c7095818ab",
+      "size_bytes": 422945
+    },
+    "paired_summary.json": {
+      "path": "experiments/v11/paired_summary.json",
+      "sha256": "d94037bec0cf0f1efd0ef53e27a0c08f1bc5bf3737182250af1361f55f001be3",
+      "size_bytes": 1822
+    },
+    "paired_detailed.jsonl": {
+      "path": "experiments/v11/paired_detailed.jsonl",
+      "sha256": "64a2c0fef20591b4dab9daf17326c62a7682eb238707ce146245e25c81bda313",
+      "size_bytes": 238279
+    },
+    "predictions_level_1.jsonl": {
+      "path": "experiments/v11/predictions_level_1.jsonl",
+      "sha256": "ec219629ab28d628179a6991cc46e8e1c864ffe92e874391eb996ed402b38740",
+      "size_bytes": 2519626
+    },
+    "predictions_level_2.jsonl": {
+      "path": "experiments/v11/predictions_level_2.jsonl",
+      "sha256": "b7e1e1d124a239017ca0387ced4d5b87f8c0d47ae8a0a730ec4994aeedd2cce8",
+      "size_bytes": 1852937
+    },
+    "predictions_level_3.jsonl": {
+      "path": "experiments/v11/predictions_level_3.jsonl",
+      "sha256": "25244d73878573c63e055cb84c6288ff2a5780ae925e5b664b6c2da6d2b3d2ce",
+      "size_bytes": 464137
+    },
+    "summary_level_1.json": {
+      "path": "experiments/v11/summary_level_1.json",
+      "sha256": "60b87c3a68bb9a38657ccf33f21047defd74458a5373aeb9b2f330ef52565365",
+      "size_bytes": 13391
+    },
+    "summary_level_2.json": {
+      "path": "experiments/v11/summary_level_2.json",
+      "sha256": "58085899d0648718b6d4035b5b3fdbf7f6c1945077f185ec194c17d3b9e8520b",
+      "size_bytes": 13902
+    },
+    "summary_level_3.json": {
+      "path": "experiments/v11/summary_level_3.json",
+      "sha256": "0a42cda3e7ab760eb0e9e0fe8fe973dc19528a69936910dfc07cdf66798cc200",
+      "size_bytes": 11523
+    },
+    "detailed_eval_level_1.jsonl": {
+      "path": "experiments/v11/detailed_eval_level_1.jsonl",
+      "sha256": "805b1926a1877e4f89562a540371d34f6540774087150b376d58e54571d2ffdb",
+      "size_bytes": 703024
+    },
+    "detailed_eval_level_2.jsonl": {
+      "path": "experiments/v11/detailed_eval_level_2.jsonl",
+      "sha256": "ea5a5c9e24bb2befc062b7283fe4fa5030afe6ebb0ea272fa8bf6b47a7d9ea78",
+      "size_bytes": 723816
+    },
+    "detailed_eval_level_3.jsonl": {
+      "path": "experiments/v11/detailed_eval_level_3.jsonl",
+      "sha256": "6a77a0a45e96f8b5aeadf91fc3de25e59c6b16b16a74dad44e8c5f81965d405a",
+      "size_bytes": 207771
+    },
+    "overall_summary.json": {
+      "path": "experiments/v11/overall_summary.json",
+      "sha256": "e51dddba2c6b5712ba954204697c86a202c1bfc3a6f365d9eb48154b067a21ab",
+      "size_bytes": 4714
+    }
+  }
+}
