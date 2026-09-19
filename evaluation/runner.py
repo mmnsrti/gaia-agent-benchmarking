@@ -15,6 +15,7 @@ from agent import (
     GAIATargetedRepairAgent,
     GAIAUpstreamCandidateRecoveryAgent,
     GAIAPlannerExecutorAgent,
+    GAIAAdaptiveEvidenceAgent,
     LLMClient,
 )
 from prompts.baseline import PROMPT_VERSION
@@ -99,7 +100,9 @@ def execute_task(
     if llm is None:
         llm = LLMClient()
     if agent is None:
-        if project_version == "v10":
+        if project_version == "v11":
+            agent = GAIAAdaptiveEvidenceAgent(llm_client=llm)
+        elif project_version == "v10":
             agent = GAIAPlannerExecutorAgent(llm_client=llm)
         elif project_version == "v9":
             agent = GAIAUpstreamCandidateRecoveryAgent(llm_client=llm)
@@ -120,7 +123,9 @@ def execute_task(
         else:
             agent = GAIAAgent(llm_client=llm)
 
-    if isinstance(agent, GAIAPlannerExecutorAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9"):
+    if isinstance(agent, GAIAAdaptiveEvidenceAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9", "v10"):
+        project_version = "v11"
+    elif isinstance(agent, GAIAPlannerExecutorAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9"):
         project_version = "v10"
     elif isinstance(agent, GAIAUpstreamCandidateRecoveryAgent) and project_version in ("v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"):
         project_version = "v9"
@@ -214,9 +219,10 @@ def execute_task(
         else:
             completion_success = False
 
-        is_v10 = (project_version == "v10") or isinstance(agent, GAIAPlannerExecutorAgent)
-        is_v9 = ((project_version == "v9") or isinstance(agent, GAIAUpstreamCandidateRecoveryAgent)) and not is_v10
-        if (is_v10 or is_v9) and request_success:
+        is_v11 = (project_version == "v11") or isinstance(agent, GAIAAdaptiveEvidenceAgent)
+        is_v10 = ((project_version == "v10") or isinstance(agent, GAIAPlannerExecutorAgent)) and not is_v11
+        is_v9 = ((project_version == "v9") or isinstance(agent, GAIAUpstreamCandidateRecoveryAgent)) and not is_v10 and not is_v11
+        if (is_v11 or is_v10 or is_v9) and request_success:
             completion_success = bool(final_answer and str(final_answer).strip())
 
     except Exception as e:
@@ -233,16 +239,19 @@ def execute_task(
     latency = round(time.time() - start_time, 2)
 
     # Prompt provenance extraction
-    is_v10 = (project_version == "v10") or isinstance(agent, GAIAPlannerExecutorAgent)
-    is_v9 = ((project_version == "v9") or isinstance(agent, GAIAUpstreamCandidateRecoveryAgent)) and not is_v10
-    is_v7 = ((project_version == "v7") or isinstance(agent, GAIATargetedRepairAgent)) and not is_v9 and not is_v10
-    is_v6 = ((project_version == "v6") or isinstance(agent, GAIASelfEvaluationAgent)) and not is_v7 and not is_v9 and not is_v10
-    is_v5 = ((project_version == "v5") or isinstance(agent, GAIAVerificationAgent)) and not is_v6 and not is_v7 and not is_v9 and not is_v10
-    is_v4 = (((project_version == "v4") or isinstance(agent, GAIARouterAgent)) and not is_v5 and not is_v6 and not is_v7 and not is_v9 and not is_v10)
-    is_v3 = (((project_version == "v3") or isinstance(agent, GAIAPythonAgent)) and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v9 and not is_v10)
-    file_enabled = (((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3 and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v9 and not is_v10)
+    is_v11 = (project_version == "v11") or isinstance(agent, GAIAAdaptiveEvidenceAgent)
+    is_v10 = ((project_version == "v10") or isinstance(agent, GAIAPlannerExecutorAgent)) and not is_v11
+    is_v9 = ((project_version == "v9") or isinstance(agent, GAIAUpstreamCandidateRecoveryAgent)) and not is_v10 and not is_v11
+    is_v7 = ((project_version == "v7") or isinstance(agent, GAIATargetedRepairAgent)) and not is_v9 and not is_v10 and not is_v11
+    is_v6 = ((project_version == "v6") or isinstance(agent, GAIASelfEvaluationAgent)) and not is_v7 and not is_v9 and not is_v10 and not is_v11
+    is_v5 = ((project_version == "v5") or isinstance(agent, GAIAVerificationAgent)) and not is_v6 and not is_v7 and not is_v9 and not is_v10 and not is_v11
+    is_v4 = (((project_version == "v4") or isinstance(agent, GAIARouterAgent)) and not is_v5 and not is_v6 and not is_v7 and not is_v9 and not is_v10 and not is_v11)
+    is_v3 = (((project_version == "v3") or isinstance(agent, GAIAPythonAgent)) and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v9 and not is_v10 and not is_v11)
+    file_enabled = (((project_version == "v2") or isinstance(agent, GAIAFileAgent)) and not is_v3 and not is_v4 and not is_v5 and not is_v6 and not is_v7 and not is_v9 and not is_v10 and not is_v11)
     if result is None:
-        if is_v10:
+        if is_v11:
+            prompt_ver = "planner-v2-adaptive-evidence"
+        elif is_v10:
             prompt_ver = "planner-v1"
         elif is_v9:
             prompt_ver = "candidate-recovery-v1"
@@ -267,7 +276,9 @@ def execute_task(
     fallback_prompt_ver = getattr(result, "fallback_prompt_version", None) if result else None
 
     if primary_prompt_ver is None:
-        if is_v10:
+        if is_v11:
+            primary_prompt_ver = "planner-v2-adaptive-evidence"
+        elif is_v10:
             primary_prompt_ver = "planner-v1"
         elif is_v9 or is_v7 or is_v6 or is_v5 or is_v4:
             primary_prompt_ver = "capability-router-v1"
@@ -281,7 +292,7 @@ def execute_task(
             primary_prompt_ver = prompt_ver or "baseline-v1"
 
     if fallback_prompt_ver is None:
-        if is_v10:
+        if is_v11 or is_v10:
             fallback_prompt_ver = "executor-direct-v1" if getattr(result, "planner_fallback_used", False) else None
         elif is_v9 or is_v7 or is_v6 or is_v5 or is_v4:
             fallback_prompt_ver = "router-direct-worker-v1" if getattr(result, "router_fallback", False) else None
@@ -392,11 +403,11 @@ def execute_task(
     python_executed = getattr(result, "python_executed", False) if result else False
     python_fallback = getattr(result, "python_fallback", False) if result else False
     python_execution_count = 1 if python_executed else 0
-    if is_v10 or is_v9:
+    if is_v11 or is_v10 or is_v9:
         llm_generation_attempts = getattr(result, "llm_generation_attempts", 6 if completion_success else 2) if result else (6 if completion_success else 2)
-        assert 1 <= llm_generation_attempts <= 6, f"V10/V9 LLM generation attempts {llm_generation_attempts} outside [1, 6]"
+        assert 1 <= llm_generation_attempts <= 6, f"V11/V10/V9 LLM generation attempts {llm_generation_attempts} outside [1, 6]"
         if getattr(result, "candidate_recovery_triggered", False) is False:
-            assert llm_generation_attempts <= 5, f"V10/V9 non-triggered LLM generation attempts {llm_generation_attempts} > 5"
+            assert llm_generation_attempts <= 5, f"V11/V10/V9 non-triggered LLM generation attempts {llm_generation_attempts} > 5"
         llm_generation_count = llm_generation_attempts
     elif is_v7:
         llm_generation_attempts = getattr(result, "llm_generation_attempts", 5 if completion_success else 2) if result else (5 if completion_success else 2)
@@ -571,9 +582,40 @@ def execute_task(
     executor_thinking_tokens = getattr(result, "executor_thinking_tokens", None) if result else None
     executor_total_tokens = getattr(result, "executor_total_tokens", None) if result else None
 
+    # Adaptive evidence retrieval telemetry (V11)
+    planner_evidence_status = getattr(result, "planner_evidence_status", None) if result else None
+    planner_followup_query = getattr(result, "planner_followup_query", None) if result else None
+    planner_requested_followup = getattr(result, "planner_requested_followup", False) if result else False
+    followup_query_valid = getattr(result, "followup_query_valid", False) if result else False
+    followup_query_duplicate = getattr(result, "followup_query_duplicate", False) if result else False
+    followup_eligible = getattr(result, "followup_eligible", False) if result else False
+    second_search_triggered = getattr(result, "second_search_triggered", False) if result else False
+    second_search_attempted = getattr(result, "second_search_attempted", False) if result else False
+    second_search_success = getattr(result, "second_search_success", False) if result else False
+    second_search_empty_results = getattr(result, "second_search_empty_results", False) if result else False
+    second_search_skipped_duplicate_query = getattr(result, "second_search_skipped_duplicate_query", False) if result else False
+    second_search_query = getattr(result, "second_search_query", None) if result else None
+    second_search_provider_query = getattr(result, "second_search_provider_query", None) if result else None
+    second_search_query_truncated = getattr(result, "second_search_query_truncated", False) if result else False
+    second_search_latency_seconds = getattr(result, "second_search_latency_seconds", None) if result else None
+    second_search_result_count = getattr(result, "second_search_result_count", None) if result else None
+    second_search_error_type = getattr(result, "second_search_error_type", None) if result else None
+    second_search_error_message = getattr(result, "second_search_error_message", None) if result else None
+    second_search_new_urls_count = getattr(result, "second_search_new_urls_count", None) if result else None
+    second_search_urls = getattr(result, "second_search_urls", None) if result else None
+    primary_search_urls = getattr(result, "primary_search_urls", None) if result else None
+    second_search_has_new_urls = getattr(result, "second_search_has_new_urls", None) if result else None
+    primary_search_call_count = getattr(result, "primary_search_call_count", 1 if search_enabled else 0) if result else (1 if search_enabled else 0)
+    second_search_call_count = getattr(result, "second_search_call_count", 0) if result else 0
+    total_search_call_count = getattr(result, "total_search_call_count", primary_search_call_count + second_search_call_count) if result else primary_search_call_count
+    primary_search_evidence_hash = getattr(result, "primary_search_evidence_hash", None) if result else None
+    followup_search_evidence_hash = getattr(result, "followup_search_evidence_hash", None) if result else None
+    combined_search_evidence_hash = getattr(result, "combined_search_evidence_hash", None) if result else None
+    v11_retrieval_category = getattr(result, "v11_retrieval_category", None) if result else None
+
     default_gen_success = (
         ((1 if planner_generation_success else 0) + (1 if executor_generation_success else 0) + (1 if candidate_recovery_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0))
-        if is_v10
+        if (is_v11 or is_v10)
         else ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0) + (1 if candidate_recovery_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0))
         if is_v9
         else ((1 if router_generation_success else 0) + (1 if worker_generation_success else 0) + (1 if verifier_generation_success else 0) + (1 if self_eval_generation_success else 0) + (1 if repair_generation_success else 0))
@@ -607,7 +649,9 @@ def execute_task(
         python_stderr_length = 0
         python_output_truncated = False
 
-    if is_v10 and schema_version < 8:
+    if is_v11 and schema_version < 9:
+        resolved_schema_version = 9
+    elif is_v10 and schema_version < 8:
         resolved_schema_version = 8
     elif is_v9 and schema_version < 7:
         resolved_schema_version = 7
@@ -871,6 +915,37 @@ def execute_task(
         "executor_output_tokens": executor_output_tokens,
         "executor_thinking_tokens": executor_thinking_tokens,
         "executor_total_tokens": executor_total_tokens,
+
+        # Adaptive evidence retrieval telemetry (V11)
+        "planner_evidence_status": planner_evidence_status,
+        "planner_followup_query": planner_followup_query,
+        "planner_requested_followup": planner_requested_followup,
+        "followup_query_valid": followup_query_valid,
+        "followup_query_duplicate": followup_query_duplicate,
+        "followup_eligible": followup_eligible,
+        "second_search_triggered": second_search_triggered,
+        "second_search_attempted": second_search_attempted,
+        "second_search_success": second_search_success,
+        "second_search_empty_results": second_search_empty_results,
+        "second_search_skipped_duplicate_query": second_search_skipped_duplicate_query,
+        "second_search_query": second_search_query,
+        "second_search_provider_query": second_search_provider_query,
+        "second_search_query_truncated": second_search_query_truncated,
+        "second_search_latency_seconds": second_search_latency_seconds,
+        "second_search_result_count": second_search_result_count,
+        "second_search_error_type": second_search_error_type,
+        "second_search_error_message": second_search_error_message,
+        "second_search_new_urls_count": second_search_new_urls_count,
+        "second_search_urls": second_search_urls,
+        "primary_search_urls": primary_search_urls,
+        "second_search_has_new_urls": second_search_has_new_urls,
+        "primary_search_call_count": primary_search_call_count,
+        "second_search_call_count": second_search_call_count,
+        "total_search_call_count": total_search_call_count,
+        "primary_search_evidence_hash": primary_search_evidence_hash,
+        "followup_search_evidence_hash": followup_search_evidence_hash,
+        "combined_search_evidence_hash": combined_search_evidence_hash,
+        "v11_retrieval_category": v11_retrieval_category,
 
         # Generation counts
         "llm_generation_attempts": llm_generation_attempts,

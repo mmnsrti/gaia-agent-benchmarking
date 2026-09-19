@@ -70,6 +70,8 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
             print("Note: v9 evaluates question using upstream candidate recovery and Frozen V7 pipeline.")
         elif version == "v10":
             print("Note: v10 evaluates question using structured planner -> plan-guided executor and Frozen V9 pipeline.")
+        elif version == "v11":
+            print("Note: v11 evaluates question using adaptive evidence retrieval + structured planner v2 and Frozen V10 pipeline.")
     print("-" * 80)
 
     record = execute_task(
@@ -100,6 +102,12 @@ def run_one(index: int = 0, task_id: str = None, log: bool = True, version: str 
         if record.get("planner_error_type"):
             print(f"Planner Error: {record.get('planner_error_type')}")
         print(f"Planner Latency: {record.get('planner_latency_seconds')}s")
+        if record.get("second_search_triggered"):
+            print(f"Second Search Triggered: {record.get('second_search_triggered')}")
+            print(f"Second Search Attempted: {record.get('second_search_attempted')}")
+            print(f"Second Search Success: {record.get('second_search_success')}")
+            print(f"Followup Query: {record.get('second_search_query')}")
+            print(f"Retrieval Category: {record.get('v11_retrieval_category')}")
         print(f"Executor Mode: {record.get('executor_mode')}")
         print(f"Executor Success: {record.get('executor_success')}")
         if record.get("executor_error_type"):
@@ -222,7 +230,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--task-id", type=str, default=None, help="Specific task ID to run")
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3"]
     # Legacy CLI choices compatibility: choices=["v0", "v1", "v2", "v3", "v4"]
-    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9", "v10"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: SUSPECT-triggered targeted repair, v9: upstream candidate recovery, v10: structured planner-executor; required)")
+    parser.add_argument("--version", type=str, required=True, choices=["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v9", "v10", "v11"], help="Agent version (v0: baseline, v1: web search, v2: file attachments, v3: controlled single-shot Python execution, v4: explicit capability routing, v5: one-shot post-answer verification, v6: read-only self-evaluation, v7: SUSPECT-triggered targeted repair, v9: upstream candidate recovery, v10: structured planner-executor, v11: adaptive evidence retrieval; required)")
     parser.add_argument("--no-log", action="store_true", help="Do not write record to experiments/runs.jsonl")
     args = parser.parse_args()
 

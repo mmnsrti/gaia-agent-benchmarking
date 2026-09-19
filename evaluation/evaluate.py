@@ -120,7 +120,7 @@ def calculate_metrics(
     if predictions and predictions[0].get("project_version"):
         resolved_pv = predictions[0].get("project_version")
 
-    has_python = (resolved_pv in ("v3", "v4", "v5", "v6", "v7", "v9")) or any(
+    has_python = (resolved_pv in ("v3", "v4", "v5", "v6", "v7", "v9", "v10", "v11")) or any(
         pred.get("python_requested") or pred.get("python_executed") or pred.get("python_prompt_version")
         for pred in predictions
     )
@@ -150,7 +150,7 @@ def calculate_metrics(
     worker_latencies: List[float] = []
     total_llm_generations_list: List[int] = []
 
-    has_planner = (resolved_pv == "v10") or any(
+    has_planner = (resolved_pv in ("v10", "v11")) or any(
         pred.get("planner_attempted") or pred.get("planner_mode")
         for pred in predictions
     )
@@ -165,19 +165,42 @@ def calculate_metrics(
     planner_latencies: List[float] = []
     executor_latencies: List[float] = []
 
-    has_verifier = (resolved_pv in ("v5", "v6", "v7", "v9", "v10")) or any(
+    has_adaptive_evidence = (resolved_pv == "v11") or any(
+        pred.get("planner_evidence_status") is not None or pred.get("second_search_triggered")
+        for pred in predictions
+    )
+    v11_followup_requested_count = 0
+    v11_followup_eligible_count = 0
+    v11_duplicate_query_count = 0
+    v11_second_search_triggered_count = 0
+    v11_second_search_attempted_count = 0
+    v11_second_search_success_count = 0
+    v11_second_search_empty_count = 0
+    v11_second_search_failure_count = 0
+    v11_categories: Dict[str, int] = {
+        "SUFFICIENT_NON_TRIGGERED": 0,
+        "INSUFFICIENT_DUPLICATE_QUERY": 0,
+        "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS": 0,
+        "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE": 0,
+        "FOLLOWUP_ELIGIBLE_SEARCH2_EMPTY_RESULTS": 0,
+        "PLANNER_FALLBACK": 0,
+    }
+    v11_second_search_latencies: List[float] = []
+    v11_new_urls_counts: List[int] = []
+
+    has_verifier = (resolved_pv in ("v5", "v6", "v7", "v9", "v10", "v11")) or any(
         pred.get("verifier_attempted") or pred.get("verifier_eligible") or pred.get("verifier_verdict")
         for pred in predictions
     )
-    has_self_evaluator = (resolved_pv in ("v6", "v7", "v9", "v10")) or any(
+    has_self_evaluator = (resolved_pv in ("v6", "v7", "v9", "v10", "v11")) or any(
         pred.get("self_eval_attempted") or pred.get("self_eval_eligible") or pred.get("self_eval_prompt_version")
         for pred in predictions
     )
-    has_targeted_repair = (resolved_pv in ("v7", "v9", "v10")) or any(
+    has_targeted_repair = (resolved_pv in ("v7", "v9", "v10", "v11")) or any(
         pred.get("repair_attempted") or pred.get("repair_eligible") or pred.get("repair_triggered") or pred.get("repair_prompt_version")
         for pred in predictions
     )
-    has_candidate_recovery = (resolved_pv in ("v9", "v10")) or any(
+    has_candidate_recovery = (resolved_pv in ("v9", "v10", "v11")) or any(
         pred.get("candidate_recovery_attempted") or pred.get("candidate_recovery_eligible") or pred.get("candidate_recovery_triggered") or pred.get("candidate_recovery_prompt_version")
         for pred in predictions
     )
@@ -513,6 +536,43 @@ def calculate_metrics(
                 except (ValueError, TypeError):
                     pass
 
+        # Track Adaptive Evidence Retrieval metrics for V11
+        if has_adaptive_evidence or pred.get("planner_evidence_status") is not None:
+            if pred.get("planner_requested_followup"):
+                v11_followup_requested_count += 1
+            if pred.get("followup_eligible"):
+                v11_followup_eligible_count += 1
+            if pred.get("followup_query_duplicate") or pred.get("second_search_skipped_duplicate_query"):
+                v11_duplicate_query_count += 1
+            if pred.get("second_search_triggered"):
+                v11_second_search_triggered_count += 1
+            if pred.get("second_search_attempted"):
+                v11_second_search_attempted_count += 1
+            if pred.get("second_search_success"):
+                v11_second_search_success_count += 1
+            if pred.get("second_search_empty_results"):
+                v11_second_search_empty_count += 1
+            if pred.get("second_search_error_type"):
+                v11_second_search_failure_count += 1
+
+            cat = pred.get("v11_retrieval_category")
+            if cat and cat in v11_categories:
+                v11_categories[cat] += 1
+
+            s2_lat = pred.get("second_search_latency_seconds")
+            if s2_lat is not None:
+                try:
+                    v11_second_search_latencies.append(float(s2_lat))
+                except (ValueError, TypeError):
+                    pass
+
+            new_urls = pred.get("second_search_new_urls_count")
+            if new_urls is not None:
+                try:
+                    v11_new_urls_counts.append(int(new_urls))
+                except (ValueError, TypeError):
+                    pass
+
         # Track Verifier metrics for V5
         pre_ans = pred.get("pre_verification_answer")
         post_ans = pred.get("post_verification_answer") or final_ans
@@ -801,6 +861,38 @@ def calculate_metrics(
                 "executor_total_tokens": pred.get("executor_total_tokens"),
                 "llm_generation_attempts": pred.get("llm_generation_attempts", 2),
                 "llm_generation_success_count": pred.get("llm_generation_success_count", 0),
+            })
+        if has_adaptive_evidence or pred.get("planner_evidence_status") is not None or pred.get("second_search_triggered"):
+            detailed_entry.update({
+                "planner_evidence_status": pred.get("planner_evidence_status"),
+                "planner_followup_query": pred.get("planner_followup_query"),
+                "planner_requested_followup": pred.get("planner_requested_followup", False),
+                "followup_query_valid": pred.get("followup_query_valid", False),
+                "followup_query_duplicate": pred.get("followup_query_duplicate", False),
+                "followup_eligible": pred.get("followup_eligible", False),
+                "second_search_triggered": pred.get("second_search_triggered", False),
+                "second_search_attempted": pred.get("second_search_attempted", False),
+                "second_search_success": pred.get("second_search_success", False),
+                "second_search_empty_results": pred.get("second_search_empty_results", False),
+                "second_search_skipped_duplicate_query": pred.get("second_search_skipped_duplicate_query", False),
+                "second_search_query": pred.get("second_search_query"),
+                "second_search_provider_query": pred.get("second_search_provider_query"),
+                "second_search_query_truncated": pred.get("second_search_query_truncated", False),
+                "second_search_latency_seconds": pred.get("second_search_latency_seconds"),
+                "second_search_result_count": pred.get("second_search_result_count"),
+                "second_search_error_type": pred.get("second_search_error_type"),
+                "second_search_error_message": pred.get("second_search_error_message"),
+                "second_search_new_urls_count": pred.get("second_search_new_urls_count"),
+                "second_search_urls": pred.get("second_search_urls"),
+                "primary_search_urls": pred.get("primary_search_urls"),
+                "second_search_has_new_urls": pred.get("second_search_has_new_urls"),
+                "primary_search_call_count": pred.get("primary_search_call_count", 1),
+                "second_search_call_count": pred.get("second_search_call_count", 0),
+                "total_search_call_count": pred.get("total_search_call_count", 1),
+                "primary_search_evidence_hash": pred.get("primary_search_evidence_hash"),
+                "followup_search_evidence_hash": pred.get("followup_search_evidence_hash"),
+                "combined_search_evidence_hash": pred.get("combined_search_evidence_hash"),
+                "v11_retrieval_category": pred.get("v11_retrieval_category"),
             })
         detailed_eval.append(detailed_entry)
 
@@ -1151,6 +1243,28 @@ def calculate_metrics(
         summary["average_executor_latency_seconds"] = round(statistics.mean(executor_latencies), 2) if executor_latencies else None
         if total_llm_generations_list and "average_total_llm_generations" not in summary:
             summary["average_total_llm_generations"] = round(statistics.mean(total_llm_generations_list), 2)
+
+    if has_adaptive_evidence:
+        summary["adaptive_evidence_enabled"] = True
+        summary["v11_followup_requested_count"] = v11_followup_requested_count
+        summary["v11_followup_eligible_count"] = v11_followup_eligible_count
+        summary["v11_duplicate_query_count"] = v11_duplicate_query_count
+        summary["v11_second_search_triggered_count"] = v11_second_search_triggered_count
+        summary["v11_second_search_attempted_count"] = v11_second_search_attempted_count
+        summary["v11_second_search_success_count"] = v11_second_search_success_count
+        summary["v11_second_search_empty_count"] = v11_second_search_empty_count
+        summary["v11_second_search_failure_count"] = v11_second_search_failure_count
+        summary["v11_categories"] = v11_categories
+        summary["average_second_search_latency_seconds"] = (
+            round(statistics.mean(v11_second_search_latencies), 2) if v11_second_search_latencies else None
+        )
+        if v11_new_urls_counts:
+            summary["average_second_search_new_urls"] = round(statistics.mean(v11_new_urls_counts), 2)
+            summary["median_second_search_new_urls"] = round(statistics.median(v11_new_urls_counts), 2)
+            summary["second_search_novelty_rate"] = round(
+                sum(1 for c in v11_new_urls_counts if c > 0) / len(v11_new_urls_counts), 4
+            )
+
 
     return {
         "summary": summary,
