@@ -4,6 +4,8 @@ Line-Oriented Grammar, Strict Deterministic Parser, Normalization,
 and Safe Fallback Specification.
 """
 
+import hashlib
+import json
 import re
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
@@ -106,21 +108,50 @@ def build_adaptive_fallback_plan(
     )
 
 
+def canonical_execution_plan_payload(plan_spec: AdaptivePlanSpec) -> dict:
+    """Extracts the execution-only fields of an AdaptivePlanSpec for canonical hashing.
+
+    Excludes retrieval-control and parser metadata fields:
+    - EVIDENCE_STATUS
+    - FOLLOWUP_QUERY
+    - raw_plan
+    - is_fallback
+    - validation_error
+    """
+    return {
+        "mode": plan_spec.mode,
+        "objective": plan_spec.objective,
+        "evidence_needed": plan_spec.evidence_needed,
+        "plan_steps": list(plan_spec.plan_steps),
+        "answer_type": plan_spec.answer_type,
+    }
+
+
+def hash_canonical_execution_plan(plan_spec: AdaptivePlanSpec) -> str:
+    """Computes a deterministic SHA-256 hash of the execution-only plan payload.
+
+    Uses sorted keys, no whitespace separators, and ensure_ascii=False.
+    """
+    payload = canonical_execution_plan_payload(plan_spec)
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
 def normalize_followup_query(query: Optional[str], max_len: int = 1500) -> Tuple[str, bool]:
     """Normalizes a follow-up search query string.
 
     1. Strip leading and trailing whitespace.
-    2. Strip wrapping quotes if present.
-    3. Collapse internal repeated whitespace to a single space.
-    4. Deterministically truncate to max_len characters if needed.
+    2. Collapse internal repeated whitespace to a single space.
+    3. Deterministically truncate to max_len characters if needed.
+
+    Note: Wrapping quotes are intentionally preserved because quotes are valid
+    search query operator syntax for exact phrase matching.
 
     Returns (normalized_query, is_truncated).
     """
     if not query:
         return "", False
     s = str(query).strip()
-    if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
-        s = s[1:-1].strip()
     s = re.sub(r"\s+", " ", s)
     if len(s) > max_len:
         return s[:max_len], True

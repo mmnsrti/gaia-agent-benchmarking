@@ -84,6 +84,18 @@ def calculate_paired_metrics(
         if not gt or not gt.strip():
             raise ValueError(f"Ground truth answer is missing or empty for task_id: {tid}")
 
+        if not rec.get("followup_eligible"):
+            raise ValueError(
+                f"Contamination error: record for task {tid} has followup_eligible={rec.get('followup_eligible')}. "
+                "Raw paired execution records must contain ONLY follow-up eligible tasks."
+            )
+
+        if rec.get("second_search_success") and rec.get("second_search_empty_results"):
+            raise ValueError(
+                f"Mutual exclusion violation for task {tid}: "
+                "second_search_success and second_search_empty_results cannot both be True."
+            )
+
         category = rec.get("v11_retrieval_category", "UNKNOWN")
         retrieval_categories[category] += 1
 
@@ -183,8 +195,8 @@ def calculate_paired_metrics(
         scientific_verdict = "NOT_TESTABLE"
 
     novelty_prop = (
-        round(has_new_urls_count / successful_searches_count, 4)
-        if successful_searches_count > 0
+        round(has_new_urls_count / second_search_attempted_count, 4)
+        if second_search_attempted_count > 0
         else 0.0
     )
     mean_new_urls = (
@@ -240,7 +252,8 @@ def calculate_paired_metrics(
             "second_search_provider_failure_count": second_search_provider_failure_count,
         },
         "search_novelty_diagnostics": {
-            "successful_searches_count": successful_searches_count,
+            "attempted_searches_count": second_search_attempted_count,
+            "successful_searches_count": second_search_success_count,
             "has_new_urls_count": has_new_urls_count,
             "has_new_urls_proportion": novelty_prop,
             "mean_new_urls": mean_new_urls,
@@ -278,9 +291,7 @@ def evaluate_paired_retrieval(
                 continue
             records.append(json.loads(line))
 
-    if not records:
-        raise ValueError(f"No paired records found in {input_file}")
-
+    # Zero-eligible cohort support: empty raw file is valid if it exists on disk
     # Load ground truth tasks across levels
     tasks_by_id: Dict[str, Any] = {}
     for lvl in (1, 2, 3):

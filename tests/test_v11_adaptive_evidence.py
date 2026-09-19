@@ -38,6 +38,15 @@ from prompts.adaptive_planner import (
     build_adaptive_planner_prompt,
     normalize_followup_query,
     parse_adaptive_planner_result,
+    canonical_execution_plan_payload,
+    hash_canonical_execution_plan,
+)
+from agent.agent import (
+    _execute_v11_executor_from_plan,
+    _plan_v11_from_context,
+    _evaluate_v11_followup_control,
+    _execute_v11_followup_search,
+    _build_v11_executor_evidence,
 )
 from prompts.executor import (
     EXECUTOR_DIRECT_PROMPT_VERSION,
@@ -254,7 +263,7 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
         self.assertEqual(parsed.plan.evidence_status, "INSUFFICIENT")
         self.assertEqual(parsed.plan.followup_query, '"Acme Corp 2024 annual 10-K revenue SEC EDGAR"')
         norm_q, trunc = normalize_followup_query(parsed.plan.followup_query)
-        self.assertEqual(norm_q, "Acme Corp 2024 annual 10-K revenue SEC EDGAR")
+        self.assertEqual(norm_q, '"Acme Corp 2024 annual 10-K revenue SEC EDGAR"')
         self.assertFalse(trunc)
 
     def test_scenario_03_invalid_evidence_status(self):
@@ -456,7 +465,7 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
             "1. Look up Tokyo\n"
             "ANSWER_TYPE: number\n"
             "EVIDENCE_STATUS: INSUFFICIENT\n"
-            f'FOLLOWUP_QUERY: "{q}"\n'  # Identical to Search 1 query
+            f"FOLLOWUP_QUERY: {q}\n"  # Identical to Search 1 query
         )
         llm = SequencedLLM([
             make_resp(planner_text),
@@ -478,12 +487,18 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
         self.assertEqual(search_tool.calls, 1)  # Only Search 1 executed
 
     def test_scenario_12_query_normalization_and_truncation(self):
-        """Scenario 12: Normalization collapses whitespace, strips quotes, and truncates > 1500 chars."""
-        # Whitespace and quotes
+        """Scenario 12: Normalization collapses whitespace, preserves quotes, and truncates > 1500 chars."""
+        # Whitespace and quotes preservation
         raw = '  "   what   is    the    answer?   "  '
         norm, trunc = normalize_followup_query(raw)
-        self.assertEqual(norm, "what is the answer?")
+        self.assertEqual(norm, '" what is the answer? "')
         self.assertFalse(trunc)
+
+        # Unquoted whitespace collapse
+        raw2 = '   what   is    the    answer?   '
+        norm2, trunc2 = normalize_followup_query(raw2)
+        self.assertEqual(norm2, "what is the answer?")
+        self.assertFalse(trunc2)
 
         # > 1500 chars truncation
         long_q = "search term " * 200  # 2400 chars
@@ -624,7 +639,7 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
 
     def test_scenario_17_search3_impossibility(self):
         """Scenario 17: Under no code path can a third search call be initiated."""
-        source = inspect.getsource(GAIAAdaptiveEvidenceAgent)
+        source = inspect.getsource(_execute_v11_followup_search)
         parsed = ast.parse(source)
 
         search_calls = 0
@@ -967,7 +982,9 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
                 "candidate_without_followup": "wrong",
                 "candidate_with_followup": "correct",
                 "v11_retrieval_category": "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS",
+                "second_search_attempted": True,
                 "second_search_success": True,
+                "second_search_empty_results": False,
                 "second_search_has_new_urls": True,
                 "second_search_new_urls_count": 2,
             },
@@ -978,7 +995,9 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
                 "candidate_without_followup": "correct",
                 "candidate_with_followup": "wrong",
                 "v11_retrieval_category": "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS",
+                "second_search_attempted": True,
                 "second_search_success": True,
+                "second_search_empty_results": False,
                 "second_search_has_new_urls": True,
                 "second_search_new_urls_count": 1,
             },
@@ -989,7 +1008,9 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
                 "candidate_without_followup": "correct",
                 "candidate_with_followup": "correct",
                 "v11_retrieval_category": "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS",
+                "second_search_attempted": True,
                 "second_search_success": True,
+                "second_search_empty_results": False,
                 "second_search_has_new_urls": False,
                 "second_search_new_urls_count": 0,
             },
@@ -1000,17 +1021,11 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
                 "candidate_without_followup": "wrong",
                 "candidate_with_followup": "wrong",
                 "v11_retrieval_category": "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS",
+                "second_search_attempted": True,
                 "second_search_success": True,
+                "second_search_empty_results": False,
                 "second_search_has_new_urls": True,
                 "second_search_new_urls_count": 3,
-            },
-            # 5. Non-eligible task
-            {
-                "task_id": "t5",
-                "followup_eligible": False,
-                "candidate_without_followup": None,
-                "candidate_with_followup": None,
-                "v11_retrieval_category": "SUFFICIENT_NON_TRIGGERED",
             },
         ]
 
@@ -1025,7 +1040,7 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
         res = calculate_paired_metrics(records, tasks_by_id)
         summary = res["summary"]
 
-        self.assertEqual(summary["total_tasks_recorded"], 5)
+        self.assertEqual(summary["total_tasks_recorded"], 4)
         self.assertEqual(summary["followup_eligible_cohort_size"], 4)
         self.assertEqual(summary["retrieval_improvements"], 1)
         self.assertEqual(summary["retrieval_regressions"], 1)
@@ -1033,18 +1048,29 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
         self.assertEqual(summary["retrieval_stable_failure"], 1)
         self.assertEqual(summary["delta_followup"], 0)
         self.assertEqual(summary["scientific_verdict"], "NEUTRAL (Inconclusive)")
+        self.assertEqual(summary["search_novelty_diagnostics"]["attempted_searches_count"], 4)
+        self.assertEqual(summary["search_novelty_diagnostics"]["successful_searches_count"], 4)
+        self.assertEqual(summary["search_novelty_diagnostics"]["has_new_urls_count"], 3)
+        self.assertEqual(summary["search_novelty_diagnostics"]["has_new_urls_proportion"], 0.75)
 
         # Test zero-eligible cohort non-testability
-        empty_cohort_records = [
+        empty_cohort_records = []
+        res_empty = calculate_paired_metrics(empty_cohort_records, tasks_by_id)
+        self.assertEqual(res_empty["summary"]["scientific_verdict"], "NOT_TESTABLE")
+        self.assertEqual(res_empty["summary"]["total_tasks_recorded"], 0)
+        self.assertEqual(res_empty["summary"]["followup_eligible_cohort_size"], 0)
+        self.assertEqual(res_empty["summary"]["delta_followup"], 0)
+
+        # Test contamination error on non-eligible record in raw file
+        contaminated_records = [
             {
                 "task_id": "t5",
                 "followup_eligible": False,
                 "v11_retrieval_category": "SUFFICIENT_NON_TRIGGERED",
             }
         ]
-        res_empty = calculate_paired_metrics(empty_cohort_records, {"t5": tasks_by_id["t5"]})
-        self.assertEqual(res_empty["summary"]["scientific_verdict"], "NOT_TESTABLE")
-        self.assertEqual(res_empty["summary"]["delta_followup"], 0)
+        with self.assertRaises(ValueError):
+            calculate_paired_metrics(contaminated_records, tasks_by_id)
 
     # -------------------------------------------------------------------------
     # Additional Hardening Tests
@@ -1113,6 +1139,472 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
         self.assertIn("ANSWER_TYPE: number", block)
         self.assertNotIn("EVIDENCE_STATUS", block)
         self.assertNotIn("FOLLOWUP_QUERY", block)
+
+    def test_plan_hash_hardening(self):
+        """Hardening 1: Canonical plan hash includes execution fields only and ignores control fields."""
+        base_plan = AdaptivePlanSpec(
+            mode="DIRECT",
+            objective="Determine capital",
+            evidence_needed="Country capital data",
+            plan_steps=["Step 1: Check facts", "Step 2: Output city"],
+            answer_type="string",
+            evidence_status="SUFFICIENT",
+            followup_query="NONE",
+            raw_plan="RAW TEXT 1",
+            is_fallback=False,
+            validation_error=None,
+        )
+        differing_control_plan = AdaptivePlanSpec(
+            mode="DIRECT",
+            objective="Determine capital",
+            evidence_needed="Country capital data",
+            plan_steps=["Step 1: Check facts", "Step 2: Output city"],
+            answer_type="string",
+            evidence_status="INSUFFICIENT",
+            followup_query="some new query",
+            raw_plan="DIFFERENT RAW TEXT",
+            is_fallback=True,
+            validation_error="Some error",
+        )
+        differing_exec_plan = AdaptivePlanSpec(
+            mode="PYTHON",
+            objective="Determine capital",
+            evidence_needed="Country capital data",
+            plan_steps=["Step 1: Check facts", "Step 2: Output city"],
+            answer_type="string",
+            evidence_status="SUFFICIENT",
+            followup_query="NONE",
+            raw_plan="RAW TEXT 1",
+            is_fallback=False,
+            validation_error=None,
+        )
+
+        payload_base = canonical_execution_plan_payload(base_plan)
+        payload_diff_ctrl = canonical_execution_plan_payload(differing_control_plan)
+        payload_diff_exec = canonical_execution_plan_payload(differing_exec_plan)
+
+        # Ensure retrieval-control and diagnostic fields are excluded
+        for p in (payload_base, payload_diff_ctrl, payload_diff_exec):
+            self.assertNotIn("evidence_status", p)
+            self.assertNotIn("followup_query", p)
+            self.assertNotIn("raw_plan", p)
+            self.assertNotIn("is_fallback", p)
+            self.assertNotIn("validation_error", p)
+            self.assertEqual(set(p.keys()), {"mode", "objective", "evidence_needed", "plan_steps", "answer_type"})
+
+        # Differing control fields produce identical hash
+        self.assertEqual(payload_base, payload_diff_ctrl)
+        hash_base = hash_canonical_execution_plan(base_plan)
+        hash_diff_ctrl = hash_canonical_execution_plan(differing_control_plan)
+        self.assertEqual(hash_base, hash_diff_ctrl)
+
+        # Differing execution fields produce different hash
+        hash_diff_exec = hash_canonical_execution_plan(differing_exec_plan)
+        self.assertNotEqual(hash_base, hash_diff_exec)
+
+    def test_normalization_and_exact_duplicate_comparison(self):
+        """Hardening 2: Normalization preserves quotes, collapses spaces, and duplicate comparison is exact."""
+        # 1. Quotes preserved and whitespace collapsed
+        norm, trunc = normalize_followup_query('   "quoted   term"   and   \'single\'   ')
+        self.assertEqual(norm, '"quoted term" and \'single\'')
+        self.assertFalse(trunc)
+
+        # 2. Long query truncation at 1500
+        long_q = "a" * 1600
+        norm_long, trunc_long = normalize_followup_query(long_q)
+        self.assertEqual(len(norm_long), 1500)
+        self.assertTrue(trunc_long)
+
+        # 3. Exact case-sensitive duplicate comparison in _evaluate_v11_followup_control
+        # Exact match -> duplicate
+        spec1 = AdaptivePlanSpec(
+            mode="DIRECT", objective="O", evidence_needed="E", plan_steps=["1"],
+            answer_type="text", evidence_status="INSUFFICIENT", followup_query="tokyo population",
+            raw_plan="...",
+        )
+        ctrl1 = _evaluate_v11_followup_control(
+            plan_spec=spec1,
+            parse_success=True,
+            search1_query_candidate="  tokyo   population  ",
+        )
+        self.assertTrue(ctrl1["followup_query_duplicate"])
+        self.assertFalse(ctrl1["followup_eligible"])
+
+        # Case-differing -> NOT duplicate
+        spec2 = AdaptivePlanSpec(
+            mode="DIRECT", objective="O", evidence_needed="E", plan_steps=["1"],
+            answer_type="text", evidence_status="INSUFFICIENT", followup_query="Tokyo Population",
+            raw_plan="...",
+        )
+        ctrl2 = _evaluate_v11_followup_control(
+            plan_spec=spec2,
+            parse_success=True,
+            search1_query_candidate="tokyo population",
+        )
+        self.assertFalse(ctrl2["followup_query_duplicate"])
+        self.assertTrue(ctrl2["followup_eligible"])
+
+        # Quote-differing -> NOT duplicate
+        spec3 = AdaptivePlanSpec(
+            mode="DIRECT", objective="O", evidence_needed="E", plan_steps=["1"],
+            answer_type="text", evidence_status="INSUFFICIENT", followup_query='"tokyo population"',
+            raw_plan="...",
+        )
+        ctrl3 = _evaluate_v11_followup_control(
+            plan_spec=spec3,
+            parse_success=True,
+            search1_query_candidate="tokyo population",
+        )
+        self.assertFalse(ctrl3["followup_query_duplicate"])
+        self.assertTrue(ctrl3["followup_eligible"])
+
+    def test_search2_mutual_exclusion(self):
+        """Hardening 3: Mutual exclusion between success and empty results across search outcomes."""
+        primary_urls = ["https://example.com/p1"]
+
+        # Case 1: Search 2 with results (>0)
+        tool_ok = StubSearchTool(second_success=True, second_urls=["https://example.com/p2"])
+        tool_ok.calls = 1  # Simulate Search 1 already performed
+        res1 = _execute_v11_followup_search(tool_ok, "followup query", primary_urls)
+        self.assertTrue(res1["second_search_success"])
+        self.assertFalse(res1["second_search_empty_results"])
+        self.assertFalse(res1["second_search_success"] and res1["second_search_empty_results"])
+        self.assertEqual(res1["v11_retrieval_category"], "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS")
+
+        # Case 2: Search 2 empty results
+        tool_empty = StubSearchTool(second_success=True, empty_second=True)
+        tool_empty.calls = 1  # Simulate Search 1 already performed
+        res2 = _execute_v11_followup_search(tool_empty, "followup query", primary_urls)
+        self.assertFalse(res2["second_search_success"])
+        self.assertTrue(res2["second_search_empty_results"])
+        self.assertFalse(res2["second_search_success"] and res2["second_search_empty_results"])
+        self.assertEqual(res2["v11_retrieval_category"], "FOLLOWUP_ELIGIBLE_SEARCH2_EMPTY_RESULTS")
+
+        # Case 3: Search 2 provider error
+        tool_err = StubSearchTool(second_success=False)
+        tool_err.calls = 1  # Simulate Search 1 already performed
+        res3 = _execute_v11_followup_search(tool_err, "followup query", primary_urls)
+        self.assertFalse(res3["second_search_success"])
+        self.assertFalse(res3["second_search_empty_results"])
+        self.assertFalse(res3["second_search_success"] and res3["second_search_empty_results"])
+        self.assertEqual(res3["v11_retrieval_category"], "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE")
+
+        # Case 4: Search 2 exception raised
+        tool_exc = StubSearchTool(raise_on_second=True)
+        tool_exc.calls = 1  # Simulate Search 1 already performed
+        res4 = _execute_v11_followup_search(tool_exc, "followup query", primary_urls)
+        self.assertFalse(res4["second_search_success"])
+        self.assertFalse(res4["second_search_empty_results"])
+        self.assertFalse(res4["second_search_success"] and res4["second_search_empty_results"])
+        self.assertEqual(res4["v11_retrieval_category"], "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE")
+
+    def test_paired_raw_cohort_three_tasks(self):
+        """Hardening 4: Paired raw file contains only eligible tasks while enrollment ledger logs all."""
+        tasks = [
+            GAIATask(task_id="task-eligible", question="Q1 eligible?", level=1, final_answer="A1"),
+            GAIATask(task_id="task-sufficient", question="Q2 sufficient?", level=1, final_answer="A2"),
+            GAIATask(task_id="task-duplicate", question="Q3 duplicate?", level=1, final_answer="A3"),
+        ]
+
+        p1 = (
+            "MODE: DIRECT\nOBJECTIVE: O1\nEVIDENCE_NEEDED: E1\nPLAN:\n1. Step\n"
+            "ANSWER_TYPE: text\nEVIDENCE_STATUS: INSUFFICIENT\nFOLLOWUP_QUERY: new query\n"
+        )
+        p2 = (
+            "MODE: DIRECT\nOBJECTIVE: O2\nEVIDENCE_NEEDED: E2\nPLAN:\n1. Step\n"
+            "ANSWER_TYPE: text\nEVIDENCE_STATUS: SUFFICIENT\nFOLLOWUP_QUERY: NONE\n"
+        )
+        p3 = (
+            "MODE: DIRECT\nOBJECTIVE: O3\nEVIDENCE_NEEDED: E3\nPLAN:\n1. Step\n"
+            "ANSWER_TYPE: text\nEVIDENCE_STATUS: INSUFFICIENT\nFOLLOWUP_QUERY: Q3 duplicate?\n"
+        )
+
+        llm = SequencedLLM([
+            make_resp(p1),
+            make_resp("FINAL: ans_A"),
+            make_resp("FINAL: ans_B"),
+            make_resp(p2),
+            make_resp(p3),
+        ])
+        agent = GAIAAdaptiveEvidenceAgent(
+            llm_client=llm,
+            search_tool=StubSearchTool(),
+            file_tool=CountingFileTool(),
+            python_tool=MockPythonTool(),
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as out_f:
+            out_file = out_f.name
+        enrollment_file = f"{out_file[:-6]}.enrollment.jsonl"
+
+        try:
+            with unittest.mock.patch("evaluation.run_v11_paired.load_gaia_tasks", return_value=tasks):
+                run_paired_ablation(
+                    output_file=out_file,
+                    resume=False,
+                    delay=0.0,
+                    agent=agent,
+                )
+
+            with open(out_file, "r", encoding="utf-8") as f:
+                raw_lines = [json.loads(line) for line in f if line.strip()]
+            self.assertEqual(len(raw_lines), 1)
+            self.assertEqual(raw_lines[0]["task_id"], "task-eligible")
+            self.assertTrue(raw_lines[0]["followup_eligible"])
+
+            with open(enrollment_file, "r", encoding="utf-8") as f:
+                enroll_lines = [json.loads(line) for line in f if line.strip()]
+            self.assertEqual(len(enroll_lines), 3)
+
+            rec_map = {r["task_id"]: r for r in enroll_lines}
+            self.assertTrue(rec_map["task-eligible"]["followup_eligible"])
+            self.assertTrue(rec_map["task-eligible"]["paired_record_written"])
+
+            self.assertFalse(rec_map["task-sufficient"]["followup_eligible"])
+            self.assertFalse(rec_map["task-sufficient"]["paired_record_written"])
+
+            self.assertFalse(rec_map["task-duplicate"]["followup_eligible"])
+            self.assertFalse(rec_map["task-duplicate"]["paired_record_written"])
+        finally:
+            if os.path.exists(out_file):
+                os.remove(out_file)
+            if os.path.exists(enrollment_file):
+                os.remove(enrollment_file)
+
+    def test_provider_failure_retention_at_harness_level(self):
+        """Hardening 5: Provider failure on Search 2 writes record with clean Branch B fallback."""
+        tasks = [
+            GAIATask(task_id="task-fail", question="Provider fail question?", level=1, final_answer="ans"),
+        ]
+        p = (
+            "MODE: DIRECT\nOBJECTIVE: O\nEVIDENCE_NEEDED: E\nPLAN:\n1. Step\n"
+            "ANSWER_TYPE: text\nEVIDENCE_STATUS: INSUFFICIENT\nFOLLOWUP_QUERY: secondary query\n"
+        )
+        llm = SequencedLLM([
+            make_resp(p),
+            make_resp("FINAL: ans_A"),
+            make_resp("FINAL: ans_B_fallback"),
+        ])
+        search_tool = StubSearchTool(raise_on_second=True)
+        agent = GAIAAdaptiveEvidenceAgent(
+            llm_client=llm,
+            search_tool=search_tool,
+            file_tool=CountingFileTool(),
+            python_tool=MockPythonTool(),
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as out_f:
+            out_file = out_f.name
+        enrollment_file = f"{out_file[:-6]}.enrollment.jsonl"
+
+        try:
+            with unittest.mock.patch("evaluation.run_v11_paired.load_gaia_tasks", return_value=tasks):
+                run_paired_ablation(
+                    output_file=out_file,
+                    resume=False,
+                    delay=0.0,
+                    agent=agent,
+                )
+
+            with open(out_file, "r", encoding="utf-8") as f:
+                records = [json.loads(line) for line in f if line.strip()]
+
+            self.assertEqual(len(records), 1)
+            rec = records[0]
+            self.assertTrue(rec["followup_eligible"])
+            self.assertFalse(rec["second_search_success"])
+            self.assertEqual(rec["v11_retrieval_category"], "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE")
+            self.assertEqual(rec["candidate_without_followup"], "ans_A")
+            self.assertEqual(rec["candidate_with_followup"], "ans_B_fallback")
+        finally:
+            if os.path.exists(out_file):
+                os.remove(out_file)
+            if os.path.exists(enrollment_file):
+                os.remove(enrollment_file)
+
+    def test_empty_result_retention_at_harness_level(self):
+        """Hardening 6: Empty results on Search 2 writes record with clean Branch B fallback."""
+        tasks = [
+            GAIATask(task_id="task-empty", question="Empty search question?", level=1, final_answer="ans"),
+        ]
+        p = (
+            "MODE: DIRECT\nOBJECTIVE: O\nEVIDENCE_NEEDED: E\nPLAN:\n1. Step\n"
+            "ANSWER_TYPE: text\nEVIDENCE_STATUS: INSUFFICIENT\nFOLLOWUP_QUERY: secondary query\n"
+        )
+        llm = SequencedLLM([
+            make_resp(p),
+            make_resp("FINAL: ans_A"),
+            make_resp("FINAL: ans_B_empty_fallback"),
+        ])
+        search_tool = StubSearchTool(empty_second=True)
+        agent = GAIAAdaptiveEvidenceAgent(
+            llm_client=llm,
+            search_tool=search_tool,
+            file_tool=CountingFileTool(),
+            python_tool=MockPythonTool(),
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as out_f:
+            out_file = out_f.name
+        enrollment_file = f"{out_file[:-6]}.enrollment.jsonl"
+
+        try:
+            with unittest.mock.patch("evaluation.run_v11_paired.load_gaia_tasks", return_value=tasks):
+                run_paired_ablation(
+                    output_file=out_file,
+                    resume=False,
+                    delay=0.0,
+                    agent=agent,
+                )
+
+            with open(out_file, "r", encoding="utf-8") as f:
+                records = [json.loads(line) for line in f if line.strip()]
+
+            self.assertEqual(len(records), 1)
+            rec = records[0]
+            self.assertTrue(rec["followup_eligible"])
+            self.assertFalse(rec["second_search_success"])
+            self.assertTrue(rec["second_search_empty_results"])
+            self.assertEqual(rec["v11_retrieval_category"], "FOLLOWUP_ELIGIBLE_SEARCH2_EMPTY_RESULTS")
+            self.assertEqual(rec["candidate_without_followup"], "ans_A")
+            self.assertEqual(rec["candidate_with_followup"], "ans_B_empty_fallback")
+        finally:
+            if os.path.exists(out_file):
+                os.remove(out_file)
+            if os.path.exists(enrollment_file):
+                os.remove(enrollment_file)
+
+    def test_zero_eligible_end_to_end_and_evaluator_safety(self):
+        """Hardening 7: Evaluator handles empty raw file, missing files, and contamination safely."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            empty_raw = os.path.join(tmpdir, "paired_raw.jsonl")
+            with open(empty_raw, "w", encoding="utf-8") as f:
+                pass  # Empty file
+
+            # Empty raw file produces NOT_TESTABLE
+            with unittest.mock.patch("evaluation.evaluate_v11_paired.load_gaia_tasks", return_value=[]):
+                eval_res = evaluate_paired_retrieval(input_file=empty_raw)
+            self.assertEqual(eval_res["summary"]["scientific_verdict"], "NOT_TESTABLE")
+            self.assertEqual(eval_res["summary"]["total_tasks_recorded"], 0)
+            self.assertEqual(eval_res["summary"]["followup_eligible_cohort_size"], 0)
+            self.assertEqual(eval_res["summary"]["delta_followup"], 0)
+
+            # Missing file raises FileNotFoundError
+            non_existent = os.path.join(tmpdir, "non_existent.jsonl")
+            with self.assertRaises(FileNotFoundError):
+                evaluate_paired_retrieval(input_file=non_existent)
+
+            # Contaminated file (record with followup_eligible=False) raises ValueError
+            contaminated_raw = os.path.join(tmpdir, "contaminated.jsonl")
+            with open(contaminated_raw, "w", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "task_id": "bad-task",
+                    "followup_eligible": False,
+                    "v11_retrieval_category": "SUFFICIENT_NON_TRIGGERED",
+                }) + "\n")
+            with unittest.mock.patch("evaluation.evaluate_v11_paired.load_gaia_tasks", return_value=[]):
+                with self.assertRaises(ValueError):
+                    evaluate_paired_retrieval(input_file=contaminated_raw)
+
+            # Missing enrollment ledger on resume raises RuntimeError
+            existing_raw = os.path.join(tmpdir, "existing_output.jsonl")
+            with open(existing_raw, "w", encoding="utf-8") as f:
+                f.write(json.dumps({"task_id": "t1"}) + "\n")
+            with self.assertRaises(RuntimeError):
+                run_paired_ablation(
+                    output_file=existing_raw,
+                    resume=True,
+                    agent=GAIAAdaptiveEvidenceAgent(llm_client=SequencedLLM([])),
+                )
+
+    def test_shared_executor_semantics(self):
+        """Hardening 8: _execute_v11_executor_from_plan executes DIRECT and PYTHON modes."""
+        plan_direct = AdaptivePlanSpec(
+            mode="DIRECT",
+            objective="Direct lookup",
+            evidence_needed="Evidence",
+            plan_steps=["Step 1"],
+            answer_type="string",
+            evidence_status="SUFFICIENT",
+            followup_query="NONE",
+            raw_plan="...",
+        )
+        plan_python = AdaptivePlanSpec(
+            mode="PYTHON",
+            objective="Compute sum",
+            evidence_needed="Numbers",
+            plan_steps=["Step 1"],
+            answer_type="number",
+            evidence_status="SUFFICIENT",
+            followup_query="NONE",
+            raw_plan="...",
+        )
+
+        llm_direct = SequencedLLM([make_resp("FINAL: 100")])
+        agent_direct = GAIAAdaptiveEvidenceAgent(
+            llm_client=llm_direct,
+            search_tool=StubSearchTool(),
+            file_tool=CountingFileTool(),
+            python_tool=MockPythonTool(),
+        )
+        res_direct = _execute_v11_executor_from_plan(
+            agent=agent_direct,
+            question="What is 50*2?",
+            plan_spec=plan_direct,
+            combined_web_evidence="Evidence text",
+            file_evidence="",
+            attachment_filename="",
+            attachment_parts=None,
+        )
+        self.assertEqual(res_direct.candidate_answer, "100")
+        self.assertFalse(res_direct.python_executed)
+        self.assertTrue(res_direct.executor_success)
+
+        python_code_resp = "```python\nprint(42)\n```\nFINAL: 42"
+        llm_python = SequencedLLM([make_resp(python_code_resp)])
+        py_tool = MockPythonTool(success=True, output="42\n")
+        agent_python = GAIAAdaptiveEvidenceAgent(
+            llm_client=llm_python,
+            search_tool=StubSearchTool(),
+            file_tool=CountingFileTool(),
+            python_tool=py_tool,
+        )
+        res_python = _execute_v11_executor_from_plan(
+            agent=agent_python,
+            question="Calculate 40 + 2",
+            plan_spec=plan_python,
+            combined_web_evidence="Evidence text",
+            file_evidence="",
+            attachment_filename="",
+            attachment_parts=None,
+        )
+        self.assertEqual(res_python.candidate_answer, "42")
+        self.assertTrue(res_python.python_executed)
+        self.assertEqual(py_tool.calls, 1)
+
+    def test_non_normal_planner_finish_reason(self):
+        """Hardening 9: Non-normal planner finish_reason triggers fallback without Search 2."""
+        llm = SequencedLLM([
+            make_resp("Partial text...", finish_reason="MAX_TOKENS"),
+            make_resp("FINAL: fallback_answer"),
+            make_resp("VERDICT: KEEP\nCONFIDENCE: 0.95"),
+            make_resp("ASSESSMENT: PASS\nCONFIDENCE: 0.95\nRISK_TYPE: NONE"),
+        ])
+        search_tool = StubSearchTool()
+        agent = GAIAAdaptiveEvidenceAgent(
+            llm_client=llm,
+            search_tool=search_tool,
+            file_tool=CountingFileTool(),
+            python_tool=MockPythonTool(),
+        )
+        res = agent.run("What is the capital of Peru?")
+        self.assertTrue(res.planner_fallback_used)
+        self.assertEqual(res.planner_error_type, "unexpected_finish_reason")
+        self.assertFalse(res.second_search_triggered)
+        self.assertFalse(res.second_search_attempted)
+        self.assertEqual(res.second_search_call_count, 0)
+        self.assertEqual(search_tool.calls, 1)
+        self.assertEqual(res.final_answer, "fallback_answer")
 
 
 if __name__ == "__main__":

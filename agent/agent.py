@@ -60,6 +60,8 @@ from prompts.adaptive_planner import (
     parse_adaptive_planner_result,
     build_adaptive_fallback_plan,
     normalize_followup_query,
+    canonical_execution_plan_payload,
+    hash_canonical_execution_plan,
 )
 import hashlib
 from tools.web_search import TavilySearchTool, WebSearchResult
@@ -1600,7 +1602,7 @@ class GAIATargetedRepairAgent(GAIASelfEvaluationAgent):
             v6_result.repair_total_tokens = None
             v6_result.repair_prompt = None
             v6_result.repair_raw_response = None
-            max_v7_gens = 6 if getattr(self, "_is_v9", False) else 5
+            max_v7_gens = 6 if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False) or getattr(self, "_is_v11", False)) else 5
             assert v6_result.llm_generation_attempts <= max_v7_gens, f"Exceeds generation cap ({max_v7_gens})"
             return v6_result
 
@@ -1724,7 +1726,7 @@ class GAIATargetedRepairAgent(GAIASelfEvaluationAgent):
 
         max_v7_gens = (
             6
-            if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False))
+            if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False) or getattr(self, "_is_v11", False))
             else 5
         )
         assert v6_result.llm_generation_attempts <= max_v7_gens, f"Exceeds generation cap ({max_v7_gens})"
@@ -2462,6 +2464,426 @@ def _compute_sha256(text: Optional[str]) -> Optional[str]:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+@dataclass
+class V11ExecutorResult:
+    """Pre-recovery candidate boundary execution result from Plan-Guided Executor (Slot 2)."""
+    candidate_answer: str
+    python_requested: bool
+    python_executed: bool
+    python_fallback: bool
+    executor_success: bool
+    raw_response: Optional[str]
+    error_type: Optional[str]
+    latency_seconds: Optional[float]
+    input_tokens: Optional[int]
+    output_tokens: Optional[int]
+    thinking_tokens: Optional[int]
+    total_tokens: Optional[int]
+    py_result: Optional[PythonResult]
+    prompt_version: str
+    prompt: str
+    llm_response: Optional[LLMResponse] = None
+
+
+def _execute_v11_executor_from_plan(
+    agent: Any,
+    question: str,
+    plan_spec: Any,
+    combined_web_evidence: str,
+    file_evidence: str,
+    attachment_filename: str,
+    attachment_parts: Any,
+    file_path: Optional[str] = None,
+) -> V11ExecutorResult:
+    """Executes Plan-Guided Executor (Slot 2) under shared plan and combined evidence.
+
+    Shared between canonical V11 and within-task paired retrieval branches (Branch A/B).
+    Enforces identical prompt construction, LLM generation, finish-reason handling,
+    and Python execution.
+    """
+    import time
+
+    executor_mode = plan_spec.mode
+    if executor_mode == "DIRECT":
+        executor_prompt_ver = EXECUTOR_DIRECT_PROMPT_VERSION
+        executor_prompt = build_direct_executor_prompt(
+            question=question,
+            plan_spec=plan_spec,
+            web_evidence=combined_web_evidence,
+            file_evidence=file_evidence,
+            attachment_filename=attachment_filename,
+        )
+    else:
+        executor_prompt_ver = EXECUTOR_PYTHON_PROMPT_VERSION
+        executor_prompt = build_python_executor_prompt(
+            question=question,
+            plan_spec=plan_spec,
+            web_evidence=combined_web_evidence,
+            file_evidence=file_evidence,
+            attachment_filename=attachment_filename,
+        )
+
+    executor_generation_attempts = 1
+    executor_generation_success = False
+    executor_llm_resp = None
+    executor_raw_response = None
+    executor_error_type = None
+    executor_start = time.time()
+
+    try:
+        executor_llm_resp = agent.llm.generate(executor_prompt, attachment_parts=attachment_parts)
+        executor_generation_success = True
+        if isinstance(executor_llm_resp, LLMResponse):
+            executor_raw_response = executor_llm_resp.raw_text if executor_llm_resp.raw_text else executor_llm_resp.text
+            if executor_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
+                executor_error_type = "malformed_function_call_finish_reason"
+            elif executor_llm_resp.finish_reason not in (None, "", "STOP"):
+                executor_error_type = "unexpected_finish_reason"
+        else:
+            executor_raw_response = str(executor_llm_resp)
+    except Exception as e:
+        err_str = str(e).lower()
+        if "timeout" in err_str or "deadline" in err_str:
+            executor_error_type = "provider_timeout"
+        elif "malformed_function_call" in err_str:
+            executor_error_type = "malformed_function_call_finish_reason"
+        else:
+            executor_error_type = "provider_api_error"
+        executor_raw_response = None
+
+    executor_latency = round(time.time() - executor_start, 2)
+
+    if executor_error_type is None and (executor_raw_response is None or not executor_raw_response.strip()):
+        executor_error_type = "empty_worker_response"
+
+    executor_input_tokens = getattr(executor_llm_resp, "input_tokens", None) if executor_llm_resp else None
+    executor_output_tokens = getattr(executor_llm_resp, "output_tokens", None) if executor_llm_resp else None
+    executor_thinking_tokens = getattr(executor_llm_resp, "thinking_tokens", None) if executor_llm_resp else None
+    executor_total_tokens = getattr(executor_llm_resp, "total_tokens", None) if executor_llm_resp else None
+    if executor_total_tokens is None and (executor_input_tokens is not None or executor_output_tokens is not None):
+        executor_total_tokens = (executor_input_tokens or 0) + (executor_output_tokens or 0) + (executor_thinking_tokens or 0)
+
+    # Extract Answer / Execute Python
+    py_result: Optional[PythonResult] = None
+    python_requested = False
+    python_executed = False
+    python_fallback = False
+    final_answer = ""
+    executor_success = False
+
+    if executor_mode == "DIRECT":
+        python_requested = False
+        python_executed = False
+        python_fallback = False
+        final_answer = agent.clean_answer(extract_direct_answer(executor_raw_response or ""))
+        executor_success = bool(final_answer and not executor_error_type)
+    else:
+        if executor_error_type is not None:
+            python_requested = False
+            python_executed = False
+            python_fallback = True
+            final_answer = (
+                agent.clean_answer(extract_direct_answer(executor_raw_response or ""))
+                if executor_raw_response and "FINAL:" in executor_raw_response
+                else ""
+            )
+            executor_success = False
+        else:
+            code = extract_python_code(executor_raw_response or "")
+            python_requested = bool(code)
+            if code:
+                python_executed = True
+                py_result = agent.python_tool.execute(code, attachment_path=file_path)
+                if py_result.success:
+                    extracted_ans = extract_python_final_answer(py_result.stdout)
+                    if extracted_ans is not None:
+                        final_answer = agent.clean_answer(extracted_ans)
+                        python_fallback = False
+                        executor_success = True
+                    else:
+                        python_fallback = True
+                        py_result.success = False
+                        py_result.error_type = py_result.error_type or "MissingFinalAnswerMarker"
+                        py_result.error_message = (
+                            py_result.error_message
+                            or "Python execution succeeded but stdout did not contain 'FINAL_ANSWER:' marker"
+                        )
+                        final_answer = (
+                            agent.clean_answer(extract_direct_answer(executor_raw_response))
+                            if executor_raw_response and "FINAL:" in executor_raw_response
+                            else ""
+                        )
+                        executor_success = False
+                else:
+                    python_fallback = True
+                    final_answer = (
+                        agent.clean_answer(extract_direct_answer(executor_raw_response))
+                        if executor_raw_response and "FINAL:" in executor_raw_response
+                        else ""
+                    )
+                    executor_success = False
+            else:
+                python_requested = False
+                python_executed = False
+                python_fallback = True
+                final_answer = (
+                    agent.clean_answer(extract_direct_answer(executor_raw_response or ""))
+                    if executor_raw_response and "FINAL:" in executor_raw_response
+                    else ""
+                )
+                executor_success = False
+
+    return V11ExecutorResult(
+        candidate_answer=final_answer,
+        python_requested=python_requested,
+        python_executed=python_executed,
+        python_fallback=python_fallback,
+        executor_success=executor_success,
+        raw_response=executor_raw_response,
+        error_type=executor_error_type,
+        latency_seconds=executor_latency,
+        input_tokens=executor_input_tokens,
+        output_tokens=executor_output_tokens,
+        thinking_tokens=executor_thinking_tokens,
+        total_tokens=executor_total_tokens,
+        py_result=py_result,
+        prompt_version=executor_prompt_ver,
+        prompt=executor_prompt,
+        llm_response=executor_llm_resp if isinstance(executor_llm_resp, LLMResponse) else None,
+    )
+
+
+def _plan_v11_from_context(
+    agent: Any,
+    question: str,
+    web_evidence_primary: str,
+    file_evidence: str,
+    attachment_filename: str,
+    attachment_parts: Any,
+) -> tuple[AdaptivePlannerParseResult, dict]:
+    """Generates and parses the Structured Planner v2 output (Slot 1)."""
+    import time
+
+    planner_prompt = build_adaptive_planner_prompt(
+        question=question,
+        web_evidence=web_evidence_primary,
+        file_evidence=file_evidence,
+        attachment_filename=attachment_filename,
+    )
+
+    planner_generation_attempts = 1
+    planner_generation_success = False
+    planner_llm_resp = None
+    planner_raw_response = None
+    planner_error_type = None
+    planner_start = time.time()
+
+    try:
+        planner_llm_resp = agent.llm.generate(planner_prompt, attachment_parts=attachment_parts)
+        planner_generation_success = True
+        if isinstance(planner_llm_resp, LLMResponse):
+            planner_raw_response = planner_llm_resp.raw_text if planner_llm_resp.raw_text else planner_llm_resp.text
+            if planner_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
+                planner_error_type = "malformed_function_call_finish_reason"
+            elif planner_llm_resp.finish_reason not in (None, "", "STOP"):
+                planner_error_type = "unexpected_finish_reason"
+        else:
+            planner_raw_response = str(planner_llm_resp)
+    except Exception as e:
+        err_str = str(e).lower()
+        if "timeout" in err_str or "deadline" in err_str:
+            planner_error_type = "provider_timeout"
+        elif "malformed_function_call" in err_str:
+            planner_error_type = "malformed_function_call_finish_reason"
+        else:
+            planner_error_type = "provider_api_error"
+        planner_raw_response = None
+
+    planner_latency = round(time.time() - planner_start, 2)
+    planner_input_tokens = getattr(planner_llm_resp, "input_tokens", None) if planner_llm_resp else None
+    planner_output_tokens = getattr(planner_llm_resp, "output_tokens", None) if planner_llm_resp else None
+    planner_thinking_tokens = getattr(planner_llm_resp, "thinking_tokens", None) if planner_llm_resp else None
+    planner_total_tokens = getattr(planner_llm_resp, "total_tokens", None) if planner_llm_resp else None
+    if planner_total_tokens is None and (planner_input_tokens is not None or planner_output_tokens is not None):
+        planner_total_tokens = (planner_input_tokens or 0) + (planner_output_tokens or 0) + (planner_thinking_tokens or 0)
+
+    # Parse planner output
+    if planner_error_type is not None:
+        parse_res = AdaptivePlannerParseResult(
+            success=False,
+            plan_spec=build_adaptive_fallback_plan(question=question, raw_text="", error_message=planner_error_type),
+            error_message=planner_error_type,
+            error_type=planner_error_type,
+        )
+    elif planner_raw_response is None or not planner_raw_response.strip():
+        planner_error_type = "empty_provider_response"
+        parse_res = AdaptivePlannerParseResult(
+            success=False,
+            plan_spec=build_adaptive_fallback_plan(question=question, raw_text="", error_message=planner_error_type),
+            error_message=planner_error_type,
+            error_type="PlannerEmptyResponseError",
+        )
+    else:
+        parse_res = parse_adaptive_planner_result(planner_raw_response)
+        if not parse_res.success:
+            planner_error_type = parse_res.error_message
+
+    telemetry = {
+        "planner_prompt": planner_prompt,
+        "planner_generation_attempts": planner_generation_attempts,
+        "planner_generation_success": planner_generation_success,
+        "planner_raw_response": planner_raw_response,
+        "planner_error_type": planner_error_type,
+        "planner_latency": planner_latency,
+        "planner_input_tokens": planner_input_tokens,
+        "planner_output_tokens": planner_output_tokens,
+        "planner_thinking_tokens": planner_thinking_tokens,
+        "planner_total_tokens": planner_total_tokens,
+    }
+
+    return parse_res, telemetry
+
+
+def _evaluate_v11_followup_control(
+    plan_spec: AdaptivePlanSpec,
+    parse_success: bool,
+    search1_query_candidate: str,
+) -> dict:
+    """Evaluates follow-up query validity, duplicate detection, and cohort eligibility.
+
+    Uses exact normalized string comparison without case folding.
+    """
+    planner_requested_followup = bool(parse_success and plan_spec.evidence_status == "INSUFFICIENT")
+    norm_followup_query, followup_truncated = normalize_followup_query(plan_spec.followup_query)
+    followup_query_valid = bool(
+        planner_requested_followup and norm_followup_query and norm_followup_query.upper() != "NONE"
+    )
+
+    norm_search1_query, _ = normalize_followup_query(search1_query_candidate)
+    followup_query_duplicate = bool(
+        planner_requested_followup
+        and followup_query_valid
+        and (norm_followup_query == norm_search1_query)
+    )
+
+    followup_eligible = bool(planner_requested_followup and followup_query_valid and not followup_query_duplicate)
+
+    return {
+        "planner_evidence_status": plan_spec.evidence_status,
+        "raw_followup_query": plan_spec.followup_query,
+        "norm_followup_query": norm_followup_query,
+        "followup_truncated": followup_truncated,
+        "norm_search1_query": norm_search1_query,
+        "planner_requested_followup": planner_requested_followup,
+        "followup_query_valid": followup_query_valid,
+        "followup_query_duplicate": followup_query_duplicate,
+        "followup_eligible": followup_eligible,
+    }
+
+
+def _execute_v11_followup_search(
+    search_tool: Any,
+    norm_followup_query: str,
+    primary_urls: list[str],
+) -> dict:
+    """Executes Search 2 once with strict mutual exclusion between success and empty results."""
+    import time
+
+    s2_start = time.time()
+    second_search_success = False
+    second_search_empty_results = False
+    second_search_latency_seconds = None
+    second_search_result_count = 0
+    second_search_error_type = None
+    second_search_error_message = None
+    second_search_urls: list[str] = []
+    second_search_new_urls_count = 0
+    second_search_has_new_urls = False
+    followup_evidence_text = None
+    followup_search_hash = None
+
+    try:
+        second_search_res = search_tool.search(norm_followup_query)
+        second_search_latency_seconds = round(
+            getattr(second_search_res, "latency_seconds", None) or (time.time() - s2_start), 2
+        )
+        provider_ok = bool(second_search_res and second_search_res.success)
+        second_search_result_count = (
+            len(second_search_res.results) if (second_search_res and second_search_res.results) else 0
+        )
+        second_search_success = bool(provider_ok and second_search_result_count > 0)
+        second_search_empty_results = bool(provider_ok and second_search_result_count == 0)
+        assert not (second_search_success and second_search_empty_results), (
+            "Mutual exclusion violation: second_search_success and second_search_empty_results cannot both be True"
+        )
+        second_search_error_type = second_search_res.error_type if second_search_res else None
+        second_search_error_message = second_search_res.error_message if second_search_res else None
+
+        if second_search_res and second_search_res.results:
+            second_urls = []
+            for item in second_search_res.results:
+                u = getattr(item, "url", None) or (item.get("url") if isinstance(item, dict) else None)
+                if u:
+                    second_urls.append(u)
+            second_search_urls = second_urls
+            primary_url_set = set(primary_urls)
+            new_urls = [u for u in second_urls if u not in primary_url_set]
+            second_search_new_urls_count = len(new_urls)
+            second_search_has_new_urls = len(new_urls) > 0
+
+        if second_search_success:
+            followup_evidence_text = second_search_res.format_evidence_block()
+            followup_search_hash = _compute_sha256(followup_evidence_text)
+            v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS"
+        elif second_search_empty_results:
+            v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_EMPTY_RESULTS"
+        else:
+            v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE"
+    except Exception as e:
+        second_search_latency_seconds = round(time.time() - s2_start, 2)
+        second_search_success = False
+        second_search_empty_results = False
+        second_search_error_type = type(e).__name__
+        second_search_error_message = str(e)
+        second_search_result_count = 0
+        second_search_urls = []
+        second_search_new_urls_count = 0
+        second_search_has_new_urls = False
+        v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE"
+
+    return {
+        "second_search_success": second_search_success,
+        "second_search_empty_results": second_search_empty_results,
+        "second_search_latency_seconds": second_search_latency_seconds,
+        "second_search_result_count": second_search_result_count,
+        "second_search_error_type": second_search_error_type,
+        "second_search_error_message": second_search_error_message,
+        "second_search_urls": second_search_urls,
+        "second_search_new_urls_count": second_search_new_urls_count,
+        "second_search_has_new_urls": second_search_has_new_urls,
+        "followup_evidence_text": followup_evidence_text,
+        "followup_search_hash": followup_search_hash,
+        "v11_retrieval_category": v11_retrieval_category,
+    }
+
+
+def _build_v11_executor_evidence(
+    web_evidence_primary: str,
+    second_search_success: bool,
+    followup_evidence_text: Optional[str],
+) -> tuple[str, str]:
+    """Builds combined web evidence string and its SHA-256 hash."""
+    if second_search_success and followup_evidence_text and followup_evidence_text.strip():
+        combined_web_evidence = (
+            f"=== PRIMARY WEB SEARCH EVIDENCE ===\n{web_evidence_primary}\n\n"
+            f"=== FOLLOW-UP WEB SEARCH EVIDENCE ===\n{followup_evidence_text.strip()}"
+        )
+    else:
+        combined_web_evidence = f"=== PRIMARY WEB SEARCH EVIDENCE ===\n{web_evidence_primary}"
+    combined_search_evidence_hash = _compute_sha256(combined_web_evidence)
+    return combined_web_evidence, combined_search_evidence_hash
+
+
 class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
     """V11 Agent: Planner-Guided Adaptive Evidence Retrieval.
 
@@ -2525,94 +2947,46 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
                     primary_urls.append(url)
 
         # 1. Slot 1: Structured Planner v2 Generation (Generation #1)
-        planner_prompt = build_adaptive_planner_prompt(
+        parse_res, p_telem = _plan_v11_from_context(
+            agent=self,
             question=question,
-            web_evidence=web_evidence_primary,
+            web_evidence_primary=web_evidence_primary,
             file_evidence=file_evidence,
             attachment_filename=attachment_filename,
+            attachment_parts=attachment_parts,
         )
 
-        planner_generation_attempts = 1
-        planner_generation_success = False
-        planner_llm_resp = None
-        planner_raw_response = None
-        planner_error_type = None
-        planner_start = time.time()
-
-        try:
-            planner_llm_resp = self.llm.generate(planner_prompt, attachment_parts=attachment_parts)
-            planner_generation_success = True
-            if isinstance(planner_llm_resp, LLMResponse):
-                planner_raw_response = planner_llm_resp.raw_text if planner_llm_resp.raw_text else planner_llm_resp.text
-                if planner_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
-                    planner_error_type = "malformed_function_call_finish_reason"
-                elif planner_llm_resp.finish_reason not in (None, "", "STOP"):
-                    planner_error_type = "unexpected_finish_reason"
-            else:
-                planner_raw_response = str(planner_llm_resp)
-        except Exception as e:
-            err_str = str(e).lower()
-            if "timeout" in err_str or "deadline" in err_str:
-                planner_error_type = "provider_timeout"
-            elif "malformed_function_call" in err_str:
-                planner_error_type = "malformed_function_call_finish_reason"
-            else:
-                planner_error_type = "provider_api_error"
-            planner_raw_response = None
-
-        planner_latency = round(time.time() - planner_start, 2)
-        planner_input_tokens = getattr(planner_llm_resp, "input_tokens", None) if planner_llm_resp else None
-        planner_output_tokens = getattr(planner_llm_resp, "output_tokens", None) if planner_llm_resp else None
-        planner_thinking_tokens = getattr(planner_llm_resp, "thinking_tokens", None) if planner_llm_resp else None
-        planner_total_tokens = getattr(planner_llm_resp, "total_tokens", None) if planner_llm_resp else None
-        if planner_total_tokens is None and (planner_input_tokens is not None or planner_output_tokens is not None):
-            planner_total_tokens = (planner_input_tokens or 0) + (planner_output_tokens or 0) + (planner_thinking_tokens or 0)
-
-        # Parse planner output
-        if planner_error_type is not None:
-            parse_res = AdaptivePlannerParseResult(
-                success=False,
-                plan_spec=build_adaptive_fallback_plan(question=question, raw_text="", error_message=planner_error_type),
-                error_message=planner_error_type,
-                error_type=planner_error_type,
-            )
-        elif planner_raw_response is None or not planner_raw_response.strip():
-            planner_error_type = "empty_provider_response"
-            parse_res = AdaptivePlannerParseResult(
-                success=False,
-                plan_spec=build_adaptive_fallback_plan(question=question, raw_text="", error_message=planner_error_type),
-                error_message=planner_error_type,
-                error_type="PlannerEmptyResponseError",
-            )
-        else:
-            parse_res = parse_adaptive_planner_result(planner_raw_response)
-            if not parse_res.success:
-                planner_error_type = parse_res.error_message
-
         plan_spec = parse_res.plan_spec
+        planner_prompt = p_telem["planner_prompt"]
+        planner_error_type = p_telem["planner_error_type"]
         planner_success = parse_res.success and (planner_error_type is None)
         planner_parse_success = parse_res.success
         planner_fallback_used = plan_spec.is_fallback
-
-        planner_evidence_status = plan_spec.evidence_status
-        raw_followup_query = plan_spec.followup_query
+        planner_raw_response = p_telem["planner_raw_response"]
+        planner_latency = p_telem["planner_latency"]
+        planner_input_tokens = p_telem["planner_input_tokens"]
+        planner_output_tokens = p_telem["planner_output_tokens"]
+        planner_thinking_tokens = p_telem["planner_thinking_tokens"]
+        planner_total_tokens = p_telem["planner_total_tokens"]
+        planner_generation_attempts = p_telem["planner_generation_attempts"]
+        planner_generation_success = p_telem["planner_generation_success"]
 
         # Evaluate cohort criteria
-        planner_requested_followup = bool(planner_parse_success and planner_evidence_status == "INSUFFICIENT")
-        norm_followup_query, followup_truncated = normalize_followup_query(raw_followup_query)
-        followup_query_valid = bool(
-            planner_requested_followup and norm_followup_query and norm_followup_query.upper() != "NONE"
-        )
-
         search1_query_candidate = search_res.query if (search_res and search_res.query) else question
-        norm_search1_query, _ = normalize_followup_query(search1_query_candidate)
-        followup_query_duplicate = bool(
-            planner_requested_followup
-            and followup_query_valid
-            and (norm_followup_query.lower() == norm_search1_query.lower())
+        ctrl = _evaluate_v11_followup_control(
+            plan_spec=plan_spec,
+            parse_success=planner_parse_success,
+            search1_query_candidate=search1_query_candidate,
         )
 
-        followup_eligible = bool(planner_requested_followup and followup_query_valid and not followup_query_duplicate)
+        planner_requested_followup = ctrl["planner_requested_followup"]
+        norm_followup_query = ctrl["norm_followup_query"]
+        followup_truncated = ctrl["followup_truncated"]
+        followup_query_valid = ctrl["followup_query_valid"]
+        followup_query_duplicate = ctrl["followup_query_duplicate"]
+        followup_eligible = ctrl["followup_eligible"]
+        planner_evidence_status = ctrl["planner_evidence_status"]
+        raw_followup_query = ctrl["raw_followup_query"]
 
         # Search 2 Telemetry Defaults
         second_search_triggered = False
@@ -2649,55 +3023,23 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
             second_search_query_truncated = followup_truncated
             second_search_call_count = 1
 
-            s2_start = time.time()
-            try:
-                second_search_res = self.search_tool.search(norm_followup_query)
-                second_search_latency_seconds = round(
-                    getattr(second_search_res, "latency_seconds", None) or (time.time() - s2_start), 2
-                )
-                second_search_success = bool(second_search_res and second_search_res.success)
-                second_search_result_count = (
-                    len(second_search_res.results) if (second_search_res and second_search_res.results) else 0
-                )
-                second_search_empty_results = bool(second_search_success and second_search_result_count == 0)
-                second_search_error_type = second_search_res.error_type if second_search_res else None
-                second_search_error_message = second_search_res.error_message if second_search_res else None
-
-                if second_search_res and second_search_res.results:
-                    second_urls = []
-                    for item in second_search_res.results:
-                        u = getattr(item, "url", None) or (item.get("url") if isinstance(item, dict) else None)
-                        if u:
-                            second_urls.append(u)
-                    second_search_urls = second_urls
-                    primary_url_set = set(primary_urls)
-                    new_urls = [u for u in second_urls if u not in primary_url_set]
-                    second_search_new_urls_count = len(new_urls)
-                    second_search_has_new_urls = len(new_urls) > 0
-                else:
-                    second_search_urls = []
-                    second_search_new_urls_count = 0
-                    second_search_has_new_urls = False
-
-                if second_search_success and second_search_result_count > 0:
-                    followup_evidence_text = second_search_res.format_evidence_block()
-                    followup_search_hash = _compute_sha256(followup_evidence_text)
-                    v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS"
-                elif second_search_success and second_search_result_count == 0:
-                    v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_EMPTY_RESULTS"
-                else:
-                    v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE"
-            except Exception as e:
-                second_search_latency_seconds = round(time.time() - s2_start, 2)
-                second_search_success = False
-                second_search_error_type = type(e).__name__
-                second_search_error_message = str(e)
-                second_search_result_count = 0
-                second_search_empty_results = False
-                second_search_urls = []
-                second_search_new_urls_count = 0
-                second_search_has_new_urls = False
-                v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE"
+            s2_info = _execute_v11_followup_search(
+                search_tool=self.search_tool,
+                norm_followup_query=norm_followup_query,
+                primary_urls=primary_urls,
+            )
+            second_search_success = s2_info["second_search_success"]
+            second_search_empty_results = s2_info["second_search_empty_results"]
+            second_search_latency_seconds = s2_info["second_search_latency_seconds"]
+            second_search_result_count = s2_info["second_search_result_count"]
+            second_search_error_type = s2_info["second_search_error_type"]
+            second_search_error_message = s2_info["second_search_error_message"]
+            second_search_urls = s2_info["second_search_urls"]
+            second_search_new_urls_count = s2_info["second_search_new_urls_count"]
+            second_search_has_new_urls = s2_info["second_search_has_new_urls"]
+            followup_evidence_text = s2_info["followup_evidence_text"]
+            followup_search_hash = s2_info["followup_search_hash"]
+            v11_retrieval_category = s2_info["v11_retrieval_category"]
         else:
             if planner_fallback_used:
                 v11_retrieval_category = "PLANNER_FALLBACK"
@@ -2708,137 +3050,28 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
         total_search_call_count = primary_search_call_count + second_search_call_count
 
         # Format combined evidence for executor
-        if second_search_success and followup_evidence_text and followup_evidence_text.strip():
-            combined_web_evidence = (
-                f"=== PRIMARY WEB SEARCH EVIDENCE ===\n{web_evidence_primary}\n\n"
-                f"=== FOLLOW-UP WEB SEARCH EVIDENCE ===\n{followup_evidence_text.strip()}"
-            )
-        else:
-            combined_web_evidence = f"=== PRIMARY WEB SEARCH EVIDENCE ===\n{web_evidence_primary}"
-        combined_search_evidence_hash = _compute_sha256(combined_web_evidence)
+        combined_web_evidence, combined_search_evidence_hash = _build_v11_executor_evidence(
+            web_evidence_primary=web_evidence_primary,
+            second_search_success=second_search_success,
+            followup_evidence_text=followup_evidence_text,
+        )
 
         # 2. Slot 2: Plan-Guided Executor Generation (Generation #2)
-        executor_mode = plan_spec.mode
-        if executor_mode == "DIRECT":
-            executor_prompt_ver = EXECUTOR_DIRECT_PROMPT_VERSION
-            executor_prompt = build_direct_executor_prompt(
-                question=question,
-                plan_spec=plan_spec,
-                web_evidence=combined_web_evidence,
-                file_evidence=file_evidence,
-                attachment_filename=attachment_filename,
-            )
-        else:
-            executor_prompt_ver = EXECUTOR_PYTHON_PROMPT_VERSION
-            executor_prompt = build_python_executor_prompt(
-                question=question,
-                plan_spec=plan_spec,
-                web_evidence=combined_web_evidence,
-                file_evidence=file_evidence,
-                attachment_filename=attachment_filename,
-            )
+        exec_res = _execute_v11_executor_from_plan(
+            agent=self,
+            question=question,
+            plan_spec=plan_spec,
+            combined_web_evidence=combined_web_evidence,
+            file_evidence=file_evidence,
+            attachment_filename=attachment_filename,
+            attachment_parts=attachment_parts,
+            file_path=file_path,
+        )
 
-        executor_generation_attempts = 1
-        executor_generation_success = False
-        executor_llm_resp = None
-        executor_raw_response = None
-        executor_error_type = None
-        executor_start = time.time()
+        llm_generation_attempts = planner_generation_attempts + 1
+        llm_generation_success_count = (1 if planner_generation_success else 0) + (1 if exec_res.raw_response is not None else 0)
 
-        try:
-            executor_llm_resp = self.llm.generate(executor_prompt, attachment_parts=attachment_parts)
-            executor_generation_success = True
-            if isinstance(executor_llm_resp, LLMResponse):
-                executor_raw_response = executor_llm_resp.raw_text if executor_llm_resp.raw_text else executor_llm_resp.text
-                if executor_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
-                    executor_error_type = "malformed_function_call_finish_reason"
-            else:
-                executor_raw_response = str(executor_llm_resp)
-        except Exception as e:
-            err_str = str(e).lower()
-            if "timeout" in err_str or "deadline" in err_str:
-                executor_error_type = "provider_timeout"
-            elif "malformed_function_call" in err_str:
-                executor_error_type = "malformed_function_call_finish_reason"
-            else:
-                executor_error_type = "provider_api_error"
-            executor_raw_response = None
-
-        executor_latency = round(time.time() - executor_start, 2)
-
-        if executor_error_type is None and (executor_raw_response is None or not executor_raw_response.strip()):
-            executor_error_type = "empty_worker_response"
-
-        executor_input_tokens = getattr(executor_llm_resp, "input_tokens", None) if executor_llm_resp else None
-        executor_output_tokens = getattr(executor_llm_resp, "output_tokens", None) if executor_llm_resp else None
-        executor_thinking_tokens = getattr(executor_llm_resp, "thinking_tokens", None) if executor_llm_resp else None
-        executor_total_tokens = getattr(executor_llm_resp, "total_tokens", None) if executor_llm_resp else None
-        if executor_total_tokens is None and (executor_input_tokens is not None or executor_output_tokens is not None):
-            executor_total_tokens = (executor_input_tokens or 0) + (executor_output_tokens or 0) + (executor_thinking_tokens or 0)
-
-        # 3. Extract Answer / Execute Python
-        py_result: Optional[PythonResult] = None
-        python_requested = False
-        python_executed = False
-        python_fallback = False
-        final_answer = ""
-        executor_success = False
-
-        if executor_mode == "DIRECT":
-            python_requested = False
-            python_executed = False
-            python_fallback = False
-            final_answer = self.clean_answer(extract_direct_answer(executor_raw_response or ""))
-            executor_success = bool(final_answer and not executor_error_type)
-        else:
-            code = extract_python_code(executor_raw_response or "")
-            python_requested = bool(code)
-            if code:
-                python_executed = True
-                py_result = self.python_tool.execute(code, attachment_path=file_path)
-                if py_result.success:
-                    extracted_ans = extract_python_final_answer(py_result.stdout)
-                    if extracted_ans is not None:
-                        final_answer = self.clean_answer(extracted_ans)
-                        python_fallback = False
-                        executor_success = True
-                    else:
-                        python_fallback = True
-                        py_result.success = False
-                        py_result.error_type = py_result.error_type or "MissingFinalAnswerMarker"
-                        py_result.error_message = (
-                            py_result.error_message
-                            or "Python execution succeeded but stdout did not contain 'FINAL_ANSWER:' marker"
-                        )
-                        final_answer = (
-                            self.clean_answer(extract_direct_answer(executor_raw_response))
-                            if executor_raw_response and "FINAL:" in executor_raw_response
-                            else ""
-                        )
-                        executor_success = False
-                else:
-                    python_fallback = True
-                    final_answer = (
-                        self.clean_answer(extract_direct_answer(executor_raw_response))
-                        if executor_raw_response and "FINAL:" in executor_raw_response
-                        else ""
-                    )
-                    executor_success = False
-            else:
-                python_requested = False
-                python_executed = False
-                python_fallback = True
-                final_answer = (
-                    self.clean_answer(extract_direct_answer(executor_raw_response or ""))
-                    if executor_raw_response and "FINAL:" in executor_raw_response
-                    else ""
-                )
-                executor_success = False
-
-        llm_generation_attempts = planner_generation_attempts + executor_generation_attempts
-        llm_generation_success_count = (1 if planner_generation_success else 0) + (1 if executor_generation_success else 0)
-
-        raw_resp = executor_raw_response or ""
+        raw_resp = exec_res.raw_response or ""
         norm_resp = raw_resp.strip()
 
         fallback_pv = EXECUTOR_DIRECT_PROMPT_VERSION if planner_fallback_used else None
@@ -2846,10 +3079,10 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
         agent_result = AgentResult(
             raw_response=raw_resp,
             normalized_response=norm_resp,
-            final_answer=final_answer,
-            candidate_answer=final_answer,
-            llm_response=executor_llm_resp if isinstance(executor_llm_resp, LLMResponse) else None,
-            prompt=executor_prompt,
+            final_answer=exec_res.candidate_answer,
+            candidate_answer=exec_res.candidate_answer,
+            llm_response=exec_res.llm_response,
+            prompt=exec_res.prompt,
             prompt_version=ADAPTIVE_PLANNER_PROMPT_VERSION,
             primary_prompt_version=ADAPTIVE_PLANNER_PROMPT_VERSION,
             fallback_prompt_version=fallback_pv,
@@ -2857,12 +3090,12 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
             search_fallback=search_fallback,
             file_result=file_res,
             file_fallback=file_fallback,
-            python_result=py_result,
-            python_requested=python_requested,
-            python_executed=python_executed,
-            python_fallback=python_fallback,
-            python_prompt_version=EXECUTOR_PYTHON_PROMPT_VERSION if executor_mode == "PYTHON" else None,
-            python_prompt=executor_prompt if executor_mode == "PYTHON" else None,
+            python_result=exec_res.py_result,
+            python_requested=exec_res.python_requested,
+            python_executed=exec_res.python_executed,
+            python_fallback=exec_res.python_fallback,
+            python_prompt_version=EXECUTOR_PYTHON_PROMPT_VERSION if plan_spec.mode == "PYTHON" else None,
+            python_prompt=exec_res.prompt if plan_spec.mode == "PYTHON" else None,
             llm_generation_count=llm_generation_attempts,
 
             # Planner telemetry
@@ -2920,34 +3153,34 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
             v11_retrieval_category=v11_retrieval_category,
 
             # Executor telemetry
-            executor_mode=executor_mode,
+            executor_mode=plan_spec.mode,
             executor_plan_used=True,
-            executor_success=executor_success,
-            executor_error_type=executor_error_type,
-            executor_prompt_version=executor_prompt_ver,
-            executor_prompt=executor_prompt,
-            executor_raw_response=executor_raw_response,
-            executor_latency_seconds=executor_latency,
-            executor_input_tokens=executor_input_tokens,
-            executor_output_tokens=executor_output_tokens,
-            executor_thinking_tokens=executor_thinking_tokens,
-            executor_total_tokens=executor_total_tokens,
-            executor_generation_attempts=executor_generation_attempts,
-            executor_generation_success=executor_generation_success,
+            executor_success=exec_res.executor_success,
+            executor_error_type=exec_res.error_type,
+            executor_prompt_version=exec_res.prompt_version,
+            executor_prompt=exec_res.prompt,
+            executor_raw_response=exec_res.raw_response,
+            executor_latency_seconds=exec_res.latency_seconds,
+            executor_input_tokens=exec_res.input_tokens,
+            executor_output_tokens=exec_res.output_tokens,
+            executor_thinking_tokens=exec_res.thinking_tokens,
+            executor_total_tokens=exec_res.total_tokens,
+            executor_generation_attempts=1,
+            executor_generation_success=bool(exec_res.raw_response is not None),
 
             # Worker compatibility aliases (for Frozen V9 candidate recovery classifier)
-            worker_mode=executor_mode,
-            worker_success=executor_success,
-            worker_error_type=executor_error_type,
-            worker_prompt_version=executor_prompt_ver,
-            worker_prompt=executor_prompt,
-            worker_raw_response=executor_raw_response,
-            worker_latency_seconds=executor_latency,
-            worker_input_tokens=executor_input_tokens,
-            worker_output_tokens=executor_output_tokens,
-            worker_thinking_tokens=executor_thinking_tokens,
-            worker_generation_attempts=executor_generation_attempts,
-            worker_generation_success=executor_generation_success,
+            worker_mode=plan_spec.mode,
+            worker_success=exec_res.executor_success,
+            worker_error_type=exec_res.error_type,
+            worker_prompt_version=exec_res.prompt_version,
+            worker_prompt=exec_res.prompt,
+            worker_raw_response=exec_res.raw_response,
+            worker_latency_seconds=exec_res.latency_seconds,
+            worker_input_tokens=exec_res.input_tokens,
+            worker_output_tokens=exec_res.output_tokens,
+            worker_thinking_tokens=exec_res.thinking_tokens,
+            worker_generation_attempts=1,
+            worker_generation_success=bool(exec_res.raw_response is not None),
 
             # Router compatibility aliases
             router_requested=False,
