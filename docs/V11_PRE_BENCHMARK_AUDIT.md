@@ -468,21 +468,47 @@ The post-benchmark report must document:
 
 ---
 
-## 21. Binding Promotion Gates
+## 21. Binding Promotion Gates and Secondary Diagnostics
 
-| Gate | Metric / Invariant | Requirement |
-|---|---|---|
-| **H1 (Primary Paired Gate)** | $\Delta_{\text{followup}}$ | $> 0$ |
-| **H1 Feasibility Gate** | Follow-up Eligible Cohort Size | $N > 0$ (if $N = 0 \Rightarrow \text{NOT\_TESTABLE}$) |
-| **H2 (Canonical Accuracy Gate)** | Overall Benchmark Accuracy | $> 84 / 165$ ($> 50.91\%$) |
-| **H3a (Secondary Gate)** | EVIDENCE Conditional Error Rate | $< 88.89\%$ |
-| **H3b (Secondary Gate)** | Candidate Recovery Trigger Rate | $< 30.91\%$ |
-| **H3c (Secondary Gate)** | Post-Recovery Reachability | $\ge 95.0\%$ |
-| **H3d (Secondary Gate)** | Planner v2 Parse Success Rate | $\ge 95.0\%$ |
-| **H3e (Diagnostic)** | Retrieval Category Distributions | Complete reporting across 6 categories |
-| **H3f (Diagnostic)** | Search Novelty Proportion & Counts | Complete reporting with attempted denominator |
-| **Budget Invariants** | Total Search $\le 2$, Search $2 \le 1$, File $\le 1$, Python $\le 1$, Upstream slots $= 2$, LLM attempts $\le 5$ (or $\le 6$ if recovered) | 0 violations across all 165 tasks |
-| **Downstream Integrity** | Recovery $\to$ Verifier $\to$ Self-Eval $\to$ Repair | Frozen V10 pipeline preserved verbatim |
+### Binding Promotion Gates
+
+Promotion of V11 as the project's new scientific baseline requires satisfying **ALL** binding promotion gates listed below:
+
+| Gate / Invariant | Metric | Requirement | Classification |
+|---|---|---|---|
+| **H1 (Primary Paired Gate)** | $\Delta_{\text{followup}}$ | $> 0$ ($N_{\text{RETRIEVAL\_IMPROVEMENT}} - N_{\text{RETRIEVAL\_REGRESSION}} > 0$) | Binding Promotion Gate |
+| **H1 Feasibility Gate** | Follow-up Eligible Cohort Size | $N > 0$ (if $N = 0 \Rightarrow \text{NOT\_TESTABLE} \Rightarrow \text{cannot promote}$) | Binding Promotion Gate |
+| **H2 (Canonical Accuracy Gate)** | Overall Benchmark Accuracy | $> 84 / 165$ ($> 50.91\%$) | Binding Promotion Gate |
+| **Search Total Budget** | Web searches per deployed task | $\le 2$ | Binding Budget Invariant |
+| **Search 2 Budget** | Second search calls per deployed task | $\le 1$ | Binding Budget Invariant |
+| **Search 2 Eligibility Invariant** | Follow-up search invocation condition | Search 2 occurs ONLY after valid follow-up eligibility (`INSUFFICIENT` + valid non-duplicate query) | Binding Operational Invariant |
+| **Planner Fallback Invariant** | Fallback plan search triggering | Planner fallback never triggers Search 2 (cleanly returns `SUFFICIENT` + `NONE`) | Binding Safety Invariant |
+| **File Processing Budget** | File extractions per deployed task | $\le 1$ | Binding Budget Invariant |
+| **Python Execution Budget** | Python executions per deployed task | $\le 1$ | Binding Budget Invariant |
+| **Upstream LLM Slots** | Upstream generation calls | $== 2$ (Slot 1: Planner, Slot 2: Executor) | Binding Architectural Invariant |
+| **Non-Recovery Generations** | Logical generation calls on nominal path | $\le 5$ | Binding Budget Invariant |
+| **Recovery Generations** | Logical generation calls on recovery path | $\le 6$ | Binding Budget Invariant |
+| **Downstream Integrity** | Downstream pipeline preservation | Frozen V10 pipeline (Recovery $\to$ Verifier $\to$ Self-Eval $\to$ Repair) preserved verbatim | Binding Architectural Invariant |
+| **Operational Validity** | Complete run execution | Confirmed under preregistered invalidity definition (165 tasks evaluated, zero runtime scorer leakage, $\le 10\%$ unhandled infrastructure failures) | Binding Validity Invariant |
+
+### Non-Binding Secondary Diagnostics (H3a–H3f)
+
+The following metrics are evaluated and reported post-hoc to characterize the mechanism and behavior of adaptive evidence retrieval. They are strictly **Non-Binding Secondary Diagnostics / Secondary Hypotheses** and are **NOT** promotion gates.
+
+| Diagnostic Hypothesis | Metric | Preregistered Direction / Benchmark | Classification |
+|---|---|---|---|
+| **H3a** | EVIDENCE Conditional Error Rate | $< 88.89\%$ (Frozen V10 reference: $32 / 36 = 88.89\%$) | Secondary Diagnostic Hypothesis (NOT a promotion gate) |
+| **H3b** | Candidate Recovery Trigger Rate | $< 30.91\%$ (Frozen V10 reference: $51 / 165 = 30.91\%$) | Secondary Diagnostic Hypothesis (NOT a promotion gate) |
+| **H3c** | Post-Recovery Reachability Floor | $\ge 95.0\%$ | Secondary Diagnostic Hypothesis (NOT a promotion gate) |
+| **H3d** | Planner-v2 Parse Success Rate | $\ge 95.0\%$ | Secondary Diagnostic Hypothesis (NOT a promotion gate) |
+| **H3e** | Follow-Up Retrieval Operational Tracking | Complete reporting across all 6 mutually exclusive categories | Descriptive Diagnostic (NOT a promotion gate) |
+| **H3f** | Search Novelty Diagnostics | Proportion $\ge 1$ new URL, mean/median new URLs (attempted denominator) | Descriptive Diagnostic (NOT a promotion gate) |
+
+### Decision Rules and Outcome Definitions
+
+- **Governance Decision Rule:** Failure to meet H3a, H3b, H3c, or H3d does not by itself block V11 promotion. These hypotheses are secondary diagnostics and must be reported regardless of outcome. Promotion is governed only by the preregistered binding gates listed above.
+- **Neutral Outcome Definition:** If $\Delta_{\text{followup}} \le 0$ or Canonical Correct $\le 84 / 165$, the scientific verdict is `NEUTRAL / NOT_SUPPORTED_AS_AN_IMPROVEMENT`. V11 will not be promoted as the project baseline. Secondary diagnostic success cannot override failure of H1 or H2, and secondary diagnostic failure cannot independently invalidate a V11 that passes all binding gates.
+- **Operational Invalidity Definition:** A benchmark run is declared `INVALID` if and only if any preregistered invalidity condition occurs: incomplete validation split ($< 165$ tasks), ground-truth reference leakage or scorer execution at agent runtime, violation of search/generation budget invariants, post-audit runtime/prompt modifications, or widespread provider infrastructure collapse ($> 10\%$ unhandled task failures). Isolated bounded Search 2 provider failures (HTTP 429, timeout, empty results) fall back cleanly to Search 1 evidence and do **not** invalidate the run.
 
 ---
 
