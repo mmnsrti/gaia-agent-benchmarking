@@ -28,7 +28,9 @@ from evaluation.runner import execute_task
 from evaluation.run_v11_paired import (
     hash_shared_file_context,
     hash_shared_search_context,
+    hash_shared_plan,
     run_paired_ablation,
+    validate_paired_resume_artifacts,
 )
 from prompts.adaptive_planner import (
     ADAPTIVE_PLANNER_PROMPT_VERSION,
@@ -1605,6 +1607,387 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
         self.assertEqual(res.second_search_call_count, 0)
         self.assertEqual(search_tool.calls, 1)
         self.assertEqual(res.final_answer, "fallback_answer")
+
+    def test_v11_source_hygiene_ast(self):
+        """Hardening 10: Source hygiene ensures exactly one definition per module-level function."""
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        paired_runner_path = os.path.join(repo_root, "evaluation", "run_v11_paired.py")
+        with open(paired_runner_path, "r", encoding="utf-8") as f:
+            tree = ast.parse(f.read(), filename="run_v11_paired.py")
+
+        fn_defs = [node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        # No duplicate function definitions at module level
+        self.assertEqual(len(fn_defs), len(set(fn_defs)), f"Duplicate module-level functions found: {fn_defs}")
+
+        # Invariant checks for specific key functions
+        self.assertEqual(fn_defs.count("hash_shared_plan"), 1)
+        self.assertEqual(fn_defs.count("hash_shared_search_context"), 1)
+        self.assertEqual(fn_defs.count("hash_shared_file_context"), 1)
+        self.assertEqual(fn_defs.count("execute_plan_branch"), 1)
+        self.assertEqual(fn_defs.count("run_paired_ablation"), 1)
+        self.assertEqual(fn_defs.count("validate_paired_resume_artifacts"), 1)
+
+        # Functional validation of hash_shared_plan
+        spec = AdaptivePlanSpec(
+            mode="DIRECT",
+            objective="Obj",
+            evidence_needed="Ev",
+            plan_steps=["Step 1"],
+            answer_type="string",
+            evidence_status="INSUFFICIENT",
+            followup_query="Query",
+            raw_plan="...",
+        )
+        self.assertEqual(hash_shared_plan(spec), hash_canonical_execution_plan(spec))
+
+    def test_frozen_targeted_repair_runtime_ast(self):
+        """Hardening 11: Frozen Targeted Repair runtime has 0 _is_v11 references and 2 max_v7_gens assignments."""
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        agent_path = os.path.join(repo_root, "agent", "agent.py")
+        with open(agent_path, "r", encoding="utf-8") as f:
+            tree = ast.parse(f.read(), filename="agent.py")
+
+        repair_class = None
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef) and node.name == "GAIATargetedRepairAgent":
+                repair_class = node
+                break
+        self.assertIsNotNone(repair_class, "GAIATargetedRepairAgent not found in agent.py")
+
+        # Ensure _is_v11 does not appear anywhere in GAIATargetedRepairAgent
+        for subnode in ast.walk(repair_class):
+            if isinstance(subnode, ast.Constant) and subnode.value == "_is_v11":
+                self.fail("Forbidden '_is_v11' constant found in GAIATargetedRepairAgent")
+            if isinstance(subnode, ast.Name) and subnode.id == "_is_v11":
+                self.fail("Forbidden '_is_v11' name found in GAIATargetedRepairAgent")
+
+        # Find run method
+        run_fn = None
+        for item in repair_class.body:
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "run":
+                run_fn = item
+                break
+        self.assertIsNotNone(run_fn, "GAIATargetedRepairAgent.run not found")
+
+        # Count assignments to max_v7_gens in run
+        gens_assignments = []
+        for subnode in ast.walk(run_fn):
+            if isinstance(subnode, ast.Assign):
+                for target in subnode.targets:
+                    if isinstance(target, ast.Name) and target.id == "max_v7_gens":
+                        gens_assignments.append(subnode)
+        self.assertEqual(
+            len(gens_assignments),
+            2,
+            f"Expected exactly 2 assignments to max_v7_gens in GAIATargetedRepairAgent.run, found {len(gens_assignments)}",
+        )
+
+    def test_resume_crash_window_ledger_only_eligible(self):
+        """Hardening 12: Resume fails closed when an eligible task is in ledger but missing from raw file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raw_path = os.path.join(tmpdir, "paired.jsonl")
+            ledger_path = os.path.join(tmpdir, "paired.enrollment.jsonl")
+
+            # Create empty raw file
+            with open(raw_path, "w", encoding="utf-8") as rf:
+                pass
+
+            # Write eligible task to ledger claiming paired_record_written=True
+            with open(ledger_path, "w", encoding="utf-8") as lf:
+                lf.write(json.dumps({
+                    "task_id": "t-eligible-missing-from-raw",
+                    "followup_eligible": True,
+                    "paired_record_written": True,
+                }) + "\n")
+
+            with self.assertRaises(RuntimeError) as ctx:
+                validate_paired_resume_artifacts(raw_path, ledger_path)
+            self.assertIn("missing from raw file", str(ctx.exception))
+
+            # Also verify run_paired_ablation raises RuntimeError
+            with self.assertRaises(RuntimeError):
+                run_paired_ablation(
+                    output_file=raw_path,
+                    resume=True,
+                    agent=GAIAAdaptiveEvidenceAgent(llm_client=SequencedLLM([])),
+                )
+
+    def test_resume_crash_window_raw_only_task(self):
+        """Hardening 13: Resume fails closed when a task is in raw file but missing from enrollment ledger."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raw_path = os.path.join(tmpdir, "paired.jsonl")
+            ledger_path = os.path.join(tmpdir, "paired.enrollment.jsonl")
+
+            with open(raw_path, "w", encoding="utf-8") as rf:
+                rf.write(json.dumps({
+                    "task_id": "t-raw-only",
+                    "followup_eligible": True,
+                }) + "\n")
+
+            # Ledger exists but is empty
+            with open(ledger_path, "w", encoding="utf-8") as lf:
+                pass
+
+            with self.assertRaises(RuntimeError) as ctx:
+                validate_paired_resume_artifacts(raw_path, ledger_path)
+            self.assertIn("missing from enrollment ledger", str(ctx.exception))
+
+            with self.assertRaises(RuntimeError):
+                run_paired_ablation(
+                    output_file=raw_path,
+                    resume=True,
+                    agent=GAIAAdaptiveEvidenceAgent(llm_client=SequencedLLM([])),
+                )
+
+    def test_resume_contamination_detection(self):
+        """Hardening 14: Resume fails closed on contaminated records across raw and ledger."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raw_path = os.path.join(tmpdir, "paired.jsonl")
+            ledger_path = os.path.join(tmpdir, "paired.enrollment.jsonl")
+
+            # Case A: Raw has non-eligible task directly
+            with open(raw_path, "w", encoding="utf-8") as rf:
+                rf.write(json.dumps({"task_id": "bad-raw", "followup_eligible": False}) + "\n")
+            with open(ledger_path, "w", encoding="utf-8") as lf:
+                lf.write(json.dumps({"task_id": "bad-raw", "followup_eligible": False, "paired_record_written": False}) + "\n")
+
+            with self.assertRaises(RuntimeError) as ctx_a:
+                validate_paired_resume_artifacts(raw_path, ledger_path)
+            self.assertIn("Contaminated raw paired file", str(ctx_a.exception))
+
+            # Case B: Ledger non-eligible task has paired_record_written=True
+            with open(raw_path, "w", encoding="utf-8") as rf:
+                pass
+            with open(ledger_path, "w", encoding="utf-8") as lf:
+                lf.write(json.dumps({"task_id": "t-inconsistent", "followup_eligible": False, "paired_record_written": True}) + "\n")
+
+            with self.assertRaises(RuntimeError) as ctx_b:
+                validate_paired_resume_artifacts(raw_path, ledger_path)
+            self.assertIn("Contamination discrepancy", str(ctx_b.exception))
+
+    def test_resume_duplicate_task_id_detection(self):
+        """Hardening 15: Resume fails closed when duplicate task IDs exist in either artifact."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raw_path = os.path.join(tmpdir, "paired.jsonl")
+            ledger_path = os.path.join(tmpdir, "paired.enrollment.jsonl")
+
+            # Case A: Duplicate in raw file
+            with open(raw_path, "w", encoding="utf-8") as rf:
+                rf.write(json.dumps({"task_id": "dup-task", "followup_eligible": True}) + "\n")
+                rf.write(json.dumps({"task_id": "dup-task", "followup_eligible": True}) + "\n")
+            with open(ledger_path, "w", encoding="utf-8") as lf:
+                lf.write(json.dumps({"task_id": "dup-task", "followup_eligible": True, "paired_record_written": True}) + "\n")
+
+            with self.assertRaises(RuntimeError) as ctx_a:
+                validate_paired_resume_artifacts(raw_path, ledger_path)
+            self.assertIn("Duplicate task_id 'dup-task' in raw paired file", str(ctx_a.exception))
+
+            # Case B: Duplicate in enrollment ledger
+            with open(raw_path, "w", encoding="utf-8") as rf:
+                rf.write(json.dumps({"task_id": "dup-task", "followup_eligible": True}) + "\n")
+            with open(ledger_path, "w", encoding="utf-8") as lf:
+                lf.write(json.dumps({"task_id": "dup-task", "followup_eligible": True, "paired_record_written": True}) + "\n")
+                lf.write(json.dumps({"task_id": "dup-task", "followup_eligible": True, "paired_record_written": True}) + "\n")
+
+            with self.assertRaises(RuntimeError) as ctx_b:
+                validate_paired_resume_artifacts(raw_path, ledger_path)
+            self.assertIn("Duplicate task_id 'dup-task' in enrollment ledger", str(ctx_b.exception))
+
+    def test_resume_clean_skips_completed_tasks(self):
+        """Hardening 16: Clean resume validates existing artifacts and skips completed tasks without re-executing."""
+        tasks = [
+            GAIATask(task_id="task-done-non-eligible", question="Q1 done?", level=1, final_answer="A1"),
+            GAIATask(task_id="task-done-eligible", question="Q2 done?", level=1, final_answer="A2"),
+            GAIATask(task_id="task-new-eligible", question="Q3 new?", level=1, final_answer="A3"),
+        ]
+
+        # LLM only needs responses for task-new-eligible!
+        # If task 1 or 2 were re-executed, LLM would be called more times or exhaust responses
+        p_new = (
+            "MODE: DIRECT\nOBJECTIVE: O3\nEVIDENCE_NEEDED: E3\nPLAN:\n1. Step\n"
+            "ANSWER_TYPE: text\nEVIDENCE_STATUS: INSUFFICIENT\nFOLLOWUP_QUERY: new query\n"
+        )
+        llm = SequencedLLM([
+            make_resp(p_new),
+            make_resp("FINAL: ans_A"),
+            make_resp("FINAL: ans_B"),
+        ])
+        agent = GAIAAdaptiveEvidenceAgent(
+            llm_client=llm,
+            search_tool=StubSearchTool(),
+            file_tool=CountingFileTool(),
+            python_tool=MockPythonTool(),
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as out_f:
+            out_file = out_f.name
+        enrollment_file = f"{out_file[:-6]}.enrollment.jsonl"
+
+        try:
+            # Seed valid prior artifacts
+            with open(out_file, "w", encoding="utf-8") as rf:
+                rf.write(json.dumps({
+                    "schema_version": 9,
+                    "task_id": "task-done-eligible",
+                    "level": 1,
+                    "question": "Q2 done?",
+                    "file_name": None,
+                    "shared_primary_search_hash": "s1",
+                    "shared_file_hash": "f1",
+                    "shared_plan_hash": "p1",
+                    "planner_evidence_status": "INSUFFICIENT",
+                    "planner_followup_query": "q",
+                    "planner_requested_followup": True,
+                    "followup_query_valid": True,
+                    "followup_query_duplicate": False,
+                    "followup_eligible": True,
+                    "second_search_triggered": True,
+                    "second_search_attempted": True,
+                    "second_search_success": True,
+                    "second_search_empty_results": False,
+                    "second_search_skipped_duplicate_query": False,
+                    "second_search_query": "q",
+                    "second_search_provider_query": "q",
+                    "second_search_query_truncated": False,
+                    "second_search_latency_seconds": 0.1,
+                    "second_search_result_count": 1,
+                    "second_search_error_type": None,
+                    "second_search_error_message": None,
+                    "second_search_new_urls_count": 1,
+                    "second_search_urls": ["u2"],
+                    "primary_search_urls": ["u1"],
+                    "second_search_has_new_urls": True,
+                    "followup_search_hash": "h2",
+                    "candidate_without_followup": "prev_A",
+                    "candidate_with_followup": "prev_B",
+                    "python_without_followup": False,
+                    "python_with_followup": False,
+                    "planner_mode": "DIRECT",
+                    "plan_step_count": 1,
+                    "planner_parse_success": True,
+                    "planner_fallback_used": False,
+                    "v11_retrieval_category": "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS",
+                }) + "\n")
+
+            with open(enrollment_file, "w", encoding="utf-8") as lf:
+                lf.write(json.dumps({
+                    "schema_version": 9,
+                    "task_id": "task-done-non-eligible",
+                    "level": 1,
+                    "question": "Q1 done?",
+                    "file_name": None,
+                    "shared_primary_search_hash": "s0",
+                    "shared_file_hash": "f0",
+                    "shared_plan_hash": "p0",
+                    "planner_evidence_status": "SUFFICIENT",
+                    "planner_followup_query": "NONE",
+                    "planner_requested_followup": False,
+                    "followup_query_valid": False,
+                    "followup_query_duplicate": False,
+                    "followup_eligible": False,
+                    "second_search_triggered": False,
+                    "second_search_attempted": False,
+                    "second_search_success": False,
+                    "second_search_empty_results": False,
+                    "second_search_skipped_duplicate_query": False,
+                    "second_search_query": None,
+                    "second_search_provider_query": None,
+                    "second_search_query_truncated": False,
+                    "second_search_latency_seconds": None,
+                    "second_search_result_count": None,
+                    "second_search_error_type": None,
+                    "second_search_error_message": None,
+                    "second_search_new_urls_count": None,
+                    "second_search_urls": None,
+                    "primary_search_urls": ["u1"],
+                    "second_search_has_new_urls": None,
+                    "followup_search_hash": None,
+                    "candidate_without_followup": None,
+                    "candidate_with_followup": None,
+                    "python_without_followup": False,
+                    "python_with_followup": False,
+                    "planner_mode": "DIRECT",
+                    "plan_step_count": 1,
+                    "planner_parse_success": True,
+                    "planner_fallback_used": False,
+                    "v11_retrieval_category": "SUFFICIENT_NON_TRIGGERED",
+                    "paired_record_written": False,
+                }) + "\n")
+                lf.write(json.dumps({
+                    "schema_version": 9,
+                    "task_id": "task-done-eligible",
+                    "level": 1,
+                    "question": "Q2 done?",
+                    "file_name": None,
+                    "shared_primary_search_hash": "s1",
+                    "shared_file_hash": "f1",
+                    "shared_plan_hash": "p1",
+                    "planner_evidence_status": "INSUFFICIENT",
+                    "planner_followup_query": "q",
+                    "planner_requested_followup": True,
+                    "followup_query_valid": True,
+                    "followup_query_duplicate": False,
+                    "followup_eligible": True,
+                    "second_search_triggered": True,
+                    "second_search_attempted": True,
+                    "second_search_success": True,
+                    "second_search_empty_results": False,
+                    "second_search_skipped_duplicate_query": False,
+                    "second_search_query": "q",
+                    "second_search_provider_query": "q",
+                    "second_search_query_truncated": False,
+                    "second_search_latency_seconds": 0.1,
+                    "second_search_result_count": 1,
+                    "second_search_error_type": None,
+                    "second_search_error_message": None,
+                    "second_search_new_urls_count": 1,
+                    "second_search_urls": ["u2"],
+                    "primary_search_urls": ["u1"],
+                    "second_search_has_new_urls": True,
+                    "followup_search_hash": "h2",
+                    "candidate_without_followup": "prev_A",
+                    "candidate_with_followup": "prev_B",
+                    "python_without_followup": False,
+                    "python_with_followup": False,
+                    "planner_mode": "DIRECT",
+                    "plan_step_count": 1,
+                    "planner_parse_success": True,
+                    "planner_fallback_used": False,
+                    "v11_retrieval_category": "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS",
+                    "paired_record_written": True,
+                }) + "\n")
+
+            # Run with resume=True
+            with unittest.mock.patch("evaluation.run_v11_paired.load_gaia_tasks", return_value=tasks):
+                run_paired_ablation(
+                    output_file=out_file,
+                    resume=True,
+                    delay=0.0,
+                    agent=agent,
+                )
+
+            # Check that only 3 LLM calls occurred (for task-new-eligible only!)
+            self.assertEqual(len(llm.responses), 0, "All queued responses for task-new-eligible should have been consumed")
+
+            # Verify final raw file has task-done-eligible and task-new-eligible
+            with open(out_file, "r", encoding="utf-8") as rf:
+                raw_records = [json.loads(line) for line in rf if line.strip()]
+            self.assertEqual(len(raw_records), 2)
+            self.assertEqual({r["task_id"] for r in raw_records}, {"task-done-eligible", "task-new-eligible"})
+
+            # Verify final enrollment ledger has all 3 tasks
+            with open(enrollment_file, "r", encoding="utf-8") as lf:
+                ledger_records = [json.loads(line) for line in lf if line.strip()]
+            self.assertEqual(len(ledger_records), 3)
+            self.assertEqual(
+                {r["task_id"] for r in ledger_records},
+                {"task-done-non-eligible", "task-done-eligible", "task-new-eligible"},
+            )
+        finally:
+            if os.path.exists(out_file):
+                os.remove(out_file)
+            if os.path.exists(enrollment_file):
+                os.remove(enrollment_file)
 
 
 if __name__ == "__main__":

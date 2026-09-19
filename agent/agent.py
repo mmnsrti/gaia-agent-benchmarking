@@ -1602,7 +1602,7 @@ class GAIATargetedRepairAgent(GAIASelfEvaluationAgent):
             v6_result.repair_total_tokens = None
             v6_result.repair_prompt = None
             v6_result.repair_raw_response = None
-            max_v7_gens = 6 if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False) or getattr(self, "_is_v11", False)) else 5
+            max_v7_gens = 6 if getattr(self, "_is_v9", False) else 5
             assert v6_result.llm_generation_attempts <= max_v7_gens, f"Exceeds generation cap ({max_v7_gens})"
             return v6_result
 
@@ -1726,7 +1726,7 @@ class GAIATargetedRepairAgent(GAIASelfEvaluationAgent):
 
         max_v7_gens = (
             6
-            if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False) or getattr(self, "_is_v11", False))
+            if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False))
             else 5
         )
         assert v6_result.llm_generation_attempts <= max_v7_gens, f"Exceeds generation cap ({max_v7_gens})"
