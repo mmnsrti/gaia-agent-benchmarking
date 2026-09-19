@@ -1,17 +1,17 @@
 # V11 — Canonical Rerun Governance
 
-**Status:** PREREGISTERED_ATTEMPT_2_NOT_EXECUTED
-**Document Version:** 1.0
-**Repository:** `mmnsrti/gaia-agent-benchmarking`
-**Branch:** `v11-adaptive-evidence-retrieval`
-**Locked Canonical Inference Commit:** `02b368b030e2c86c2e534d6012149f819e8d136a`
-**Scientific Parent:** Frozen V10 (`314d0aecd01a1679a96d85256044c01c8b6c30ce`, 84 / 165 = 50.91%)
-**Preregistration Methodology Commit:** `59f6944ff92f94e6ef2122bb98a0079d021d411b`
-**Original Canonical Results Commit:** `d1a604669fa976fba0339ee823696759379fcad2`
-**Operational Validity Correction Commit:** `cebefd44bf84c5199e7e35c0a013cd16cf234c8b`
-**Post-Benchmark Audit Commit:** `8f3febf12e8d60cc2cb38656342f99c92776d797`
-**Post-Audit Formatting Commit:** `222c871fc5a1c7a0d10e4450c8f53368d297fa42`
-**Date:** September 2026
+**Status:** PREREGISTERED_ATTEMPT_2_NOT_EXECUTED  
+**Document Version:** 1.0  
+**Repository:** `mmnsrti/gaia-agent-benchmarking`  
+**Branch:** `v11-adaptive-evidence-retrieval`  
+**Locked Canonical Inference Commit:** `02b368b030e2c86c2e534d6012149f819e8d136a`  
+**Scientific Parent:** Frozen V10 (`314d0aecd01a1679a96d85256044c01c8b6c30ce`, 84 / 165 = 50.91%)  
+**Preregistration Methodology Commit:** `59f6944ff92f94e6ef2122bb98a0079d021d411b`  
+**Original Canonical Results Commit:** `d1a604669fa976fba0339ee823696759379fcad2`  
+**Operational Validity Correction Commit:** `cebefd44bf84c5199e7e35c0a013cd16cf234c8b`  
+**Post-Benchmark Audit Commit:** `8f3febf12e8d60cc2cb38656342f99c92776d797`  
+**Post-Audit Formatting Commit:** `222c871fc5a1c7a0d10e4450c8f53368d297fa42`  
+**Date:** September 2026  
 
 ---
 
@@ -77,11 +77,11 @@ The primary paired experiment is permanently closed and validated. Attempt #2 is
 
 Attempt #2 is authorized under standard scientific benchmarking methodology to replace a demonstrably invalid measurement:
 
-> **Core Governance Principle:**
-> Attempt #2 is authorized because Attempt #1 was declared operationally invalid under an objective threshold fixed in the preregistration protocol before results were observed.
->
-> The rerun is **not** authorized because the observed score was low.
->
+> **Core Governance Principle:**  
+> Attempt #2 is authorized because Attempt #1 was declared operationally invalid under an objective threshold fixed in the preregistration protocol before results were observed.  
+>  
+> The rerun is **not** authorized because the observed score was low.  
+>  
 > The observed 55 / 165 score is not a valid $H_2$ measurement and must not motivate implementation changes before Attempt #2.
 
 A benchmark suite is an empirical measurement instrument. When the measurement apparatus fails externally (14.55% provider-caused unhandled task aborts exceeding the 10% tolerance), the resulting reading is void. Repeating the measurement under certified apparatus conditions, using the exact frozen code and identical evaluation suite, is scientifically sound and methodologically required to resolve the research question.
@@ -378,3 +378,4 @@ AUTHORIZATION BOUNDARY FOR V11 CANONICAL ATTEMPT #2:
 5. THIS DOCUMENT DOES NOT EXECUTE ANY GAIA BENCHMARK TASKS.
 ================================================================================
 ```
+
