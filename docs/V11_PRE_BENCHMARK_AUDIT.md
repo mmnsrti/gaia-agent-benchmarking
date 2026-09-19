@@ -1,12 +1,12 @@
 # V11 — Final Pre-Benchmark Audit
 
-**Status:** `READY_FOR_CANONICAL_BENCHMARK`
-**Branch:** `v11-adaptive-evidence-retrieval`
-**Scientific Parent:** `Frozen V10`
-**Preregistration Commit:** `59f6944ff92f94e6ef2122bb98a0079d021d411b`
-**Canonical Inference Candidate:** `02b368b030e2c86c2e534d6012149f819e8d136a`
-**Evaluation Schema:** `9`
-**Frozen V10 Reference:** `84 / 165 = 50.91%`
+**Status:** `READY_FOR_CANONICAL_BENCHMARK`  
+**Branch:** `v11-adaptive-evidence-retrieval`  
+**Scientific Parent:** `Frozen V10`  
+**Preregistration Commit:** `59f6944ff92f94e6ef2122bb98a0079d021d411b`  
+**Canonical Inference Candidate:** `02b368b030e2c86c2e534d6012149f819e8d136a`  
+**Evaluation Schema:** `9`  
+**Frozen V10 Reference:** `84 / 165 = 50.91%`  
 
 ---
 
@@ -69,7 +69,7 @@ Compared against the merge of Frozen V10 into main `0761b81330540cdc67fe2d662aef
 ```powershell
 git diff 0761b81330540cdc67fe2d662aef049bc87d9d8f HEAD -- experiments/v10
 ```
-**Result:** 0 differences (empty diff).
+**Result:** 0 differences (empty diff).  
 Freeze status in `experiments/v10/FROZEN.md` explicitly confirmed: `FROZEN_AND_PROMOTED_AS_V11_BASELINE`.
 
 ---
@@ -497,3 +497,4 @@ SCHEMA:                          9
 RUNTIME LOCKED:                  YES
 ================================================================================
 ```
+
