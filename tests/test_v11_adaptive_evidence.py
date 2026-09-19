@@ -263,6 +263,7 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
         self.assertEqual(parsed.plan.evidence_status, "INSUFFICIENT")
         self.assertEqual(parsed.plan.followup_query, '"Acme Corp 2024 annual 10-K revenue SEC EDGAR"')
         norm_q, trunc = normalize_followup_query(parsed.plan.followup_query)
+        self.assertEqual(norm_q, "Acme Corp 2024 annual 10-K revenue SEC EDGAR")
         self.assertEqual(norm_q, '"Acme Corp 2024 annual 10-K revenue SEC EDGAR"')
         self.assertFalse(trunc)
 
@@ -465,6 +466,7 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
             "1. Look up Tokyo\n"
             "ANSWER_TYPE: number\n"
             "EVIDENCE_STATUS: INSUFFICIENT\n"
+            f'FOLLOWUP_QUERY: "{q}"\n'  # Identical to Search 1 query
             f"FOLLOWUP_QUERY: {q}\n"  # Identical to Search 1 query
         )
         llm = SequencedLLM([
@@ -487,10 +489,13 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
         self.assertEqual(search_tool.calls, 1)  # Only Search 1 executed
 
     def test_scenario_12_query_normalization_and_truncation(self):
+        """Scenario 12: Normalization collapses whitespace, strips quotes, and truncates > 1500 chars."""
+        # Whitespace and quotes
         """Scenario 12: Normalization collapses whitespace, preserves quotes, and truncates > 1500 chars."""
         # Whitespace and quotes preservation
         raw = '  "   what   is    the    answer?   "  '
         norm, trunc = normalize_followup_query(raw)
+        self.assertEqual(norm, "what is the answer?")
         self.assertEqual(norm, '" what is the answer? "')
         self.assertFalse(trunc)
 
@@ -639,6 +644,7 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
 
     def test_scenario_17_search3_impossibility(self):
         """Scenario 17: Under no code path can a third search call be initiated."""
+        source = inspect.getsource(GAIAAdaptiveEvidenceAgent)
         source = inspect.getsource(_execute_v11_followup_search)
         parsed = ast.parse(source)
 
@@ -1027,6 +1033,14 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
                 "second_search_has_new_urls": True,
                 "second_search_new_urls_count": 3,
             },
+            # 5. Non-eligible task
+            {
+                "task_id": "t5",
+                "followup_eligible": False,
+                "candidate_without_followup": None,
+                "candidate_with_followup": None,
+                "v11_retrieval_category": "SUFFICIENT_NON_TRIGGERED",
+            },
         ]
 
         tasks_by_id = {
@@ -1040,6 +1054,7 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
         res = calculate_paired_metrics(records, tasks_by_id)
         summary = res["summary"]
 
+        self.assertEqual(summary["total_tasks_recorded"], 5)
         self.assertEqual(summary["total_tasks_recorded"], 4)
         self.assertEqual(summary["followup_eligible_cohort_size"], 4)
         self.assertEqual(summary["retrieval_improvements"], 1)
@@ -1054,6 +1069,7 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
         self.assertEqual(summary["search_novelty_diagnostics"]["has_new_urls_proportion"], 0.75)
 
         # Test zero-eligible cohort non-testability
+        empty_cohort_records = [
         empty_cohort_records = []
         res_empty = calculate_paired_metrics(empty_cohort_records, tasks_by_id)
         self.assertEqual(res_empty["summary"]["scientific_verdict"], "NOT_TESTABLE")
@@ -1069,6 +1085,9 @@ class TestV11AdaptiveEvidence(unittest.TestCase):
                 "v11_retrieval_category": "SUFFICIENT_NON_TRIGGERED",
             }
         ]
+        res_empty = calculate_paired_metrics(empty_cohort_records, {"t5": tasks_by_id["t5"]})
+        self.assertEqual(res_empty["summary"]["scientific_verdict"], "NOT_TESTABLE")
+        self.assertEqual(res_empty["summary"]["delta_followup"], 0)
         with self.assertRaises(ValueError):
             calculate_paired_metrics(contaminated_records, tasks_by_id)
 

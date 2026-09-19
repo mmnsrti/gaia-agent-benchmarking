@@ -1602,6 +1602,7 @@ class GAIATargetedRepairAgent(GAIASelfEvaluationAgent):
             v6_result.repair_total_tokens = None
             v6_result.repair_prompt = None
             v6_result.repair_raw_response = None
+            max_v7_gens = 6 if getattr(self, "_is_v9", False) else 5
             max_v7_gens = 6 if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False) or getattr(self, "_is_v11", False)) else 5
             assert v6_result.llm_generation_attempts <= max_v7_gens, f"Exceeds generation cap ({max_v7_gens})"
             return v6_result
@@ -1726,6 +1727,7 @@ class GAIATargetedRepairAgent(GAIASelfEvaluationAgent):
 
         max_v7_gens = (
             6
+            if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False))
             if (getattr(self, "_is_v9", False) or getattr(self, "_is_v10", False) or getattr(self, "_is_v11", False))
             else 5
         )
@@ -2947,14 +2949,73 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
                     primary_urls.append(url)
 
         # 1. Slot 1: Structured Planner v2 Generation (Generation #1)
+        planner_prompt = build_adaptive_planner_prompt(
         parse_res, p_telem = _plan_v11_from_context(
             agent=self,
             question=question,
+            web_evidence=web_evidence_primary,
             web_evidence_primary=web_evidence_primary,
             file_evidence=file_evidence,
             attachment_filename=attachment_filename,
             attachment_parts=attachment_parts,
         )
+
+        planner_generation_attempts = 1
+        planner_generation_success = False
+        planner_llm_resp = None
+        planner_raw_response = None
+        planner_error_type = None
+        planner_start = time.time()
+
+        try:
+            planner_llm_resp = self.llm.generate(planner_prompt, attachment_parts=attachment_parts)
+            planner_generation_success = True
+            if isinstance(planner_llm_resp, LLMResponse):
+                planner_raw_response = planner_llm_resp.raw_text if planner_llm_resp.raw_text else planner_llm_resp.text
+                if planner_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
+                    planner_error_type = "malformed_function_call_finish_reason"
+                elif planner_llm_resp.finish_reason not in (None, "", "STOP"):
+                    planner_error_type = "unexpected_finish_reason"
+            else:
+                planner_raw_response = str(planner_llm_resp)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "timeout" in err_str or "deadline" in err_str:
+                planner_error_type = "provider_timeout"
+            elif "malformed_function_call" in err_str:
+                planner_error_type = "malformed_function_call_finish_reason"
+            else:
+                planner_error_type = "provider_api_error"
+            planner_raw_response = None
+
+        planner_latency = round(time.time() - planner_start, 2)
+        planner_input_tokens = getattr(planner_llm_resp, "input_tokens", None) if planner_llm_resp else None
+        planner_output_tokens = getattr(planner_llm_resp, "output_tokens", None) if planner_llm_resp else None
+        planner_thinking_tokens = getattr(planner_llm_resp, "thinking_tokens", None) if planner_llm_resp else None
+        planner_total_tokens = getattr(planner_llm_resp, "total_tokens", None) if planner_llm_resp else None
+        if planner_total_tokens is None and (planner_input_tokens is not None or planner_output_tokens is not None):
+            planner_total_tokens = (planner_input_tokens or 0) + (planner_output_tokens or 0) + (planner_thinking_tokens or 0)
+
+        # Parse planner output
+        if planner_error_type is not None:
+            parse_res = AdaptivePlannerParseResult(
+                success=False,
+                plan_spec=build_adaptive_fallback_plan(question=question, raw_text="", error_message=planner_error_type),
+                error_message=planner_error_type,
+                error_type=planner_error_type,
+            )
+        elif planner_raw_response is None or not planner_raw_response.strip():
+            planner_error_type = "empty_provider_response"
+            parse_res = AdaptivePlannerParseResult(
+                success=False,
+                plan_spec=build_adaptive_fallback_plan(question=question, raw_text="", error_message=planner_error_type),
+                error_message=planner_error_type,
+                error_type="PlannerEmptyResponseError",
+            )
+        else:
+            parse_res = parse_adaptive_planner_result(planner_raw_response)
+            if not parse_res.success:
+                planner_error_type = parse_res.error_message
 
         plan_spec = parse_res.plan_spec
         planner_prompt = p_telem["planner_prompt"]
@@ -2971,14 +3032,29 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
         planner_generation_attempts = p_telem["planner_generation_attempts"]
         planner_generation_success = p_telem["planner_generation_success"]
 
+        planner_evidence_status = plan_spec.evidence_status
+        raw_followup_query = plan_spec.followup_query
+
         # Evaluate cohort criteria
+        planner_requested_followup = bool(planner_parse_success and planner_evidence_status == "INSUFFICIENT")
+        norm_followup_query, followup_truncated = normalize_followup_query(raw_followup_query)
+        followup_query_valid = bool(
+            planner_requested_followup and norm_followup_query and norm_followup_query.upper() != "NONE"
+        )
+
         search1_query_candidate = search_res.query if (search_res and search_res.query) else question
+        norm_search1_query, _ = normalize_followup_query(search1_query_candidate)
+        followup_query_duplicate = bool(
+            planner_requested_followup
+            and followup_query_valid
+            and (norm_followup_query.lower() == norm_search1_query.lower())
         ctrl = _evaluate_v11_followup_control(
             plan_spec=plan_spec,
             parse_success=planner_parse_success,
             search1_query_candidate=search1_query_candidate,
         )
 
+        followup_eligible = bool(planner_requested_followup and followup_query_valid and not followup_query_duplicate)
         planner_requested_followup = ctrl["planner_requested_followup"]
         norm_followup_query = ctrl["norm_followup_query"]
         followup_truncated = ctrl["followup_truncated"]
@@ -3023,6 +3099,55 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
             second_search_query_truncated = followup_truncated
             second_search_call_count = 1
 
+            s2_start = time.time()
+            try:
+                second_search_res = self.search_tool.search(norm_followup_query)
+                second_search_latency_seconds = round(
+                    getattr(second_search_res, "latency_seconds", None) or (time.time() - s2_start), 2
+                )
+                second_search_success = bool(second_search_res and second_search_res.success)
+                second_search_result_count = (
+                    len(second_search_res.results) if (second_search_res and second_search_res.results) else 0
+                )
+                second_search_empty_results = bool(second_search_success and second_search_result_count == 0)
+                second_search_error_type = second_search_res.error_type if second_search_res else None
+                second_search_error_message = second_search_res.error_message if second_search_res else None
+
+                if second_search_res and second_search_res.results:
+                    second_urls = []
+                    for item in second_search_res.results:
+                        u = getattr(item, "url", None) or (item.get("url") if isinstance(item, dict) else None)
+                        if u:
+                            second_urls.append(u)
+                    second_search_urls = second_urls
+                    primary_url_set = set(primary_urls)
+                    new_urls = [u for u in second_urls if u not in primary_url_set]
+                    second_search_new_urls_count = len(new_urls)
+                    second_search_has_new_urls = len(new_urls) > 0
+                else:
+                    second_search_urls = []
+                    second_search_new_urls_count = 0
+                    second_search_has_new_urls = False
+
+                if second_search_success and second_search_result_count > 0:
+                    followup_evidence_text = second_search_res.format_evidence_block()
+                    followup_search_hash = _compute_sha256(followup_evidence_text)
+                    v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_SUCCESS"
+                elif second_search_success and second_search_result_count == 0:
+                    v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_EMPTY_RESULTS"
+                else:
+                    v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE"
+            except Exception as e:
+                second_search_latency_seconds = round(time.time() - s2_start, 2)
+                second_search_success = False
+                second_search_error_type = type(e).__name__
+                second_search_error_message = str(e)
+                second_search_result_count = 0
+                second_search_empty_results = False
+                second_search_urls = []
+                second_search_new_urls_count = 0
+                second_search_has_new_urls = False
+                v11_retrieval_category = "FOLLOWUP_ELIGIBLE_SEARCH2_PROVIDER_FAILURE"
             s2_info = _execute_v11_followup_search(
                 search_tool=self.search_tool,
                 norm_followup_query=norm_followup_query,
@@ -3050,6 +3175,14 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
         total_search_call_count = primary_search_call_count + second_search_call_count
 
         # Format combined evidence for executor
+        if second_search_success and followup_evidence_text and followup_evidence_text.strip():
+            combined_web_evidence = (
+                f"=== PRIMARY WEB SEARCH EVIDENCE ===\n{web_evidence_primary}\n\n"
+                f"=== FOLLOW-UP WEB SEARCH EVIDENCE ===\n{followup_evidence_text.strip()}"
+            )
+        else:
+            combined_web_evidence = f"=== PRIMARY WEB SEARCH EVIDENCE ===\n{web_evidence_primary}"
+        combined_search_evidence_hash = _compute_sha256(combined_web_evidence)
         combined_web_evidence, combined_search_evidence_hash = _build_v11_executor_evidence(
             web_evidence_primary=web_evidence_primary,
             second_search_success=second_search_success,
@@ -3057,6 +3190,25 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
         )
 
         # 2. Slot 2: Plan-Guided Executor Generation (Generation #2)
+        executor_mode = plan_spec.mode
+        if executor_mode == "DIRECT":
+            executor_prompt_ver = EXECUTOR_DIRECT_PROMPT_VERSION
+            executor_prompt = build_direct_executor_prompt(
+                question=question,
+                plan_spec=plan_spec,
+                web_evidence=combined_web_evidence,
+                file_evidence=file_evidence,
+                attachment_filename=attachment_filename,
+            )
+        else:
+            executor_prompt_ver = EXECUTOR_PYTHON_PROMPT_VERSION
+            executor_prompt = build_python_executor_prompt(
+                question=question,
+                plan_spec=plan_spec,
+                web_evidence=combined_web_evidence,
+                file_evidence=file_evidence,
+                attachment_filename=attachment_filename,
+            )
         exec_res = _execute_v11_executor_from_plan(
             agent=self,
             question=question,
@@ -3068,9 +3220,109 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
             file_path=file_path,
         )
 
+        executor_generation_attempts = 1
+        executor_generation_success = False
+        executor_llm_resp = None
+        executor_raw_response = None
+        executor_error_type = None
+        executor_start = time.time()
         llm_generation_attempts = planner_generation_attempts + 1
         llm_generation_success_count = (1 if planner_generation_success else 0) + (1 if exec_res.raw_response is not None else 0)
 
+        try:
+            executor_llm_resp = self.llm.generate(executor_prompt, attachment_parts=attachment_parts)
+            executor_generation_success = True
+            if isinstance(executor_llm_resp, LLMResponse):
+                executor_raw_response = executor_llm_resp.raw_text if executor_llm_resp.raw_text else executor_llm_resp.text
+                if executor_llm_resp.finish_reason == "MALFORMED_FUNCTION_CALL":
+                    executor_error_type = "malformed_function_call_finish_reason"
+            else:
+                executor_raw_response = str(executor_llm_resp)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "timeout" in err_str or "deadline" in err_str:
+                executor_error_type = "provider_timeout"
+            elif "malformed_function_call" in err_str:
+                executor_error_type = "malformed_function_call_finish_reason"
+            else:
+                executor_error_type = "provider_api_error"
+            executor_raw_response = None
+
+        executor_latency = round(time.time() - executor_start, 2)
+
+        if executor_error_type is None and (executor_raw_response is None or not executor_raw_response.strip()):
+            executor_error_type = "empty_worker_response"
+
+        executor_input_tokens = getattr(executor_llm_resp, "input_tokens", None) if executor_llm_resp else None
+        executor_output_tokens = getattr(executor_llm_resp, "output_tokens", None) if executor_llm_resp else None
+        executor_thinking_tokens = getattr(executor_llm_resp, "thinking_tokens", None) if executor_llm_resp else None
+        executor_total_tokens = getattr(executor_llm_resp, "total_tokens", None) if executor_llm_resp else None
+        if executor_total_tokens is None and (executor_input_tokens is not None or executor_output_tokens is not None):
+            executor_total_tokens = (executor_input_tokens or 0) + (executor_output_tokens or 0) + (executor_thinking_tokens or 0)
+
+        # 3. Extract Answer / Execute Python
+        py_result: Optional[PythonResult] = None
+        python_requested = False
+        python_executed = False
+        python_fallback = False
+        final_answer = ""
+        executor_success = False
+
+        if executor_mode == "DIRECT":
+            python_requested = False
+            python_executed = False
+            python_fallback = False
+            final_answer = self.clean_answer(extract_direct_answer(executor_raw_response or ""))
+            executor_success = bool(final_answer and not executor_error_type)
+        else:
+            code = extract_python_code(executor_raw_response or "")
+            python_requested = bool(code)
+            if code:
+                python_executed = True
+                py_result = self.python_tool.execute(code, attachment_path=file_path)
+                if py_result.success:
+                    extracted_ans = extract_python_final_answer(py_result.stdout)
+                    if extracted_ans is not None:
+                        final_answer = self.clean_answer(extracted_ans)
+                        python_fallback = False
+                        executor_success = True
+                    else:
+                        python_fallback = True
+                        py_result.success = False
+                        py_result.error_type = py_result.error_type or "MissingFinalAnswerMarker"
+                        py_result.error_message = (
+                            py_result.error_message
+                            or "Python execution succeeded but stdout did not contain 'FINAL_ANSWER:' marker"
+                        )
+                        final_answer = (
+                            self.clean_answer(extract_direct_answer(executor_raw_response))
+                            if executor_raw_response and "FINAL:" in executor_raw_response
+                            else ""
+                        )
+                        executor_success = False
+                else:
+                    python_fallback = True
+                    final_answer = (
+                        self.clean_answer(extract_direct_answer(executor_raw_response))
+                        if executor_raw_response and "FINAL:" in executor_raw_response
+                        else ""
+                    )
+                    executor_success = False
+            else:
+                python_requested = False
+                python_executed = False
+                python_fallback = True
+                final_answer = (
+                    self.clean_answer(extract_direct_answer(executor_raw_response or ""))
+                    if executor_raw_response and "FINAL:" in executor_raw_response
+                    else ""
+                )
+                executor_success = False
+
+        llm_generation_attempts = planner_generation_attempts + executor_generation_attempts
+        llm_generation_success_count = (1 if planner_generation_success else 0) + (1 if executor_generation_success else 0)
+
+        raw_resp = executor_raw_response or ""
         raw_resp = exec_res.raw_response or ""
         norm_resp = raw_resp.strip()
 
@@ -3079,6 +3331,10 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
         agent_result = AgentResult(
             raw_response=raw_resp,
             normalized_response=norm_resp,
+            final_answer=final_answer,
+            candidate_answer=final_answer,
+            llm_response=executor_llm_resp if isinstance(executor_llm_resp, LLMResponse) else None,
+            prompt=executor_prompt,
             final_answer=exec_res.candidate_answer,
             candidate_answer=exec_res.candidate_answer,
             llm_response=exec_res.llm_response,
@@ -3090,6 +3346,12 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
             search_fallback=search_fallback,
             file_result=file_res,
             file_fallback=file_fallback,
+            python_result=py_result,
+            python_requested=python_requested,
+            python_executed=python_executed,
+            python_fallback=python_fallback,
+            python_prompt_version=EXECUTOR_PYTHON_PROMPT_VERSION if executor_mode == "PYTHON" else None,
+            python_prompt=executor_prompt if executor_mode == "PYTHON" else None,
             python_result=exec_res.py_result,
             python_requested=exec_res.python_requested,
             python_executed=exec_res.python_executed,
@@ -3153,8 +3415,21 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
             v11_retrieval_category=v11_retrieval_category,
 
             # Executor telemetry
+            executor_mode=executor_mode,
             executor_mode=plan_spec.mode,
             executor_plan_used=True,
+            executor_success=executor_success,
+            executor_error_type=executor_error_type,
+            executor_prompt_version=executor_prompt_ver,
+            executor_prompt=executor_prompt,
+            executor_raw_response=executor_raw_response,
+            executor_latency_seconds=executor_latency,
+            executor_input_tokens=executor_input_tokens,
+            executor_output_tokens=executor_output_tokens,
+            executor_thinking_tokens=executor_thinking_tokens,
+            executor_total_tokens=executor_total_tokens,
+            executor_generation_attempts=executor_generation_attempts,
+            executor_generation_success=executor_generation_success,
             executor_success=exec_res.executor_success,
             executor_error_type=exec_res.error_type,
             executor_prompt_version=exec_res.prompt_version,
@@ -3169,6 +3444,18 @@ class GAIAAdaptiveEvidenceAgent(GAIAPlannerExecutorAgent):
             executor_generation_success=bool(exec_res.raw_response is not None),
 
             # Worker compatibility aliases (for Frozen V9 candidate recovery classifier)
+            worker_mode=executor_mode,
+            worker_success=executor_success,
+            worker_error_type=executor_error_type,
+            worker_prompt_version=executor_prompt_ver,
+            worker_prompt=executor_prompt,
+            worker_raw_response=executor_raw_response,
+            worker_latency_seconds=executor_latency,
+            worker_input_tokens=executor_input_tokens,
+            worker_output_tokens=executor_output_tokens,
+            worker_thinking_tokens=executor_thinking_tokens,
+            worker_generation_attempts=executor_generation_attempts,
+            worker_generation_success=executor_generation_success,
             worker_mode=plan_spec.mode,
             worker_success=exec_res.executor_success,
             worker_error_type=exec_res.error_type,

@@ -141,6 +141,9 @@ def normalize_followup_query(query: Optional[str], max_len: int = 1500) -> Tuple
     """Normalizes a follow-up search query string.
 
     1. Strip leading and trailing whitespace.
+    2. Strip wrapping quotes if present.
+    3. Collapse internal repeated whitespace to a single space.
+    4. Deterministically truncate to max_len characters if needed.
     2. Collapse internal repeated whitespace to a single space.
     3. Deterministically truncate to max_len characters if needed.
 
@@ -152,6 +155,8 @@ def normalize_followup_query(query: Optional[str], max_len: int = 1500) -> Tuple
     if not query:
         return "", False
     s = str(query).strip()
+    if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+        s = s[1:-1].strip()
     s = re.sub(r"\s+", " ", s)
     if len(s) > max_len:
         return s[:max_len], True
