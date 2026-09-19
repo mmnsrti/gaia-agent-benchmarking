@@ -89,7 +89,9 @@
     "retrieval_stable_correct": 9,
     "retrieval_stable_failure": 43,
     "delta_followup": 15,
-    "h1_supported": true
+    "h1_supported": true,
+    "valid": true,
+    "status": "VALID_PAIRED_ABLATION"
   },
   "secondary_diagnostics": {
     "h3a_evidence_conditional_error": {
@@ -98,28 +100,32 @@
       "correct_count": 6,
       "error_rate": 0.8723,
       "direction_pass": true,
-      "is_binding_gate": false
+      "is_binding_gate": false,
+      "status": "DESCRIPTIVE_FROM_INVALID_CANONICAL_ATTEMPT"
     },
     "h3b_recovery_trigger_rate": {
       "triggered_count": 47,
       "total_tasks": 165,
       "trigger_rate": 0.2848,
       "direction_pass": true,
-      "is_binding_gate": false
+      "is_binding_gate": false,
+      "status": "DESCRIPTIVE_FROM_INVALID_CANONICAL_ATTEMPT"
     },
     "h3c_reachability_floor": {
       "post_reachability_count": 138,
       "total_tasks": 165,
       "reachability_rate": 0.8364,
       "direction_pass": false,
-      "is_binding_gate": false
+      "is_binding_gate": false,
+      "status": "DESCRIPTIVE_FROM_INVALID_CANONICAL_ATTEMPT"
     },
     "h3d_planner_parse_success": {
       "parse_success_count": 141,
       "attempted_count": 165,
       "parse_rate": 0.8545,
       "direction_pass": false,
-      "is_binding_gate": false
+      "is_binding_gate": false,
+      "status": "DESCRIPTIVE_FROM_INVALID_CANONICAL_ATTEMPT"
     },
     "h3e_retrieval_category_distribution": {
       "categories": {
@@ -131,7 +137,8 @@
         "PLANNER_FALLBACK": 24
       },
       "sum_tasks": 165,
-      "is_binding_gate": false
+      "is_binding_gate": false,
+      "status": "DESCRIPTIVE_FROM_INVALID_CANONICAL_ATTEMPT"
     },
     "h3f_search_novelty": {
       "attempted_count": 91,
@@ -139,7 +146,8 @@
       "proportion_with_gte_1_new_url": 0.1209,
       "mean_new_urls": 0.53,
       "median_new_urls": 0,
-      "is_binding_gate": false
+      "is_binding_gate": false,
+      "status": "DESCRIPTIVE_FROM_INVALID_CANONICAL_ATTEMPT"
     }
   },
   "binding_gates": {
@@ -148,8 +156,23 @@
     "gate_3_h2_canonical_accuracy_gt_parent": false,
     "gate_4_tool_and_generation_budgets": true,
     "gate_5_downstream_safeguards_preserved": true,
-    "gate_6_operational_validity": false
+    "gate_6_operational_validity": false,
+    "gate_3_status": "NOT_EVALUABLE_ON_INVALID_CANONICAL_RUN"
   },
-  "scientific_verdict": "NEUTRAL / NOT_SUPPORTED_AS_AN_IMPROVEMENT",
-  "promotion_decision": "DO_NOT_PROMOTE_V11"
+  "scientific_verdict": "INVALID_CANONICAL_RUN",
+  "promotion_decision": "INVALID_RUN_NO_DECISION",
+  "canonical_h2_status": "NOT_EVALUABLE_ON_INVALID_CANONICAL_RUN",
+  "canonical_score_interpretation": "OBSERVED_INVALID_RUN_SCORE",
+  "operational_validity": {
+    "valid": false,
+    "invalidity_reason": "WIDESPREAD_PROVIDER_INFRASTRUCTURE_COLLAPSE",
+    "preregistered_threshold": ">10% unhandled task failures",
+    "provider_caused_unhandled_task_failures": 24,
+    "provider_caused_unhandled_task_failure_rate": 0.1455,
+    "primary_search_provider_failures": 125,
+    "primary_search_provider_failure_rate": 0.7576,
+    "second_search_provider_failures": 80,
+    "second_search_attempts": 91,
+    "second_search_provider_failure_rate": 0.8791
+  }
 }

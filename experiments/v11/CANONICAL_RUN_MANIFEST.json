@@ -85,8 +85,8 @@
     },
     "overall_summary.json": {
       "path": "experiments/v11/overall_summary.json",
-      "sha256": "e51dddba2c6b5712ba954204697c86a202c1bfc3a6f365d9eb48154b067a21ab",
-      "size_bytes": 4714
+      "sha256": "346fcf8e0e632590f6f48f54bf5fae11f123af997c87a3e23ce62c581a3a2926",
+      "size_bytes": 5870
     }
   }
 }
