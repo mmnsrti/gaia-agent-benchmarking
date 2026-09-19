@@ -1,11 +1,11 @@
 # V11 — Attempt #2 Provider Health Audit
 
-**Governance Status:** PREREGISTERED_ATTEMPT_2
-**Governance Commit:** `d274aef9553701916a051565abdc1617595d384f`
-**Governance Document HEAD:** `c151ef80357db3dbc9a8151aa008e5d815e42cb5`
-**Canonical Inference Commit:** `02b368b030e2c86c2e534d6012149f819e8d136a`
-**Attempt ID:** `canonical_attempt_2`
-**Date:** September 2026
+**Governance Status:** PREREGISTERED_ATTEMPT_2  
+**Governance Commit:** `d274aef9553701916a051565abdc1617595d384f`  
+**Governance Document HEAD:** `c151ef80357db3dbc9a8151aa008e5d815e42cb5`  
+**Canonical Inference Commit:** `02b368b030e2c86c2e534d6012149f819e8d136a`  
+**Attempt ID:** `canonical_attempt_2`  
+**Date:** September 2026  
 
 ---
 
@@ -224,3 +224,4 @@ Required Action:
 - DO NOT EXECUTE ATTEMPT #2 UNTIL HEALTH AUDIT PASSES.
 ================================================================================
 ```
+
